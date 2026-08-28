@@ -1,0 +1,62 @@
+# CLAUDE.md — TravelAgent Working Manual
+
+This file is read automatically at the start of every session in this repository. It captures **how we work together**, decisions already made, and mistakes already made — so they aren't repeated. It is a supplement to `documentation/`, not a replacement for it.
+
+**Read this first, then check current state before doing anything:**
+1. [`documentation/PROJECT_STATE.md`](documentation/PROJECT_STATE.md) — exactly where implementation stands right now, including any pending manual actions or pauses.
+2. [`documentation/DECISIONS_PENDING.md`](documentation/DECISIONS_PENDING.md) — human decisions currently blocking progress.
+3. [`documentation/DEVELOPMENT_LOG.md`](documentation/DEVELOPMENT_LOG.md) — full chronological history of what was built and why.
+
+Do not assume the state described in this file's examples reflects the current phase — always check the three files above first, since they're updated continuously and this file is not.
+
+---
+
+## What TravelAgent is
+
+An Intelligent Travel Consultant — not an AI trip planner, not a travel agency, not a booking platform. Full product/architecture spec lives in `documentation/01`–`15`. Start with `documentation/02_PROJECT_CONTEXT.md` (project philosophy, roles, communication rules) and `documentation/15_IMPLEMENTATION_GUIDE.md` (how development proceeds, phase by phase).
+
+## Non-negotiable working rules
+
+These come directly from `02_PROJECT_CONTEXT.md` and `15_IMPLEMENTATION_GUIDE.md` and have already been reinforced by the user in practice — do not relitigate them:
+
+1. **Never skip development phases. Finish one phase's Definition of Done before starting the next**, even if a technical workaround exists to route around a blocker. If the current phase's DoD requires something that isn't available (e.g., Docker), **pause and say so explicitly** — do not substitute a workaround (e.g., SQLite instead of PostgreSQL) to keep moving, and do not silently skip ahead to a later phase's work just because it happens to be unblocked. Confirmed in practice on 2026-08-28: an initial "this workaround doesn't hurt, let's keep going" judgment call was explicitly overridden by the user in favor of strict phase-by-phase adherence.
+2. **Claude Code implements; the human decides.** Never independently decide: AI provider, travel data providers, pricing, monetization, what's Free vs Premium, payment/affiliate providers, privacy/retention policy, recommendation philosophy, or whether a major architectural/technology change is justified. Full list in `15_IMPLEMENTATION_GUIDE.md` §38. When a phase requires one of these, stop and ask — don't guess or default.
+3. **Golden rule of scope:** work only on the current approved milestone/task. Don't say "build the whole app" to yourself; implement the next approved step, then stop for review.
+4. We communicate in **Portuguese**; all documentation and code comments are in **English**.
+5. Every meaningful chunk of work gets logged in `documentation/DEVELOPMENT_LOG.md`, and `documentation/PROJECT_STATE.md` gets updated so a future session (or a fresh one after context loss) can resume without re-deriving everything.
+6. Be technically critical, not agreeable by default — point out risks and better alternatives per `02_PROJECT_CONTEXT.md`'s "My Role" section.
+
+## Safety judgment calls already made — keep applying these
+
+- **Never try to access, guess, or reset credentials for infrastructure you didn't create.** Found a pre-existing local PostgreSQL 18 Windows service on this machine (unrelated to TravelAgent, likely from another project) — did not attempt to use or modify it without asking the user first.
+- **Never modify system/security settings** (BIOS/UEFI, Windows optional features, services) directly — these require the human to act. When encountered (e.g., virtualization disabled, blocking Docker's WSL2 backend), explain exactly what needs to change and how, then wait.
+- **Don't introduce architecture-deviating workarounds even when they'd unblock things faster.** E.g., PostgreSQL is the documented source of truth (`04_DATABASE_DESIGN.md`); don't fall back to SQLite locally "just for now" — behavioral differences (JSON fields, constraints, migration behavior) can mask real bugs that only surface later.
+- Git commits are only made when the user explicitly asks (per global Claude Code instructions) — infrastructure/config file creation itself doesn't require that permission, but committing does.
+
+## Environment notes specific to this machine
+
+(`C:\Users\vinic\OneDrive\Desktop\TravelAgent`, Windows 11, PowerShell/Git Bash tools)
+
+- Use `py` to invoke Python, not `python` or `python3` (Windows Store alias breaks the latter two). Local venv: `.venv/Scripts/python.exe`.
+- Git and a local Python 3.14 (via `py`) are available by default. Docker was **not** pre-installed — it was installed mid-project (2026-08-28) but its engine (WSL2-based) could not start because **hardware virtualization was disabled**. Fix requires: enabling the Windows "Virtual Machine Platform" feature + enabling virtualization (Intel VT-x / AMD-V) in BIOS/UEFI + reboot. See `documentation/PROJECT_STATE.md` for whether this is still pending — check before re-suggesting a Docker install, it may already be done.
+- Docker Desktop installed to `C:\Users\vinic\AppData\Local\Programs\DockerDesktop` (user-local, not `Program Files`) — not automatically on `PATH` in already-open shell sessions; use the full path to `resources\bin\docker.exe` or open a fresh terminal.
+- A **PostgreSQL 18** server runs as a Windows service (`postgresql-x64-18`) on port 5432, unrelated to TravelAgent's Dockerized Postgres 16. Don't confuse the two; TravelAgent's own Postgres runs inside Docker Compose (`db` service) on the same port, so they cannot run simultaneously without a port conflict — this is expected and fine since TravelAgent uses the Dockerized one.
+- Long-running interactive commands (like `docker info` while the engine is still starting) hang past the default tool timeout and get moved to background — check the output file or wait for the task notification rather than assuming failure.
+
+## Technical conventions established (Milestone 1, 2026-08-28)
+
+- Django project lives at the repo root (`manage.py`, `config/`), not nested under `backend/`.
+- Settings are split: `config/settings/{base,development,production,test}.py`, loaded via `django-environ` from a local `.env` (never committed — see `.env.example` for the template).
+- PostgreSQL via `psycopg` (v3, binary); Redis for cache + Celery broker (`django.core.cache.backends.redis.RedisCache`, built into Django ≥4.0 — no `django-redis` needed).
+- Celery is set up but has **no real tasks yet** — infrastructure only, per `15_IMPLEMENTATION_GUIDE.md` Phase 16 ("don't create background jobs until a specific need justifies them").
+- Testing: `pytest` + `pytest-django` (not Django's built-in test runner), configured in `pyproject.toml`.
+- Linting: `ruff` (replaces flake8+isort+black-style checks in one tool). Settings modules use `per-file-ignores` for `F403`/`F405` since `from .base import *` is intentional there.
+- Docker: multi-stage `Dockerfile` (builder installs deps, slim runtime stage); `docker-compose.yml` has `db`, `redis`, `web`, `worker` services.
+- CI: GitHub Actions (`.github/workflows/ci.yml`), spins up real Postgres+Redis service containers — this means CI can validate the app end-to-end even when local Docker is unavailable.
+- No domain apps (`users`, `travel`, `trips`, `recommendations`, `ai`, `integrations`) exist yet — deliberately deferred until after the Phase 2 (AI provider) and Phase 3 (travel data provider) human decisions, per `14_MVP_IMPLEMENTATION_PLAN.md`'s "don't create empty apps for every future feature."
+
+## When resuming a paused/interrupted session
+
+1. Read `documentation/PROJECT_STATE.md` — it has an explicit "current phase" line and, when relevant, a pinned "⚠️ PENDING MANUAL ACTION" or "⏸️ PROJECT PAUSED" section at the top.
+2. Don't re-do completed phases. Don't jump ahead of a pause without the user explicitly lifting it.
+3. Update all three tracking docs (`PROJECT_STATE.md`, `DEVELOPMENT_LOG.md`, and `DECISIONS_PENDING.md` if relevant) as part of any meaningful change — not just at the end of a session.

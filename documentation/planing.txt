@@ -1,0 +1,32 @@
+============ Documentation Structure ==============
+travelagent-ai/
+
+README.md
+
+PROJECT.md
+
+docs/
+
+    01_vision.md
+    02_product.md
+    03_personas.md
+    04_user_journey.md
+    05_architecture.md
+    06_domain_model.md
+    07_database.md
+    08_ai_architecture.md
+    09_agents.md
+    10_rules_engine.md
+    11_scoring_engine.md
+    12_similarity_engine.md
+    13_explainability.md
+    14_integrations.md
+    15_api_design.md
+    16_security.md
+    17_business_model.md
+    18_mvp.md
+    19_roadmap.md
+
+adr/
+
+specifications/
