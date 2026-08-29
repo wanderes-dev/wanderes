@@ -285,3 +285,45 @@ class TripTypeAndExclusionTests(TestCase):
         )
 
         self.assertEqual(result.recommendations, [])
+
+
+class UnhandledRequestLoggingTests(TestCase):
+    """Per the 2026-08-29 recommendation-philosophy decision: unplanned
+    requests fall to the AI's own judgment, but that fact gets logged for
+    future review rather than passing silently."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+
+    def test_logs_when_no_deterministic_constraints_extracted(self):
+        ai_provider = StubAIProvider(structured_response=_intent(month=6))
+
+        with self.assertLogs("ai.orchestration", level="INFO") as logs:
+            get_travel_recommendation(
+                "a romantic getaway in June", ai_provider=ai_provider, climate_provider=self.climate
+            )
+
+        self.assertTrue(any("relying on AI judgment" in message for message in logs.output))
+
+    def test_logs_when_no_destinations_match(self):
+        ai_provider = StubAIProvider(structured_response=_intent(month=10, min_temp_c=100.0))
+
+        with self.assertLogs("ai.orchestration", level="INFO") as logs:
+            get_travel_recommendation(
+                "somewhere impossibly hot", ai_provider=ai_provider, climate_provider=self.climate
+            )
+
+        self.assertTrue(any("No destinations matched" in message for message in logs.output))
+
+    def test_logs_warning_on_provider_failure(self):
+        with self.assertLogs("ai.orchestration", level="WARNING") as logs:
+            get_travel_recommendation(
+                "somewhere warm in October",
+                ai_provider=FailingAIProvider(),
+                climate_provider=self.climate,
+            )
+
+        self.assertTrue(any("AI provider failure" in message for message in logs.output))

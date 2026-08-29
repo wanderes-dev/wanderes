@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -10,6 +11,8 @@ from travel.services import find_destination_slugs_by_name
 
 from .prompts import SYSTEM_PROMPT
 from .provider import AIMessage, AIProvider, AIProviderError, get_ai_provider
+
+logger = logging.getLogger(__name__)
 
 MAX_EXPLAINED_CANDIDATES = 5
 
@@ -122,12 +125,24 @@ def stream_travel_recommendation(
     non-streaming convenience wrapper around it. Does NOT handle conversation
     history/persistence - each call is independent (Phase 10's chat UI keeps
     per-visit display only, not true multi-turn context yet).
+
+    Recommendation philosophy (decided 2026-08-29, Phase 11 review): a real
+    user will ask for things this system has no deterministic model for
+    (e.g. "romantic", "family-friendly"). Rather than trying to predict
+    every such category in advance, unmatched dimensions are deliberately
+    left for the AI to reason about using its own general knowledge - see
+    the "do not force-fit" instruction in INTENT_EXTRACTION_SYSTEM_PROMPT.
+    What this function does do is *log* those cases (and genuine failures),
+    so real usage can inform which dimensions are worth formalizing later
+    - "the profile should grow organically as the product learns" applies
+    here too, not just to TravelerProfile.
     """
     ai_provider = ai_provider or get_ai_provider()
 
     try:
         intent = _extract_intent(message, ai_provider=ai_provider)
     except AIProviderError:
+        logger.warning("Could not extract intent - AI provider failure. message=%r", message)
         return StreamingOrchestrationResult(False, [], iter([FALLBACK_REPLY]))
 
     if not intent["is_travel_request"]:
@@ -136,6 +151,21 @@ def stream_travel_recommendation(
     if intent["needs_clarification"]:
         question = intent["clarification_question"] or "Could you tell me more about your trip?"
         return StreamingOrchestrationResult(True, [], iter([question]))
+
+    no_deterministic_constraints = (
+        intent["trip_type"] is None
+        and intent["min_temp_c"] is None
+        and intent["max_cost_of_living"] is None
+    )
+    if no_deterministic_constraints:
+        # None of our deterministic dimensions matched - the AI will answer
+        # entirely from its own reasoning over the unfiltered candidate
+        # list. Not an error, but worth knowing about for future review.
+        logger.info(
+            "No deterministic constraints extracted - relying on AI judgment. message=%r month=%s",
+            message,
+            intent["month"],
+        )
 
     request = RecommendationRequest(
         month=intent["month"],
@@ -148,6 +178,15 @@ def stream_travel_recommendation(
     results = generate_recommendations(request, climate_provider=climate_provider)
 
     if not results:
+        logger.info(
+            "No destinations matched constraints. message=%r month=%s min_temp_c=%s "
+            "max_cost_of_living=%s trip_type=%s",
+            message,
+            intent["month"],
+            intent["min_temp_c"],
+            intent["max_cost_of_living"],
+            intent["trip_type"],
+        )
         return StreamingOrchestrationResult(False, [], iter([NO_MATCHES_REPLY]))
 
     messages = _build_explanation_messages(message, results)
@@ -160,6 +199,9 @@ def stream_travel_recommendation(
             # mid-stream failure (09_AI_ORCHESTRATION.md §12: "Interrupted
             # streams" must be handled) - appending the fallback message is
             # an acceptable degrade rather than losing the request entirely.
+            logger.warning(
+                "AI provider failed mid-stream while explaining results. message=%r", message
+            )
             yield FALLBACK_REPLY
 
     return StreamingOrchestrationResult(False, results, _stream_explanation())

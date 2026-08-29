@@ -403,3 +403,26 @@ Reported all of this to the user directly (per `02_PROJECT_CONTEXT.md`'s "be tec
 **Explicitly still open, not fixed, not asked for:** "romantic" and "family-friendly" have no representation in the data model at all - trip_type's four categories don't cover them, and inventing new categories or traveler-composition attributes is a genuine product-shape decision, not something to wire up unilaterally alongside this fix. Also still open: a couple of AI replies during testing added facts not present in our dataset (nearby beach towns near Lisbon, general safety claims about Kyoto) - a grounding concern flagged but not addressed in this pass.
 
 `PROJECT_STATE.md` updated. **Phase 11's actual "Human Decision" - whether the experience is good enough to continue expanding - has not been explicitly made yet**; only two specific bugs surfaced by the review have been fixed so far.
+
+---
+
+## 2026-08-29 — Recommendation philosophy decided: unplanned requests fall to AI judgment, logged for review
+
+Asked the user directly (in Portuguese, at their request, "just this once") whether "romantic"/"family-friendly" needed data-model representation, since that's a recommendation-philosophy call explicitly reserved for the human per `CLAUDE.md` rule 2.
+
+**Decision:** imagine a real user - they'll ask for things this system can't predict in advance. When a request doesn't match anything the deterministic model covers, the AI should answer from its own general knowledge rather than the app trying to enumerate every possible category ahead of time. The system should either learn to answer these well, or **register/log** that it couldn't confidently decide, so real usage - not guesswork - eventually informs what's worth formalizing.
+
+This resolves the open Phase 11 question without adding new `Destination` categories or a "traveler composition" concept - which would have been guessing at product shape without evidence. It also matches a principle already stated elsewhere in the docs (`14_MVP_IMPLEMENTATION_PLAN.md` Milestone 6: "the profile should grow organically as the product learns what information actually improves recommendations") - just applied to recommendation dimensions generally, not only to `TravelerProfile`.
+
+**Implemented as structured logging**, not a new database model - persisting an "unhandled request" table would be premature before any real analytics need exists (`15_IMPLEMENTATION_GUIDE.md`'s general philosophy: don't build ahead of demonstrated need; Phase 17, Product Analytics, is explicitly later). Added a `logging.getLogger(__name__)` logger to `ai/orchestration.py` with three log points:
+
+- **INFO** when a valid travel request extracts no deterministic constraints at all (`trip_type`, `min_temp_c`, `max_cost_of_living` all `null`) - "relying on AI judgment," with the message and month for context.
+- **INFO** when hard constraints eliminate every candidate (no matches) - includes the full extracted constraint set, useful for spotting constraints that are too strict or a dataset gap.
+- **WARNING** when `AIProviderError` occurs, whether during intent extraction or mid-stream during the explanation - a genuine technical failure, distinct from the two philosophy-driven INFO cases above.
+
+**Validation:**
+
+- 3 new tests using Django's `assertLogs()` context manager, asserting the right log level and message substring for each of the three cases. 74/74 total tests passing, `ruff check .` clean, no new migrations.
+- **Confirmed live**: called `get_travel_recommendation("We want a romantic getaway in June")` against the real OpenAI API - console output showed exactly `No deterministic constraints extracted - relying on AI judgment. message='We want a romantic getaway in June' month=6`, immediately before the (real, working) AI-reasoned reply.
+
+`PROJECT_STATE.md` updated with Claude Code's assessment that this satisfies Phase 11's checkpoint - but noted explicitly that the user has not yet said "continue expanding" in so many words, so that should be confirmed rather than assumed before treating Phase 12+ as greenlit.
