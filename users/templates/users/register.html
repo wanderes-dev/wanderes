@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}Register - TravelAgent{% endblock %}
+
+{% block content %}
+<h1>Create your account</h1>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Register</button>
+</form>
+<p><a href="{% url 'users:login' %}">Already have an account? Log in</a></p>
+{% endblock %}

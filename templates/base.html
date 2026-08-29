@@ -1,0 +1,17 @@
+{% load i18n %}<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}TravelAgent{% endblock %}</title>
+</head>
+<body>
+    {% if messages %}
+    <ul>
+        {% for message in messages %}
+        <li>{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% block content %}{% endblock %}
+</body>
+</html>

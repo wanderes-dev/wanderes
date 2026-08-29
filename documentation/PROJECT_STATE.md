@@ -3,7 +3,7 @@
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
 **Last updated:** 2026-08-29
-**Current phase:** Phases 0-4 complete. Phase 2 (OpenAI), Phase 3 (curated dataset + Open-Meteo), and Phase 4 (initial domain models — User/TravelerProfile/Destination/Trip/TripFlight/TripAccommodation/Feedback) are all done. Next up: Phase 5 (authentication) or provider adapter implementation.
+**Current phase:** Phases 0-5 complete. Phase 2 (OpenAI), Phase 3 (curated dataset + Open-Meteo), Phase 4 (initial domain models), and Phase 5 (authentication — email register/login/logout, session-based) are all done. Next up per `15_IMPLEMENTATION_GUIDE.md`: Phase 6 (traveler profile — edit/retrieve, authorization) or Phase 7 (first travel data integration / provider adapters).
 
 **Product decision (2026-08-29):** UI is English-only for now, built translation-ready (`LocaleMiddleware`, `LOCALE_PATHS`, `LANGUAGES` already configured — see `CLAUDE.md` rule 5). Working/communication language with the user also switched to English as of this date.
 
@@ -42,7 +42,13 @@ Blocked / not started:
   - `TripItem` (generic) and community-intelligence entities (`CommunityReview`, etc.) explicitly deferred to later milestones/phases, per `04_DATABASE_DESIGN.md`'s "avoid speculative entities."
   - Migrations validated end-to-end in Docker (`makemigrations` → `migrate` → `pytest` — 9 passing model tests — → `ruff check .` clean). The curated dataset was loaded for real (18/18 destinations).
   - **Note:** validating this required dropping and recreating the local dev Postgres volume (`docker compose down -v`), since `AUTH_USER_MODEL` can't change after migrations have been applied against it. The old volume only held the empty Milestone 1 smoke-test state — no real data was lost.
-- [ ] Phase 5 — Authentication (registration/login/logout with email; Google OAuth explicitly deferred)
+- [x] **Phase 5 — Authentication** ✅ Done 2026-08-29. Django's built-in auth system (session-based, per `07_API_DESIGN.md` §3 — no JWT/separate auth API), adapted for email login:
+  - `users:register` — custom `UserRegistrationForm` (email + password), auto-logs in on success.
+  - `users:login` / `users:logout` — Django's built-in `LoginView`/`LogoutView`, working out of the box with the custom email `USERNAME_FIELD` (no custom form code needed).
+  - `users:account` — minimal `@login_required` page (Milestone 2 DoD's "authenticated area"), shows email + join date.
+  - `LOGIN_URL`/`LOGIN_REDIRECT_URL`/`LOGOUT_REDIRECT_URL` configured; unauthenticated access to `account` redirects to login with `?next=`.
+  - Google OAuth remains explicitly deferred (not implemented) — the user only asked for the door to stay open for it later.
+  - 7 new tests (registration, login success/failure, logout, login-required redirect) — 16/16 total passing. Verified live in a real browser (register → auto-login → account → logout → login → account) in addition to automated tests. `ruff check .` clean, no new migrations needed.
 - [ ] Phase 6 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list
 
 ## What exists in the repo right now

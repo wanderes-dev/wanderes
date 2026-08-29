@@ -185,3 +185,32 @@ Proposed a minimal domain model set per `04_DATABASE_DESIGN.md` and `14_MVP_IMPL
 - `docker compose down` afterward — no services need to stay running between sessions.
 
 `PROJECT_STATE.md` updated to mark Phase 4 done. Next: Phase 5 (authentication — email login flows; Google OAuth explicitly deferred) or implementing the OpenAI/Open-Meteo provider adapters.
+
+---
+
+## 2026-08-29 — Phase 5: authentication implemented
+
+Followed the phase order in `15_IMPLEMENTATION_GUIDE.md` (Phase 5 directly follows Phase 4) and `14_MVP_IMPLEMENTATION_PLAN.md` Milestone 2's feature list (registration, login, logout, session management, an authenticated area — explicitly not the full traveler profile yet).
+
+Per `07_API_DESIGN.md` §3, authentication uses **Django's built-in session-based auth, not a separate auth API or JWT** — this was already decided in the architecture docs, not a new call.
+
+**Implemented in the `users` app:**
+
+- `UserRegistrationForm` — a `UserCreationForm` subclass pointed at the custom `User` model with `fields = ("email",)`. Confirmed Django's `UserCreationForm`/`LoginView` work with a custom `USERNAME_FIELD = "email"` model with no extra code — the built-in machinery is already username-field-agnostic.
+- `register` view — creates the user, logs them in immediately, redirects to `account`.
+- `login`/`logout` — Django's built-in `LoginView`/`LogoutView` wired directly in `urls.py` (no custom views needed).
+- `account` — minimal `@login_required` page (Milestone 2 DoD's "authenticated area"): shows email and join date, has a logout button.
+- Added `templates/base.html` (minimal shared layout, no styling decisions made — that's a later product/design concern) and `users/templates/users/{login,register,account}.html`.
+- Settings: `LOGIN_URL`, `LOGIN_REDIRECT_URL`, `LOGOUT_REDIRECT_URL` pointed at the `users:*` named routes.
+- Mounted at `/users/` in the root urlconf, following the established one-app-per-domain convention ([[django-project-organization]]).
+
+**Explicitly not implemented:** Google OAuth (user confirmed this is a "someday" requirement, not needed now — the email-based `User` model design doesn't block adding it later via `django-allauth` or similar). Full traveler profile management (Milestone 2's explicit constraint — that's a later milestone).
+
+**Validation:**
+
+- `makemigrations --check` — no migrations needed (no model changes).
+- 7 new tests (registration success/failure, login success/failure, logout, login-required redirect, authenticated access) — 16/16 total passing in Docker.
+- `ruff check .` clean.
+- Manually exercised the full flow in a real browser against the running Docker container: register → auto-login → account page (showing the registered email) → logout → redirected to login → log back in → account page again. All worked as expected.
+
+`PROJECT_STATE.md` updated to mark Phase 5 done. Next per the phase order: Phase 6 (traveler profile) or Phase 7 (first travel data integration / provider adapters).
