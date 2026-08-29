@@ -129,3 +129,30 @@ The user decided:
 **Notable discussion during this decision:** the user asked whether the AI itself could just generate destination descriptions instead of using a dataset/API. Pushed back on this using the project's own documented constraint (`05_AI_DESIGN.md` §7 — AI must not invent travel data) plus a provider-swap consistency argument: if destination "facts" came from the model's parametric knowledge, changing AI providers later (an explicit Phase 2 requirement) could silently change what TravelAgent claims about a destination. The user agreed and went with the curated dataset instead.
 
 Full decision record in `DECISIONS_PENDING.md` §2 (now marked resolved). `PROJECT_STATE.md` updated — **all Phase 2/3 human decisions needed to proceed are now made.** Remaining before Phase 4 (domain models, Joint Review) and adapter implementation: the user still needs to supply the initial curated destination list (or ask Claude Code to draft one for approval).
+
+---
+
+## 2026-08-29 — Initial curated destination dataset drafted and approved
+
+Claude Code drafted an 18-destination list for the curated dataset decided in Phase 3, and the user reviewed/iterated on it over several rounds before approving:
+
+1. First draft: 18 destinations spanning 6 continents, three trip types (beach/city/nature/culture), and three cost tiers, each with name, country, coordinates, short description, and points of interest.
+2. User asked to add a "worst season to visit" field alongside the existing "best season," and to make cost-of-living explicit rather than folded into a generic "budget" label.
+3. User then asked for a 5-point cost-of-living scale (muito baixo / baixo / médio / alto / muito alto) instead of the initial 3-tier one — Claude Code remapped all 18 destinations to preserve relative ordering while giving a more even spread across the 5 levels.
+4. Final version approved as-is.
+
+**Stored at [`documentation/data/curated_destinations.json`](data/curated_destinations.json)** — includes a `$schema_note` explaining it is not yet wired into a Django model (the `Destination` model is a Phase 4 deliverable) and that `best_season`/`worst_season` are descriptive guidance only, not a substitute for the real Open-Meteo climate data the app will query at request time.
+
+`DECISIONS_PENDING.md` §2 and `PROJECT_STATE.md` updated accordingly. **With this, there are no open human decisions blocking progress.** The next steps are: (a) implement the OpenAI and Open-Meteo provider adapters behind their respective internal interfaces, and/or (b) Phase 4 — propose the initial domain models (User, Traveler Profile, Destination, Trip, Feedback) for Joint Review, using this dataset to shape the `Destination` model's fields.
+
+---
+
+## 2026-08-29 — Product decision: English-only UI, built translation-ready; working language switched to English
+
+Two related but distinct decisions from the user:
+
+1. **Product/UI language:** the site is English-only for now. Audited the existing codebase (settings, views, URLs, tests, README, code comments) — everything was already in English, since Phase 1 is infrastructure-only and no user-facing templates/copy exist yet. Nothing needed correcting.
+2. **i18n scaffolding, added proactively** so future user-facing strings don't need retrofitting: added `django.middleware.locale.LocaleMiddleware` to `MIDDLEWARE` (positioned after `SessionMiddleware`, before `CommonMiddleware`, per Django's required ordering), added a `LANGUAGES = [("en", "English")]` setting, and `LOCALE_PATHS = [BASE_DIR / "locale"]`. Created an empty `locale/` directory (tracked via `.gitkeep`) for future `.po`/`.mo` catalogs. `LANGUAGE_CODE = "en-us"` and `USE_I18N = True` were already correct from Milestone 1. `python manage.py check` passes with the new settings.
+3. **Working convention:** the user asked to communicate in English from now on (previously Portuguese, per `02_PROJECT_CONTEXT.md` and `CLAUDE.md` rule 4). `CLAUDE.md` updated accordingly — rule 4 now reflects English as the working language as of this date, and a new rule 5 documents the English-only-but-translation-ready product decision so it isn't second-guessed or silently changed later (e.g., by defaulting to Portuguese copy, or by adding other languages before asked).
+
+No architecture or scope change beyond this — the convention was that future user-facing strings get wrapped in `gettext`/`gettext_lazy` (Python) or `{% trans %}`/`{% blocktrans %}` (templates) as they're written, not that multi-language support gets built out now.

@@ -2,8 +2,10 @@
 
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
-**Last updated:** 2026-08-28
-**Current phase:** Phase 1 fully validated (DoD complete). Phase 2 (OpenAI) and Phase 3 (curated dataset + Open-Meteo) both decided — adapter implementation and Phase 4 (domain models, Joint Review) are the next steps. No open human decisions blocking progress right now, except supplying the initial curated destination list.
+**Last updated:** 2026-08-29
+**Current phase:** Phase 1 fully validated (DoD complete). Phase 2 (OpenAI) and Phase 3 (curated dataset + Open-Meteo, including the actual 18-destination dataset) both decided. No open human decisions blocking progress — next steps are provider adapter implementation and Phase 4 (domain models, Joint Review).
+
+**Product decision (2026-08-29):** UI is English-only for now, built translation-ready (`LocaleMiddleware`, `LOCALE_PATHS`, `LANGUAGES` already configured — see `CLAUDE.md` rule 5). Working/communication language with the user also switched to English as of this date.
 
 ## ✅ RESOLVED — Docker virtualization blocker (2026-08-28)
 
@@ -31,7 +33,7 @@ Per `15_IMPLEMENTATION_GUIDE.md`, completed phases:
 Blocked / not started:
 
 - [x] **Phase 2 — Select AI provider** ✅ Decided 2026-08-28: **OpenAI**, behind the internal AI Provider Abstraction. Assistant persona named **"Lunna"**. See `DECISIONS_PENDING.md` §1 for the full decision record and implementation priorities (conversation context vs. persistent memory, context summarization, relevant-data-only, caching). **Adapter not yet implemented — next actionable step.**
-- [x] **Phase 3 — Select travel data providers** ✅ Decided 2026-08-28: **curated static dataset** for destination data (name/country/description/POIs) + **Open-Meteo** for real climate data, both behind the internal Travel Data Interface. Flights/hotels deferred per the MVP plan. See `DECISIONS_PENDING.md` §2. **Adapters not yet implemented; curated destination list not yet supplied — next actionable steps.**
+- [x] **Phase 3 — Select travel data providers** ✅ Decided 2026-08-28: **curated static dataset** for destination data (name/country/description/POIs) + **Open-Meteo** for real climate data, both behind the internal Travel Data Interface. Flights/hotels deferred per the MVP plan. See `DECISIONS_PENDING.md` §2. Initial curated destination list (18 destinations) drafted and approved 2026-08-29 — stored at `documentation/data/curated_destinations.json`. **Adapters (Open-Meteo client + destination data access) not yet implemented — next actionable step.**
 - [ ] Phase 4 — Define initial domain models (Joint Review) — depends on Phase 2 & 3
 - [ ] Phase 5 — Authentication
 - [ ] Phase 6 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list
@@ -44,6 +46,7 @@ TravelAgent/
 ├── config/                        Django project (settings split by environment, urls, wsgi/asgi, celery.py)
 ├── core/                          Infra-only app: GET /health/ (checks DB connectivity) + test
 ├── documentation/                 Architecture docs (01–15) + this tracking set
+│   └── data/curated_destinations.json   Approved initial destination dataset (Phase 3, 18 entries)
 ├── requirements/                  base.txt / development.txt / production.txt
 ├── docker-compose.yml             db (Postgres 16) + redis (7) + web + worker (celery)
 ├── Dockerfile                     multi-stage (builder installs deps, runtime stays slim)

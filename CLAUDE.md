@@ -22,9 +22,10 @@ These come directly from `02_PROJECT_CONTEXT.md` and `15_IMPLEMENTATION_GUIDE.md
 1. **Never skip development phases. Finish one phase's Definition of Done before starting the next**, even if a technical workaround exists to route around a blocker. If the current phase's DoD requires something that isn't available (e.g., Docker), **pause and say so explicitly** — do not substitute a workaround (e.g., SQLite instead of PostgreSQL) to keep moving, and do not silently skip ahead to a later phase's work just because it happens to be unblocked. Confirmed in practice on 2026-08-28: an initial "this workaround doesn't hurt, let's keep going" judgment call was explicitly overridden by the user in favor of strict phase-by-phase adherence.
 2. **Claude Code implements; the human decides.** Never independently decide: AI provider, travel data providers, pricing, monetization, what's Free vs Premium, payment/affiliate providers, privacy/retention policy, recommendation philosophy, or whether a major architectural/technology change is justified. Full list in `15_IMPLEMENTATION_GUIDE.md` §38. When a phase requires one of these, stop and ask — don't guess or default.
 3. **Golden rule of scope:** work only on the current approved milestone/task. Don't say "build the whole app" to yourself; implement the next approved step, then stop for review.
-4. We communicate in **Portuguese**; all documentation and code comments are in **English**.
-5. Every meaningful chunk of work gets logged in `documentation/DEVELOPMENT_LOG.md`, and `documentation/PROJECT_STATE.md` gets updated so a future session (or a fresh one after context loss) can resume without re-deriving everything.
-6. Be technically critical, not agreeable by default — point out risks and better alternatives per `02_PROJECT_CONTEXT.md`'s "My Role" section.
+4. We communicate in **English** (changed 2026-08-29 — was Portuguese before this date; if resuming an old session transcript, expect Portuguese before this point); all documentation and code comments are in **English**.
+5. **The product/UI is English-only for now** (explicit decision, 2026-08-29) — but built translation-ready from day one: `USE_I18N=True`, `LocaleMiddleware`, `LOCALE_PATHS`, and a `LANGUAGES` list already wired in `config/settings/base.py`. Wrap every user-facing string as it's written — `gettext`/`gettext_lazy` in Python, `{% trans %}`/`{% blocktrans %}` in templates — so adding a language later is a translation/config task, not a refactor. Don't add other languages to `LANGUAGES` or build a language switcher until asked.
+6. Every meaningful chunk of work gets logged in `documentation/DEVELOPMENT_LOG.md`, and `documentation/PROJECT_STATE.md` gets updated so a future session (or a fresh one after context loss) can resume without re-deriving everything.
+7. Be technically critical, not agreeable by default — point out risks and better alternatives per `02_PROJECT_CONTEXT.md`'s "My Role" section.
 
 ## Safety judgment calls already made — keep applying these
 
@@ -54,6 +55,7 @@ These come directly from `02_PROJECT_CONTEXT.md` and `15_IMPLEMENTATION_GUIDE.md
 - Docker: multi-stage `Dockerfile` (builder installs deps, slim runtime stage); `docker-compose.yml` has `db`, `redis`, `web`, `worker` services.
 - CI: GitHub Actions (`.github/workflows/ci.yml`), spins up real Postgres+Redis service containers — this means CI can validate the app end-to-end even when local Docker is unavailable.
 - No domain apps (`users`, `travel`, `trips`, `recommendations`, `ai`, `integrations`) exist yet — deliberately deferred until after the Phase 2 (AI provider) and Phase 3 (travel data provider) human decisions, per `14_MVP_IMPLEMENTATION_PLAN.md`'s "don't create empty apps for every future feature."
+- i18n scaffolding is in place (see rule 5 above) even though English is currently the only shipped language — `locale/` directory exists (tracked via `.gitkeep`) for future `.po`/`.mo` catalogs.
 
 ## When resuming a paused/interrupted session
 

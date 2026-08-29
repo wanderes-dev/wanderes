@@ -56,7 +56,7 @@ Implements the AI provider adapter behind the internal interface described in `0
 
 **Explicitly ruled out:** using the AI model's own parametric knowledge to generate destination facts instead of a real data source. Re-affirmed during this decision discussion that `05_AI_DESIGN.md` §7 already forbids the AI inventing travel data — the AI's role stays limited to reasoning/explaining over grounded data the application retrieves, both to avoid hallucinated facts about real places and to keep destination info consistent across AI provider changes (relevant since Phase 2 requires providers to stay swappable).
 
-**Next actionable step:** the user needs to supply (or approve a Claude-Code-proposed draft of) the initial curated destination list before the destination data adapter can be implemented for real.
+**Initial curated destination list: ✅ drafted and approved 2026-08-29.** Claude Code proposed an 18-destination draft (varied continents, trip types, and cost tiers); the user iterated on it (added a "worst season" field, changed cost-of-living from a 3-tier to a 1–5 scale) and approved the final version. Stored at [`documentation/data/curated_destinations.json`](data/curated_destinations.json) — the source of truth to seed the `Destination` model once it's created in Phase 4.
 
 **Reference:** `15_IMPLEMENTATION_GUIDE.md` Phase 3; `10_EXTERNAL_INTEGRATIONS.md`; `14_MVP_IMPLEMENTATION_PLAN.md` §6 (Milestone 3).
 

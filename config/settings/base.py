@@ -38,6 +38,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -100,7 +101,17 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+# English is the only shipped language for now (product decision, 2026-08-29).
+# USE_I18N + LOCALE_PATHS + LocaleMiddleware are already wired up so that
+# adding another language later is a translation/config task, not a
+# refactor: wrap user-facing strings in gettext/gettext_lazy (Python) or
+# {% trans %}/{% blocktrans %} (templates) as they're written, and add the
+# language to LANGUAGES + provide its .po files under locale/ when needed.
 LANGUAGE_CODE = "en-us"
+LANGUAGES = [
+    ("en", "English"),
+]
+LOCALE_PATHS = [BASE_DIR / "locale"]
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
