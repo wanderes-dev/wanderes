@@ -29,6 +29,7 @@ class RecommendationRequest:
     min_temp_c: float | None = None
     max_temp_c: float | None = None
     max_cost_of_living: int | None = None
+    trip_type: str | None = None  # one of travel.models.TRIP_TYPE_CHOICES, or None for any
     excluded_slugs: frozenset = frozenset()
     user: object | None = None  # users.models.User or AnonymousUser; None for a bare request
 
@@ -87,6 +88,8 @@ def generate_recommendations(
             request.max_cost_of_living is not None
             and destination.cost_of_living > request.max_cost_of_living
         ):
+            continue
+        if request.trip_type is not None and destination.trip_type != request.trip_type:
             continue
 
         preference_fit = (

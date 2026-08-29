@@ -6,6 +6,7 @@ from recommendations.scoring import (
     ScoredDestination,
     generate_recommendations,
 )
+from travel.services import find_destination_slugs_by_name
 
 from .prompts import SYSTEM_PROMPT
 from .provider import AIMessage, AIProvider, AIProviderError, get_ai_provider
@@ -42,9 +43,20 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "'very cheap'/'budget'/'affordable' -> 2, 'cheap'/'not too expensive'/"
     "'inexpensive' -> 3, 'moderate'/'mid-range' -> 4. If the user wants "
     "luxury, or says nothing at all about budget, leave max_cost_of_living null.\n"
-    "Only leave a field null when the user gave no indication at all for that "
-    "dimension - do not leave it null just because they used words instead "
-    "of a number."
+    "Only leave min_temp_c or max_cost_of_living null when the user gave no "
+    "indication at all for that dimension - do not leave it null just "
+    "because they used words instead of a number.\n\n"
+    "For trip_type, only set it when the message clearly matches one of "
+    "exactly these four categories: 'beach' (beach/coastal holiday), "
+    "'city' (city break/urban trip), 'nature' (outdoors/adventure/hiking), "
+    "'culture' (history/museums/cultural immersion). Leave it null if the "
+    "request doesn't clearly match one of these four, or matches more than "
+    "one - do not force-fit a vibe like 'romantic' or 'family-friendly' "
+    "into one of these categories just because you have to pick something.\n\n"
+    "If the user asks to avoid or exclude specific places, countries, or "
+    "regions, list the place/country names they mentioned in "
+    "excluded_place_names (e.g. ['Marrakech', 'Morocco']). Leave it as an "
+    "empty list if they mentioned no exclusions."
 )
 
 INTENT_SCHEMA = {
@@ -59,6 +71,11 @@ INTENT_SCHEMA = {
             "month": {"type": ["integer", "null"]},
             "min_temp_c": {"type": ["number", "null"]},
             "max_cost_of_living": {"type": ["integer", "null"]},
+            "trip_type": {
+                "type": ["string", "null"],
+                "enum": ["beach", "city", "nature", "culture", None],
+            },
+            "excluded_place_names": {"type": "array", "items": {"type": "string"}},
         },
         "required": [
             "is_travel_request",
@@ -67,6 +84,8 @@ INTENT_SCHEMA = {
             "month",
             "min_temp_c",
             "max_cost_of_living",
+            "trip_type",
+            "excluded_place_names",
         ],
         "additionalProperties": False,
     },
@@ -122,6 +141,8 @@ def stream_travel_recommendation(
         month=intent["month"],
         min_temp_c=intent["min_temp_c"],
         max_cost_of_living=intent["max_cost_of_living"],
+        trip_type=intent["trip_type"],
+        excluded_slugs=find_destination_slugs_by_name(intent["excluded_place_names"]),
         user=user,
     )
     results = generate_recommendations(request, climate_provider=climate_provider)
@@ -188,6 +209,17 @@ def _validate_intent(data: dict) -> dict:
     max_cost_of_living = data.get("max_cost_of_living")
     if max_cost_of_living is not None and not (1 <= max_cost_of_living <= 5):
         data["max_cost_of_living"] = None
+
+    if data.get("trip_type") not in {"beach", "city", "nature", "culture", None}:
+        data["trip_type"] = None
+
+    excluded_place_names = data.get("excluded_place_names")
+    if not isinstance(excluded_place_names, list):
+        data["excluded_place_names"] = []
+    else:
+        data["excluded_place_names"] = [
+            name for name in excluded_place_names if isinstance(name, str) and name.strip()
+        ]
 
     return data
 

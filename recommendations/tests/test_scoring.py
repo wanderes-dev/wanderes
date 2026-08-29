@@ -73,6 +73,14 @@ class GenerateRecommendationsTests(TestCase):
         slugs = {r.destination.slug for r in results}
         self.assertEqual(slugs, {"warm-cheap", "cold-cheap"})
 
+    def test_trip_type_excludes_non_matching_destinations(self):
+        request = RecommendationRequest(month=10, trip_type="city")
+
+        results = generate_recommendations(request, climate_provider=self.climate)
+
+        slugs = {r.destination.slug for r in results}
+        self.assertEqual(slugs, {"warm-expensive"})
+
     def test_excluded_slugs_are_removed_from_candidates(self):
         request = RecommendationRequest(month=10, excluded_slugs=frozenset({"warm-cheap"}))
 

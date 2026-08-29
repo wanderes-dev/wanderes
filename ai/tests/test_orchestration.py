@@ -72,6 +72,8 @@ def _intent(
     month=None,
     min_temp_c=None,
     max_cost_of_living=None,
+    trip_type=None,
+    excluded_place_names=None,
 ):
     return {
         "is_travel_request": is_travel_request,
@@ -80,6 +82,8 @@ def _intent(
         "month": month,
         "min_temp_c": min_temp_c,
         "max_cost_of_living": max_cost_of_living,
+        "trip_type": trip_type,
+        "excluded_place_names": excluded_place_names or [],
     }
 
 
@@ -217,3 +221,67 @@ class StreamTravelRecommendationTests(TestCase):
 
         self.assertEqual(list(result.reply_chunks), [OFF_TOPIC_REPLY])
         self.assertEqual(ai_provider.stream_reply_calls, [])
+
+
+class TripTypeAndExclusionTests(TestCase):
+    """Phase 11 found that trip_type and exclusions had no effect at all -
+    these lock in the fix."""
+
+    def setUp(self):
+        self.beach_destination = _make_destination(
+            "warm-beach", lat=10.0, lon=10.0, trip_type="beach"
+        )
+        self.city_destination = _make_destination(
+            "warm-city", lat=11.0, lon=11.0, trip_type="city"
+        )
+        self.climate = StubClimateProvider(
+            {
+                (10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0),
+                (11.0, 11.0): MonthlyClimateSummary(2025, 10, 27.0, 19.0, 5.0),
+            }
+        )
+
+    def test_trip_type_filters_out_non_matching_destinations(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0, trip_type="beach")
+        )
+
+        result = get_travel_recommendation(
+            "I want a beach vacation in October",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"warm-beach"})
+
+    def test_excluded_place_name_removes_matching_destination(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                month=10, min_temp_c=20.0, excluded_place_names=["warm-city"]
+            )
+        )
+
+        result = get_travel_recommendation(
+            "somewhere warm in October, not warm-city though",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"warm-beach"})
+
+    def test_excluded_place_name_matches_by_country(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                month=10, min_temp_c=20.0, excluded_place_names=["Testland"]
+            )
+        )
+
+        result = get_travel_recommendation(
+            "somewhere warm in October, not Testland",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.recommendations, [])
