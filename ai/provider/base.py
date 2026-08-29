@@ -48,10 +48,23 @@ class AIProvider(ABC):
     def generate_reply(
         self, messages: list[AIMessage], *, max_tokens: int | None = None
     ) -> AIResponse:
-        """Send a conversation to the provider and return its reply.
+        """Send a conversation to the provider and return its natural-language reply.
 
         `messages` should already include any system prompt - this
         interface doesn't inject one itself, so callers stay in control of
         exactly what's sent (09_AI_ORCHESTRATION.md §4: "The application
         decides which information can be included").
+        """
+
+    @abstractmethod
+    def generate_structured_reply(
+        self, messages: list[AIMessage], *, json_schema: dict, max_tokens: int | None = None
+    ) -> dict:
+        """Send a conversation to the provider and return a parsed JSON dict
+        conforming to `json_schema`.
+
+        Used where AI output affects application logic (e.g. intent/constraint
+        extraction) - "prefer structured output over parsing arbitrary
+        natural language" (09_AI_ORCHESTRATION.md §9). Any provider adapter
+        must support this, not just OpenAI, to keep the abstraction real.
         """

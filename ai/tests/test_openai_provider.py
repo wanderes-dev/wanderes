@@ -63,6 +63,38 @@ class OpenAIProviderTests(TestCase):
         with self.assertRaises(ImproperlyConfigured):
             OpenAIProvider()
 
+    @patch("ai.provider.openai_provider.OpenAI")
+    def test_generate_structured_reply_returns_parsed_json(self, mock_openai_class):
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = _fake_completion(
+            content='{"month": 10, "is_travel_request": true}'
+        )
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider()
+        result = provider.generate_structured_reply(
+            [AIMessage(role="user", content="somewhere warm in October")],
+            json_schema={"name": "test_schema", "strict": True, "schema": {}},
+        )
+
+        self.assertEqual(result, {"month": 10, "is_travel_request": True})
+        _, kwargs = mock_client.chat.completions.create.call_args
+        self.assertEqual(kwargs["response_format"]["type"], "json_schema")
+
+    @patch("ai.provider.openai_provider.OpenAI")
+    def test_generate_structured_reply_raises_on_invalid_json(self, mock_openai_class):
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = _fake_completion(content="not json")
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider()
+
+        with self.assertRaises(AIProviderError):
+            provider.generate_structured_reply(
+                [AIMessage(role="user", content="hi")],
+                json_schema={"name": "test_schema", "strict": True, "schema": {}},
+            )
+
 
 class AIProviderFactoryTests(TestCase):
     @override_settings(OPENAI_API_KEY="test-key")

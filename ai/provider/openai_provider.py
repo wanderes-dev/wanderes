@@ -1,3 +1,5 @@
+import json
+
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from openai import OpenAI, OpenAIError
@@ -23,20 +25,41 @@ class OpenAIProvider(AIProvider):
     def generate_reply(
         self, messages: list[AIMessage], *, max_tokens: int | None = None
     ) -> AIResponse:
+        response = self._complete(messages, max_tokens=max_tokens)
+        content = self._extract_content(response)
+        return self._normalize(response, content)
+
+    def generate_structured_reply(
+        self, messages: list[AIMessage], *, json_schema: dict, max_tokens: int | None = None
+    ) -> dict:
+        response = self._complete(
+            messages,
+            max_tokens=max_tokens,
+            response_format={"type": "json_schema", "json_schema": json_schema},
+        )
+        content = self._extract_content(response)
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise AIProviderError("AI provider returned invalid JSON.") from exc
+
+    def _complete(self, messages: list[AIMessage], *, max_tokens=None, response_format=None):
         try:
             payload = [{"role": message.role, "content": message.content} for message in messages]
-            response = self._client.chat.completions.create(
+            kwargs = {}
+            if response_format is not None:
+                kwargs["response_format"] = response_format
+            return self._client.chat.completions.create(
                 model=settings.AI_MODEL,
                 messages=payload,
                 max_tokens=max_tokens or DEFAULT_MAX_TOKENS,
+                **kwargs,
             )
         except OpenAIError as exc:
             raise AIProviderError("Unable to reach the AI provider.") from exc
 
-        return self._normalize(response)
-
     @staticmethod
-    def _normalize(response) -> AIResponse:
+    def _extract_content(response) -> str:
         try:
             content = response.choices[0].message.content
         except (IndexError, AttributeError) as exc:
@@ -44,7 +67,10 @@ class OpenAIProvider(AIProvider):
 
         if not content:
             raise AIProviderError("AI provider returned an empty response.")
+        return content
 
+    @staticmethod
+    def _normalize(response, content: str) -> AIResponse:
         usage = response.usage
         return AIResponse(
             content=content,

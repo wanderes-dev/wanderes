@@ -66,7 +66,7 @@ users/           Custom User (email login) and TravelerProfile
 travel/          Destination model; `load_destinations` management command
 trips/           Trip, TripFlight, TripAccommodation, Feedback
 integrations/    External provider adapters (e.g. climate/ - Open-Meteo), no models
-ai/              AI provider adapter (OpenAI) and the Lunna system prompt, no models
+ai/              AI provider adapter (OpenAI), orchestration.py, and the Lunna system prompt, no models
 recommendations/ Deterministic recommendation scoring/ranking, no models
 documentation/   Product & architecture docs, development log, decision log
 requirements/    Python dependencies (base / development / production)

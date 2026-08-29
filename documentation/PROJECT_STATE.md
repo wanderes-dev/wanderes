@@ -3,7 +3,7 @@
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
 **Last updated:** 2026-08-29
-**Current phase:** Phases 0-8 complete, plus the OpenAI adapter (Milestone 4 — AI Foundation, done ahead of Phase 8/9 alongside Phase 7). **Important:** `OPENAI_API_KEY` in `.env` is still blank — the adapter is fully built and tested (mocked) but won't actually work at runtime until the user adds a real key. Next: Phase 9 (AI orchestration — build the context/intent layer that calls both the OpenAI adapter and `recommendations.scoring` together) or Phase 10 (chat interface).
+**Current phase:** Phases 0-9 complete. **Important:** `OPENAI_API_KEY` in `.env` is still blank — everything AI-related (the adapter and the orchestrator) is fully built and tested against mocks, but won't actually produce a real response until the user adds a real key. Next: Phase 10 (chat interface) — the first thing that will let a person actually talk to Lunna through a browser, with real conversation history and streaming.
 
 **Product decision (2026-08-29):** UI is English-only for now, built translation-ready (`LocaleMiddleware`, `LOCALE_PATHS`, `LANGUAGES` already configured — see `CLAUDE.md` rule 5). Working/communication language with the user also switched to English as of this date.
 
@@ -77,7 +77,16 @@ Blocked / not started:
   - Community/feedback-based scoring terms from `05_AI_DESIGN.md` §6's full formula are **deliberately not included yet** — those belong to their own later milestones (Community Intelligence, Feedback & Learning) requiring aggregation/privacy safeguards this phase doesn't build.
   - 8 new tests, all with an injected stub climate provider (no network calls) — hard constraints, exclusions, ranking order, preference/repetition scoring, graceful degradation, and anonymous-user behavior. 41/41 total tests passing, `ruff check .` clean, no new migrations.
   - **Also validated against real, live data**: loaded the 18 curated destinations and ran `generate_recommendations(RecommendationRequest(month=10, min_temp_c=20.0, max_cost_of_living=3))` with the real Open-Meteo provider — returned a plausible, correctly-ranked list (Marrakech and Chiang Mai topped it: cheapest and genuinely warmest in real October climate data).
-- [ ] Phase 9 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list (Phase 9 — AI orchestration is the natural next step: it's what will call the OpenAI adapter and this scoring function together)
+- [x] **Phase 9 — AI orchestration** ✅ Done 2026-08-29. `ai.orchestration.get_travel_recommendation(message, user=None)` - a stateless, single-message orchestrator per `09_AI_ORCHESTRATION.md` §3's pipeline (Intent Understanding → Travel Data/Rules → Recommendation Scoring → AI Reasoning). **Explicitly not built**: conversation history/persistence and streaming - both need the chat interface (Phase 10) to exist first.
+  - Extended `AIProvider` with `generate_structured_reply(messages, json_schema)` - a generic structured-output method any provider adapter must support, not an OpenAI-only escape hatch, keeping the provider abstraction real. `OpenAIProvider` implements it via `response_format={"type": "json_schema", ...}`.
+  - **Intent extraction**: first AI call, structured JSON output (`is_travel_request`, `needs_clarification`, `clarification_question`, `month`, `min_temp_c`, `max_cost_of_living`). The model is instructed to never guess a missing month — it asks a clarification question instead. Python-side validation double-checks the extracted values regardless of the schema (`09_AI_ORCHESTRATION.md` §9 — never fully trust model output).
+  - **Scoring**: unchanged call into Phase 8's `recommendations.scoring.generate_recommendations()`.
+  - **Explanation**: second AI call (plain text, not structured), prompted with only the top 5 already-ranked candidates and an explicit "do not invent any other destinations or facts" instruction — grounds the explanation in real, deterministic data.
+  - Three short-circuit paths that skip the (paid) explanation call entirely: off-topic message, needs-clarification, and no-matches — each returns a canned/direct reply instead.
+  - Any `AIProviderError` anywhere in the pipeline is caught and replaced with one generic fallback reply (deliberately simple — no partial-result salvage logic yet).
+  - 8 new tests (6 orchestration + 2 for the new `generate_structured_reply` method), all using stub AI/climate providers — no network calls. 49/49 total tests passing, `ruff check .` clean, no new migrations.
+  - **No live smoke test** — confirmed `OPENAI_API_KEY` is still blank in `.env`, so this is validated by mocked tests only, same caveat as the adapter itself.
+- [ ] Phase 10 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list (Phase 10 — Chat interface is the natural next step: it's what will give this orchestrator a real UI, conversation history, and streaming)
 
 ## What exists in the repo right now
 
@@ -92,7 +101,7 @@ TravelAgent/
 ├── travel/                        Destination model + `load_destinations` management command
 ├── trips/                         Trip, TripFlight, TripAccommodation, Feedback
 ├── integrations/                  climate/ - ClimateProvider interface + Open-Meteo adapter (no models)
-├── ai/                             provider/ - AIProvider interface + OpenAI adapter; prompts.py (Lunna) (no models)
+├── ai/                             provider/ - AIProvider interface + OpenAI adapter; orchestration.py; prompts.py (Lunna) (no models)
 ├── recommendations/                scoring.py - deterministic recommendation scoring/ranking (no models)
 ├── requirements/                  base.txt / development.txt / production.txt
 ├── docker-compose.yml             db (Postgres 16) + redis (7) + web + worker (celery)

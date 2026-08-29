@@ -306,3 +306,28 @@ Scoped strictly to `05_AI_DESIGN.md` §2/§5/§6 and `14_MVP_IMPLEMENTATION_PLAN
 - **Also validated against real, live data** (not mocked): loaded the 18 curated destinations and called `generate_recommendations(RecommendationRequest(month=10, min_temp_c=20.0, max_cost_of_living=3))` against the real Open-Meteo provider inside Docker. Result was plausible and correctly ranked - Marrakech and Chiang Mai topped the list (cheapest destinations that were also genuinely the warmest in real October 2025 climate data), consistent with Milestone 5's example query ("I want somewhere warm in October, preferably not too expensive").
 
 `PROJECT_STATE.md` updated - Phase 8 done. Next per the phase order: Phase 9 (AI orchestration) - the layer that will turn a real chat message into a `RecommendationRequest`, call `generate_recommendations()`, and use the OpenAI adapter to explain the results in natural language.
+
+---
+
+## 2026-08-29 — Phase 9: AI orchestration
+
+Before starting, checked whether the user had added a real `OPENAI_API_KEY` yet (they were asked, but didn't confirm either way) - confirmed it's still blank, so this phase (like the adapter before it) is validated entirely against mocked/stub providers, no live API calls.
+
+Built `ai.orchestration.get_travel_recommendation(message, user=None)`, a **stateless, single-message** orchestrator implementing `09_AI_ORCHESTRATION.md` §3's pipeline: Intent Understanding → Travel Data + Rules & Constraints → Recommendation Scoring → AI Reasoning. Explicitly does not implement conversation history/persistence or streaming (`09_AI_ORCHESTRATION.md` §7-8) - those need an actual chat UI to exist first (Phase 10), and building them now with nothing to render into would be speculative.
+
+**Extended the AI Provider Abstraction first**, since intent extraction needs reliable structured output: added `AIProvider.generate_structured_reply(messages, json_schema)` as a second abstract method (alongside the existing `generate_reply`) - `05_AI_DESIGN.md` §10 requires this to work for *any* provider, not just be an OpenAI-specific escape hatch, so it went on the interface, not bolted onto the adapter alone. `OpenAIProvider` implements it via the Chat Completions API's `response_format={"type": "json_schema", ...}` (strict mode). Refactored the adapter's internals (`_complete`/`_extract_content`/`_normalize`) so both methods share the request/error-handling path instead of duplicating it.
+
+**The orchestrator itself, in order:**
+
+1. **Intent extraction** (first AI call, structured output): asks the model to extract `is_travel_request`, `needs_clarification`, `clarification_question`, `month`, `min_temp_c`, `max_cost_of_living` from the raw message. Instructed explicitly to never guess a missing month - ask a clarification question instead (`09_AI_ORCHESTRATION.md` §6, "Asking useful clarification questions" is the AI's job). Python-side `_validate_intent()` double-checks the month/cost-tier ranges regardless of what the schema nominally enforced - `09_AI_ORCHESTRATION.md` §9: "AI output should be validated before being treated as trusted application data," schema conformance isn't the same as semantic correctness.
+2. **Three short-circuits that skip the (paid) second AI call entirely**: off-topic message → canned `OFF_TOPIC_REPLY`; needs clarification → return the AI's own clarification question directly; no destinations passed hard constraints → canned `NO_MATCHES_REPLY`. This matters for cost (`09_AI_ORCHESTRATION.md` §13) - no reason to spend a second API call explaining zero results.
+3. **Scoring**: unchanged, calls straight into Phase 8's `generate_recommendations()`.
+4. **Explanation** (second AI call, plain text): prompted with only the top 5 already-ranked candidates (name, country, avg high temp, cost tier, trip type) and an explicit "do not invent any other destinations or facts beyond what is listed" instruction, on top of the `SYSTEM_PROMPT`'s existing anti-hallucination rule. This is where the recommendation's grounding actually gets enforced at the prompt level, not just documented as a principle.
+5. **Failure handling**: any `AIProviderError` anywhere in the pipeline is caught once, at the top, and replaced with one generic `FALLBACK_REPLY`. Deliberately simple - no attempt to salvage partial results (e.g., recommendations computed but explanation failed) yet; noted as a reasonable place to revisit if it becomes a real product need.
+
+**Validation:**
+
+- 8 new tests: 2 for `OpenAIProvider.generate_structured_reply` (parses JSON correctly; wraps invalid JSON in `AIProviderError`), 6 for the orchestrator using a small `StubAIProvider` test double (records what it was called with, returns canned structured/text responses) plus the existing `StubClimateProvider` pattern from Phase 8's tests - covering off-topic, clarification, a full valid request, no-matches (asserting the explanation call never happened), an out-of-range month from the AI triggering clarification, and the top-level AI-failure fallback.
+- 49/49 total tests passing, `ruff check .` clean, no new migrations (this app has none).
+
+`PROJECT_STATE.md` updated - Phase 9 done, `OPENAI_API_KEY` still flagged as blank. Next per the phase order: Phase 10 (chat interface) - Django templates, message submission, streaming, conversation display - the first thing that lets a person actually talk to Lunna through a browser.
