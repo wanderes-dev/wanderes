@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from recommendations.scoring import (
@@ -79,6 +80,70 @@ class OrchestrationResult:
     recommendations: list[ScoredDestination]
 
 
+@dataclass(frozen=True)
+class StreamingOrchestrationResult:
+    needs_clarification: bool
+    recommendations: list[ScoredDestination]
+    reply_chunks: Iterator[str]
+
+
+def stream_travel_recommendation(
+    message: str,
+    *,
+    user=None,
+    ai_provider: AIProvider | None = None,
+    climate_provider=None,
+) -> StreamingOrchestrationResult:
+    """Turn one natural-language travel message into a grounded, explained
+    recommendation, streaming the explanation incrementally.
+
+    Pipeline (09_AI_ORCHESTRATION.md §3): Intent Understanding -> Travel Data
+    + Rules & Constraints -> Recommendation Scoring -> AI Reasoning (streamed).
+    This is the core orchestration logic; get_travel_recommendation() is a
+    non-streaming convenience wrapper around it. Does NOT handle conversation
+    history/persistence - each call is independent (Phase 10's chat UI keeps
+    per-visit display only, not true multi-turn context yet).
+    """
+    ai_provider = ai_provider or get_ai_provider()
+
+    try:
+        intent = _extract_intent(message, ai_provider=ai_provider)
+    except AIProviderError:
+        return StreamingOrchestrationResult(False, [], iter([FALLBACK_REPLY]))
+
+    if not intent["is_travel_request"]:
+        return StreamingOrchestrationResult(False, [], iter([OFF_TOPIC_REPLY]))
+
+    if intent["needs_clarification"]:
+        question = intent["clarification_question"] or "Could you tell me more about your trip?"
+        return StreamingOrchestrationResult(True, [], iter([question]))
+
+    request = RecommendationRequest(
+        month=intent["month"],
+        min_temp_c=intent["min_temp_c"],
+        max_cost_of_living=intent["max_cost_of_living"],
+        user=user,
+    )
+    results = generate_recommendations(request, climate_provider=climate_provider)
+
+    if not results:
+        return StreamingOrchestrationResult(False, [], iter([NO_MATCHES_REPLY]))
+
+    messages = _build_explanation_messages(message, results)
+
+    def _stream_explanation():
+        try:
+            yield from ai_provider.stream_reply(messages)
+        except AIProviderError:
+            # A partial reply may already have been yielded before a
+            # mid-stream failure (09_AI_ORCHESTRATION.md §12: "Interrupted
+            # streams" must be handled) - appending the fallback message is
+            # an acceptable degrade rather than losing the request entirely.
+            yield FALLBACK_REPLY
+
+    return StreamingOrchestrationResult(False, results, _stream_explanation())
+
+
 def get_travel_recommendation(
     message: str,
     *,
@@ -86,49 +151,17 @@ def get_travel_recommendation(
     ai_provider: AIProvider | None = None,
     climate_provider=None,
 ) -> OrchestrationResult:
-    """Turn one natural-language travel message into a grounded, explained recommendation.
-
-    Pipeline (09_AI_ORCHESTRATION.md §3): Intent Understanding -> Travel Data
-    + Rules & Constraints -> Recommendation Scoring -> AI Reasoning. Does
-    NOT handle conversation history/persistence or streaming - those need
-    the chat interface (Phase 10) to exist first; this is a stateless,
-    single-message orchestrator.
+    """Non-streaming convenience wrapper around stream_travel_recommendation() -
+    joins all chunks into one string. Useful for tests and any caller that
+    doesn't need incremental output.
     """
-    ai_provider = ai_provider or get_ai_provider()
-
-    try:
-        intent = _extract_intent(message, ai_provider=ai_provider)
-
-        if not intent["is_travel_request"]:
-            return OrchestrationResult(
-                OFF_TOPIC_REPLY, needs_clarification=False, recommendations=[]
-            )
-
-        if intent["needs_clarification"]:
-            question = intent["clarification_question"] or "Could you tell me more about your trip?"
-            return OrchestrationResult(question, needs_clarification=True, recommendations=[])
-
-        request = RecommendationRequest(
-            month=intent["month"],
-            min_temp_c=intent["min_temp_c"],
-            max_cost_of_living=intent["max_cost_of_living"],
-            user=user,
-        )
-        results = generate_recommendations(request, climate_provider=climate_provider)
-
-        if not results:
-            return OrchestrationResult(
-                NO_MATCHES_REPLY, needs_clarification=False, recommendations=[]
-            )
-
-        reply = _explain_results(message, results, ai_provider=ai_provider)
-        return OrchestrationResult(reply, needs_clarification=False, recommendations=results)
-    except AIProviderError:
-        # Failures should produce a useful response without exposing
-        # internal details (09_AI_ORCHESTRATION.md §12). Deliberately
-        # simple: any AI failure anywhere in the pipeline falls back to the
-        # same generic reply, rather than trying to salvage partial work.
-        return OrchestrationResult(FALLBACK_REPLY, needs_clarification=False, recommendations=[])
+    streaming_result = stream_travel_recommendation(
+        message, user=user, ai_provider=ai_provider, climate_provider=climate_provider
+    )
+    reply = "".join(streaming_result.reply_chunks)
+    return OrchestrationResult(
+        reply, streaming_result.needs_clarification, streaming_result.recommendations
+    )
 
 
 def _extract_intent(message: str, *, ai_provider: AIProvider) -> dict:
@@ -159,9 +192,9 @@ def _validate_intent(data: dict) -> dict:
     return data
 
 
-def _explain_results(
-    message: str, results: list[ScoredDestination], *, ai_provider: AIProvider
-) -> str:
+def _build_explanation_messages(
+    message: str, results: list[ScoredDestination]
+) -> list[AIMessage]:
     top_results = results[:MAX_EXPLAINED_CANDIDATES]
     candidates_summary = "\n".join(
         f"- {r.destination.name}, {r.destination.country}: avg high {r.avg_high_c}C, "
@@ -169,7 +202,7 @@ def _explain_results(
         for r in top_results
     )
 
-    messages = [
+    return [
         AIMessage(role="system", content=SYSTEM_PROMPT),
         AIMessage(
             role="user",
@@ -184,5 +217,3 @@ def _explain_results(
             ),
         ),
     ]
-    response = ai_provider.generate_reply(messages)
-    return response.content

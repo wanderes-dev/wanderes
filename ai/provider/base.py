@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 
@@ -67,4 +68,15 @@ class AIProvider(ABC):
         extraction) - "prefer structured output over parsing arbitrary
         natural language" (09_AI_ORCHESTRATION.md §9). Any provider adapter
         must support this, not just OpenAI, to keep the abstraction real.
+        """
+
+    @abstractmethod
+    def stream_reply(
+        self, messages: list[AIMessage], *, max_tokens: int | None = None
+    ) -> Iterator[str]:
+        """Send a conversation to the provider and yield its reply incrementally.
+
+        Each yielded string is one content chunk, in order - used for the
+        progressive chat UI response (09_AI_ORCHESTRATION.md §8). Raises
+        AIProviderError if the request fails before or during streaming.
         """

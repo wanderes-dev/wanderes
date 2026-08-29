@@ -17,6 +17,13 @@ def _fake_completion(content="Hello traveler!", model="gpt-4o-mini"):
     return response
 
 
+def _fake_stream_chunks(pieces):
+    for piece in pieces:
+        chunk = Mock()
+        chunk.choices = [Mock(delta=Mock(content=piece))]
+        yield chunk
+
+
 @override_settings(OPENAI_API_KEY="test-key", AI_MODEL="gpt-4o-mini")
 class OpenAIProviderTests(TestCase):
     @patch("ai.provider.openai_provider.OpenAI")
@@ -94,6 +101,47 @@ class OpenAIProviderTests(TestCase):
                 [AIMessage(role="user", content="hi")],
                 json_schema={"name": "test_schema", "strict": True, "schema": {}},
             )
+
+    @patch("ai.provider.openai_provider.OpenAI")
+    def test_stream_reply_yields_chunks_in_order(self, mock_openai_class):
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = _fake_stream_chunks(
+            ["Hello", " there", "!"]
+        )
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider()
+        chunks = list(provider.stream_reply([AIMessage(role="user", content="hi")]))
+
+        self.assertEqual(chunks, ["Hello", " there", "!"])
+        _, kwargs = mock_client.chat.completions.create.call_args
+        self.assertTrue(kwargs["stream"])
+
+    @patch("ai.provider.openai_provider.OpenAI")
+    def test_stream_reply_raises_on_error_before_streaming(self, mock_openai_class):
+        mock_client = Mock()
+        mock_client.chat.completions.create.side_effect = OpenAIError("boom")
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider()
+
+        with self.assertRaises(AIProviderError):
+            list(provider.stream_reply([AIMessage(role="user", content="hi")]))
+
+    @patch("ai.provider.openai_provider.OpenAI")
+    def test_stream_reply_raises_on_error_mid_stream(self, mock_openai_class):
+        def failing_stream():
+            yield from _fake_stream_chunks(["Hello"])
+            raise OpenAIError("connection dropped")
+
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = failing_stream()
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider()
+
+        with self.assertRaises(AIProviderError):
+            list(provider.stream_reply([AIMessage(role="user", content="hi")]))
 
 
 class AIProviderFactoryTests(TestCase):

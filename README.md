@@ -66,13 +66,17 @@ users/           Custom User (email login) and TravelerProfile
 travel/          Destination model; `load_destinations` management command
 trips/           Trip, TripFlight, TripAccommodation, Feedback
 integrations/    External provider adapters (e.g. climate/ - Open-Meteo), no models
-ai/              AI provider adapter (OpenAI), orchestration.py, and the Lunna system prompt, no models
+ai/              AI provider adapter (OpenAI), orchestration.py, the Lunna system prompt, and the /chat/ page
 recommendations/ Deterministic recommendation scoring/ranking, no models
 documentation/   Product & architecture docs, development log, decision log
 requirements/    Python dependencies (base / development / production)
 ```
 
 The AI adapter needs a real `OPENAI_API_KEY` in `.env` to work at runtime (see `.env.example`) — without one it raises a clear configuration error rather than a cryptic SDK failure.
+
+## Try it
+
+Once the stack is running (see above) and `OPENAI_API_KEY` is set, open **http://localhost:8000/chat/** and talk to Lunna.
 
 Load the curated destination dataset (after migrating) with:
 

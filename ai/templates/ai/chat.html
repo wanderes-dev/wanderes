@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Chat with Lunna - TravelAgent{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+
+<style>
+    .chat-page {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        box-sizing: border-box;
+    }
+    .chat-header {
+        flex-shrink: 0;
+    }
+    .chat-messages {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.5rem 0;
+    }
+    .chat-bubble {
+        max-width: 85%;
+        padding: 0.6rem 0.9rem;
+        border-radius: 0.75rem;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    .chat-bubble.user {
+        align-self: flex-end;
+        background: #d6e4ff;
+    }
+    .chat-bubble.assistant {
+        align-self: flex-start;
+        background: #f0f0f0;
+    }
+    .chat-bubble.error {
+        align-self: flex-start;
+        background: #ffe0e0;
+        color: #900;
+    }
+    .chat-bubble.loading {
+        align-self: flex-start;
+        background: #f0f0f0;
+        color: #666;
+        font-style: italic;
+    }
+    .chat-form {
+        flex-shrink: 0;
+        display: flex;
+        gap: 0.5rem;
+        padding-top: 0.5rem;
+    }
+    .chat-form input[type="text"] {
+        flex: 1 1 auto;
+        padding: 0.6rem;
+        font-size: 1rem;
+    }
+    .chat-form button {
+        padding: 0.6rem 1rem;
+        font-size: 1rem;
+    }
+    @media (max-width: 480px) {
+        .chat-page { padding: 0.5rem; }
+        .chat-bubble { max-width: 95%; }
+    }
+</style>
+
+<div class="chat-page">
+    <div class="chat-header">
+        <h1>Chat with Lunna</h1>
+        <p>Tell me what kind of trip you're thinking about - dates, budget, climate, anything.</p>
+    </div>
+
+    <div id="chat-messages" class="chat-messages"></div>
+
+    <form id="chat-form" class="chat-form">
+        <input
+            type="text"
+            id="message-input"
+            placeholder="e.g. Somewhere warm in October, not too expensive"
+            autocomplete="off"
+            required
+        >
+        <button type="submit" id="send-button">Send</button>
+    </form>
+</div>
+
+<script>
+(function () {
+    const form = document.getElementById("chat-form");
+    const input = document.getElementById("message-input");
+    const sendButton = document.getElementById("send-button");
+    const messages = document.getElementById("chat-messages");
+    const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]").value;
+
+    function addBubble(text, className) {
+        const bubble = document.createElement("div");
+        bubble.className = "chat-bubble " + className;
+        bubble.textContent = text;
+        messages.appendChild(bubble);
+        messages.scrollTop = messages.scrollHeight;
+        return bubble;
+    }
+
+    function setLoading(isLoading) {
+        input.disabled = isLoading;
+        sendButton.disabled = isLoading;
+    }
+
+    async function sendMessage(message) {
+        addBubble(message, "user");
+        const loadingBubble = addBubble("Lunna is thinking...", "loading");
+        setLoading(true);
+
+        let response;
+        try {
+            response = await fetch("{% url 'ai:recommendations-api' %}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "X-CSRFToken": csrfToken,
+                },
+                body: "message=" + encodeURIComponent(message),
+            });
+        } catch (networkError) {
+            loadingBubble.remove();
+            addBubble("Couldn't reach the server. Check your connection and try again.", "error");
+            setLoading(false);
+            return;
+        }
+
+        if (!response.ok || !response.body) {
+            loadingBubble.remove();
+            addBubble("Something went wrong on our end. Please try again.", "error");
+            setLoading(false);
+            return;
+        }
+
+        loadingBubble.remove();
+        const replyBubble = addBubble("", "assistant");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    break;
+                }
+                replyBubble.textContent += decoder.decode(value, { stream: true });
+                messages.scrollTop = messages.scrollHeight;
+            }
+        } catch (streamError) {
+            replyBubble.textContent += "\n[Connection interrupted]";
+        }
+
+        setLoading(false);
+        input.focus();
+    }
+
+    form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        const message = input.value.trim();
+        if (!message) {
+            return;
+        }
+        input.value = "";
+        sendMessage(message);
+    });
+})();
+</script>
+{% endblock %}

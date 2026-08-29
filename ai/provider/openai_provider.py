@@ -1,4 +1,5 @@
 import json
+from collections.abc import Iterator
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
@@ -42,6 +43,26 @@ class OpenAIProvider(AIProvider):
             return json.loads(content)
         except json.JSONDecodeError as exc:
             raise AIProviderError("AI provider returned invalid JSON.") from exc
+
+    def stream_reply(
+        self, messages: list[AIMessage], *, max_tokens: int | None = None
+    ) -> Iterator[str]:
+        payload = [{"role": message.role, "content": message.content} for message in messages]
+        try:
+            stream = self._client.chat.completions.create(
+                model=settings.AI_MODEL,
+                messages=payload,
+                max_tokens=max_tokens or DEFAULT_MAX_TOKENS,
+                stream=True,
+            )
+            for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    yield delta
+        except OpenAIError as exc:
+            raise AIProviderError("Unable to reach the AI provider.") from exc
 
     def _complete(self, messages: list[AIMessage], *, max_tokens=None, response_format=None):
         try:
