@@ -599,3 +599,21 @@ This had been completely harmless for 14 phases' worth of tests, because nothing
 **Noted but not acted on (deliberately, not urgent):** `recommendations.scoring.generate_recommendations()` calls the climate provider once per candidate destination in a loop - fine at the curated dataset's current size (18, Redis-cached), would need batching if the catalog grows substantially. The `Dockerfile` still installs `development.txt` and runs `manage.py runserver` rather than `gunicorn` (already present unused in `requirements/base.txt`) - correct for the current dev-only setup; switching to a real production image is a small, already-anticipated future step, not a current gap.
 
 **Validation:** full suite re-run after both fixes - 115/115 tests passing, `ruff check .` clean. Docker stack brought back down afterward (review-only run, nothing needs to stay up).
+
+---
+
+## 2026-08-30 — Phase 16: Introduce Background Processing Where Needed
+
+**Milestone:** Phase 16 (`15_IMPLEMENTATION_GUIDE.md` §20) - Owner: Joint Review.
+**Goal per the guide:** "Only now should we identify which operations actually benefit from background processing... Do not move ordinary request/response work into background jobs simply because Redis exists."
+
+**What was done:** a review, not an implementation. Went through each example the guide names and checked it against the current codebase:
+
+- **Feedback processing** - already backgrounded in Phase 15 (`trips.tasks.update_traveler_preferences_from_feedback`). Nothing left to do.
+- **Community aggregation** - `CommunityReview`/`AggregatedInsight` don't exist as models yet, deliberately deferred since Phase 4's domain-model design ("avoid speculative entities"). Nothing to background because the feature itself doesn't exist yet.
+- **Non-critical notifications** - no notification system (email/push) exists anywhere in the project. Building one now to give Phase 16 something to background would be inventing a feature, not moving an existing one off the request/response path.
+- **Provider synchronization** - the one plausible live candidate, surfaced by the post-Phase-15 revision's note that `recommendations.scoring.generate_recommendations()` calls the climate provider once per candidate destination, synchronously, on every recommendation request. A scheduled Celery Beat task pre-warming the Redis climate cache for all 18 curated destinations would be a legitimate "provider sync" background job in the abstract.
+
+**Presented to the user as a choice** (close the phase with no new jobs vs. add the climate pre-warming task vs. something else) rather than deciding unilaterally, since the guide marks this phase's owner as Joint Review and its core task as identifying justified work, not manufacturing it. **User chose to close the phase with no new jobs.** Reasoning that holds up under scrutiny: at 18 destinations, backed by a free/fast API, with an existing 7-day cache already in place, a pre-warming job would only smooth out the first cache-miss request after each cache expiry - a small, unproven benefit. Building scheduled infrastructure (Celery Beat, a new periodic task, its own tests/monitoring) for that marginal a win would itself be the "background job simply because Redis exists" anti-pattern this phase explicitly warns against. Worth reconsidering later if the destination catalog grows enough that synchronous per-request climate fetching becomes a real latency problem - noted here so a future session doesn't need to rediscover the tradeoff from scratch.
+
+**No code changes, no new tests, no migrations.** This phase's deliverable is the review record itself - `PROJECT_STATE.md` updated accordingly, current phase advanced to "Phases 0-16 complete."
