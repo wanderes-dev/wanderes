@@ -3,7 +3,7 @@
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
 **Last updated:** 2026-08-29
-**Current phase:** Phases 0-7 complete, plus the OpenAI adapter (Milestone 4 — AI Foundation) is now implemented too. **Important:** `OPENAI_API_KEY` in `.env` is still blank — the adapter is fully built and tested (mocked) but won't actually work at runtime until the user adds a real key. Next: Phase 8 (first recommendation algorithm) or Phase 9 (AI orchestration — the context-building layer that will actually use this adapter).
+**Current phase:** Phases 0-8 complete, plus the OpenAI adapter (Milestone 4 — AI Foundation, done ahead of Phase 8/9 alongside Phase 7). **Important:** `OPENAI_API_KEY` in `.env` is still blank — the adapter is fully built and tested (mocked) but won't actually work at runtime until the user adds a real key. Next: Phase 9 (AI orchestration — build the context/intent layer that calls both the OpenAI adapter and `recommendations.scoring` together) or Phase 10 (chat interface).
 
 **Product decision (2026-08-29):** UI is English-only for now, built translation-ready (`LocaleMiddleware`, `LOCALE_PATHS`, `LANGUAGES` already configured — see `CLAUDE.md` rule 5). Working/communication language with the user also switched to English as of this date.
 
@@ -71,7 +71,13 @@ Blocked / not started:
   - **Explicitly not built here:** the actual orchestrator that constructs context from `TravelerProfile`/`Destination`/conversation history, summarization, and response caching — those are Phase 9 (AI orchestration) concerns. This phase only delivers the swappable provider adapter itself, matching Milestone 4's scope.
   - Added `openai` to `requirements/base.txt`; `OPENAI_API_KEY`/`AI_MODEL` documented in `.env.example` (key left blank — real value is the user's to provide, never committed).
   - 6 new tests, all mocking the OpenAI client (no real API calls, unlike the free Open-Meteo adapter — a real call costs money on the user's account and needs a real key we don't have). 33/33 total tests passing, `ruff check .` clean, no new migrations. Manually confirmed the missing-key path raises the intended friendly error.
-- [ ] Phase 8 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list
+- [x] **Phase 8 — First recommendation algorithm** ✅ Done 2026-08-29. New `recommendations` app (no models — pure Python, mirroring `integrations`/`ai`), scoped strictly to `05_AI_DESIGN.md` §2/§5/§6 and Milestone 5's "Recommendation Logic" (Candidate Destination → Hard Constraints → Basic Score → Ranking). **Natural-language intent extraction and AI explanation are explicitly NOT part of this** — that's Phase 9.
+  - `recommendations.scoring.RecommendationRequest` — already-extracted, deterministic constraints (`month`, `min_temp_c`/`max_temp_c`, `max_cost_of_living`, `excluded_slugs`, optional `user`).
+  - `recommendations.scoring.generate_recommendations()` — queries `Destination`, fetches live climate via `integrations.climate.get_climate_provider()` (injectable for tests), applies hard constraints (temperature range, cost ceiling, exclusions), then scores survivors on: preference fit (matches `TravelerProfile.preferred_trip_types`), budget fit (headroom under the cost ceiling), temperature fit (margin above the minimum), and a repetition penalty (soft, not a hard exclusion) for destinations with a `completed` `Trip` — per `05_AI_DESIGN.md` §5's "previously visited... lower priority, not excluded". A destination the climate provider can't return data for is skipped gracefully (`10_EXTERNAL_INTEGRATIONS.md` §5), not a hard failure.
+  - Community/feedback-based scoring terms from `05_AI_DESIGN.md` §6's full formula are **deliberately not included yet** — those belong to their own later milestones (Community Intelligence, Feedback & Learning) requiring aggregation/privacy safeguards this phase doesn't build.
+  - 8 new tests, all with an injected stub climate provider (no network calls) — hard constraints, exclusions, ranking order, preference/repetition scoring, graceful degradation, and anonymous-user behavior. 41/41 total tests passing, `ruff check .` clean, no new migrations.
+  - **Also validated against real, live data**: loaded the 18 curated destinations and ran `generate_recommendations(RecommendationRequest(month=10, min_temp_c=20.0, max_cost_of_living=3))` with the real Open-Meteo provider — returned a plausible, correctly-ranked list (Marrakech and Chiang Mai topped it: cheapest and genuinely warmest in real October climate data).
+- [ ] Phase 9 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list (Phase 9 — AI orchestration is the natural next step: it's what will call the OpenAI adapter and this scoring function together)
 
 ## What exists in the repo right now
 
@@ -87,6 +93,7 @@ TravelAgent/
 ├── trips/                         Trip, TripFlight, TripAccommodation, Feedback
 ├── integrations/                  climate/ - ClimateProvider interface + Open-Meteo adapter (no models)
 ├── ai/                             provider/ - AIProvider interface + OpenAI adapter; prompts.py (Lunna) (no models)
+├── recommendations/                scoring.py - deterministic recommendation scoring/ranking (no models)
 ├── requirements/                  base.txt / development.txt / production.txt
 ├── docker-compose.yml             db (Postgres 16) + redis (7) + web + worker (celery)
 ├── Dockerfile                     multi-stage (builder installs deps, runtime stays slim)

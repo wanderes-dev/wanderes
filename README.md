@@ -67,6 +67,7 @@ travel/          Destination model; `load_destinations` management command
 trips/           Trip, TripFlight, TripAccommodation, Feedback
 integrations/    External provider adapters (e.g. climate/ - Open-Meteo), no models
 ai/              AI provider adapter (OpenAI) and the Lunna system prompt, no models
+recommendations/ Deterministic recommendation scoring/ranking, no models
 documentation/   Product & architecture docs, development log, decision log
 requirements/    Python dependencies (base / development / production)
 ```
@@ -79,4 +80,3 @@ Load the curated destination dataset (after migrating) with:
 python manage.py load_destinations
 ```
 
-The remaining domain app (`recommendations`) is introduced in a later phase — see `documentation/15_IMPLEMENTATION_GUIDE.md`.

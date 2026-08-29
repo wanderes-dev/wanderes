@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "trips",
     "integrations",
     "ai",
+    "recommendations",
 ]
 
 # Custom user model (email login, no username field) — see users/models.py.

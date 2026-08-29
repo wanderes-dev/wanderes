@@ -282,3 +282,27 @@ Closed the other half of Phase 2's deliverable (the AI provider decision itself 
 **Validation:** 33/33 tests passing, `ruff check .` clean, no new migrations.
 
 `PROJECT_STATE.md` updated with a clear flag: the adapter is fully built and tested, but **won't work at runtime until the user adds a real `OPENAI_API_KEY` to `.env`.** Next per the phase order: Phase 8 (recommendation algorithm) or Phase 9 (AI orchestration, which will be the first real consumer of this adapter).
+
+---
+
+## 2026-08-29 — Phase 8: first recommendation algorithm
+
+Scoped strictly to `05_AI_DESIGN.md` §2/§5/§6 and `14_MVP_IMPLEMENTATION_PLAN.md` Milestone 5's "Recommendation Logic" diagram (Candidate Destination → Hard Constraints → Basic Score → Ranking). Deliberately **not** in scope: turning a natural-language request like "somewhere warm in October" into numeric constraints (that's Intent & Constraint Extraction, Phase 9's job), and AI-generated explanations of the results (also Phase 9). This phase only covers what happens once the constraints are already explicit numbers.
+
+**Implemented**, in a new model-free `recommendations` app (same style as `integrations`/`ai`):
+
+- `RecommendationRequest` - a dataclass holding already-extracted constraints: `month`, `min_temp_c`/`max_temp_c`, `max_cost_of_living`, `excluded_slugs`, and an optional `user` (for preference/history-aware scoring).
+- `generate_recommendations()` - queries all `Destination`s, excludes explicitly-excluded slugs, fetches each candidate's live climate via `integrations.climate.get_climate_provider()` (the Phase 7 adapter - dependency-injectable so tests never touch the network), applies hard constraints (temperature range, cost ceiling), then scores survivors:
+  - **Preference fit** (+2): destination's `trip_type` matches something in the user's `TravelerProfile.preferred_trip_types`.
+  - **Budget fit**: proportional reward for being under the cost ceiling, not just at it.
+  - **Temperature fit**: proportional reward for margin above the minimum requested temperature (capped, so a scorching destination doesn't dominate purely on heat).
+  - **Repetition penalty** (-3, soft): the user has a `completed` `Trip` to that destination already - per `05_AI_DESIGN.md` §5, previously-visited destinations should rank lower, not be hard-excluded (unlike `excluded_slugs`, which the caller controls explicitly).
+  - A destination the climate provider can't return data for is **skipped, not a hard failure** - graceful degradation per `10_EXTERNAL_INTEGRATIONS.md` §5.
+  - Community signals and feedback-based scoring terms from `05_AI_DESIGN.md` §6's fuller formula are **deliberately excluded** - those need aggregation/privacy safeguards that belong to their own later milestones (Feedback & Learning, Community Intelligence), not this first cut.
+
+**Validation:**
+
+- 8 new tests using a small `StubClimateProvider` test double (keyed by rounded lat/lon) injected via `generate_recommendations(..., climate_provider=...)` - covers hard constraints (temperature, cost, exclusions), ranking order, preference-fit scoring, repetition-penalty scoring, graceful degradation when climate data is missing for one candidate, and anonymous-user behavior (no preference/repetition effects without a user). 41/41 total tests passing, `ruff check .` clean, no new migrations.
+- **Also validated against real, live data** (not mocked): loaded the 18 curated destinations and called `generate_recommendations(RecommendationRequest(month=10, min_temp_c=20.0, max_cost_of_living=3))` against the real Open-Meteo provider inside Docker. Result was plausible and correctly ranked - Marrakech and Chiang Mai topped the list (cheapest destinations that were also genuinely the warmest in real October 2025 climate data), consistent with Milestone 5's example query ("I want somewhere warm in October, preferably not too expensive").
+
+`PROJECT_STATE.md` updated - Phase 8 done. Next per the phase order: Phase 9 (AI orchestration) - the layer that will turn a real chat message into a `RecommendationRequest`, call `generate_recommendations()`, and use the OpenAI adapter to explain the results in natural language.
