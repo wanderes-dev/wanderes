@@ -10,6 +10,20 @@
 <p>Dates: {{ trip.start_date|default:"?" }} - {{ trip.end_date|default:"?" }}</p>
 {% endif %}
 
+<h2>Feedback</h2>
+{% if feedback %}
+<p>Rating: {{ feedback.rating }}/10</p>
+{% if feedback_tag_labels %}
+<p>Tags: {{ feedback_tag_labels|join:", " }}</p>
+{% endif %}
+{% if feedback.comment %}
+<p>Comment: {{ feedback.comment }}</p>
+{% endif %}
+<p><a href="{% url 'trips:trip-feedback' trip.pk %}">Edit feedback</a></p>
+{% else %}
+<p><a href="{% url 'trips:trip-feedback' trip.pk %}">Leave feedback</a></p>
+{% endif %}
+
 <p>
     <a href="{% url 'trips:trip-edit' trip.pk %}">Edit</a>
     - <a href="{% url 'trips:trip-delete' trip.pk %}">Delete</a>

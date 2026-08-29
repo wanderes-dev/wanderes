@@ -4,8 +4,10 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from travel.models import Destination
 
-from .forms import TravelHistoryEntryForm, TripForm
-from .models import TravelHistoryEntry, Trip
+from .forms import FeedbackForm, TravelHistoryEntryForm, TripForm
+from .models import FEEDBACK_TAG_CHOICES, Feedback, TravelHistoryEntry, Trip
+
+FEEDBACK_TAG_LABELS = dict(FEEDBACK_TAG_CHOICES)
 
 
 @login_required
@@ -87,7 +89,15 @@ def trip_create(request):
 @login_required
 def trip_detail(request, pk):
     trip = get_object_or_404(Trip, pk=pk, user=request.user)
-    return render(request, "trips/trip_detail.html", {"trip": trip})
+    feedback = Feedback.objects.filter(trip=trip, user=request.user).first()
+    feedback_tag_labels = (
+        [FEEDBACK_TAG_LABELS.get(tag, tag) for tag in feedback.tags] if feedback else []
+    )
+    return render(
+        request,
+        "trips/trip_detail.html",
+        {"trip": trip, "feedback": feedback, "feedback_tag_labels": feedback_tag_labels},
+    )
 
 
 @login_required
@@ -112,3 +122,25 @@ def trip_delete(request, pk):
         messages.success(request, "Trip deleted.")
         return redirect("trips:trip-list")
     return render(request, "trips/trip_confirm_delete.html", {"trip": trip})
+
+
+@login_required
+def trip_feedback(request, pk):
+    # One feedback entry per (user, trip): re-submitting edits the
+    # existing entry rather than creating a duplicate.
+    trip = get_object_or_404(Trip, pk=pk, user=request.user)
+    instance = Feedback.objects.filter(trip=trip, user=request.user).first()
+
+    if request.method == "POST":
+        form = FeedbackForm(request.POST, instance=instance)
+        if form.is_valid():
+            feedback = form.save(commit=False)
+            feedback.user = request.user
+            feedback.trip = trip
+            feedback.destination = trip.destination
+            feedback.save()
+            messages.success(request, "Thanks for your feedback!")
+            return redirect("trips:trip-detail", pk=trip.pk)
+    else:
+        form = FeedbackForm(instance=instance)
+    return render(request, "trips/trip_feedback_form.html", {"form": form, "trip": trip})

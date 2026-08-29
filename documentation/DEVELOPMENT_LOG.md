@@ -489,3 +489,26 @@ This keeps the "AI Provider Abstraction" and orchestration layers completely unt
 - **Full real, live end-to-end verification**, not just the CRUD pages in isolation: asked Lunna a real question in the browser ("somewhere warm in October, not too expensive"), got a real streamed reply plus 5 clean "Save as trip" links (no leaked delimiter/JSON in the visible text), clicked "Save Marrakech as a trip," confirmed the create form opened with Marrakech pre-selected, saved it as "October trip," landed on its detail page, and confirmed it appears in the trip list. The whole chat → recommend → save → view loop works for real.
 
 `PROJECT_STATE.md` updated - Phase 13 done. Next per the phase order: Phase 14 (Feedback).
+
+---
+
+## 2026-08-29 — Phase 14: Feedback
+
+Per `15_IMPLEMENTATION_GUIDE.md` Phase 14 - the Feedback half of Milestone 9 only; "Learning From Feedback" (using it to actually influence recommendation scoring) is Phase 15, a separate Joint Review phase, deliberately not touched here.
+
+The guide explicitly flags one thing as a **Human Decision**: "Define the initial feedback taxonomy. Keep it small." Rather than invent tags unilaterally, proposed a small candidate set (4 positive, 4 negative - matching the doc's own example, "Too crowded" / "Excellent food") and got explicit approval before writing any code.
+
+**Approved taxonomy** (`trips.FEEDBACK_TAG_CHOICES`): Excellent food, Great value, Friendly locals, Beautiful scenery, Too crowded, Overpriced, Poor weather, Hard to get around. Kept as a plain Python constant rather than a DB `choices=` constraint, since `Feedback.tags` is a JSONField list (already existed from Phase 4) - `FeedbackForm` is what actually restricts the UI to these values, via `CheckboxSelectMultiple`.
+
+**Implemented:**
+
+- `FeedbackForm` (`rating`, `tags`, `comment`) - `rating`'s existing model-level validators (1-10, from Phase 4) are picked up automatically by the ModelForm, satisfying the phase's "Validation" requirement without extra code.
+- `trip_feedback` view at `/trips/<pk>/feedback/`: looks up any existing `Feedback` for `(trip, user)` and uses it as the form's `instance` if found - so resubmitting the form **edits** the existing entry instead of creating a duplicate. No hard DB unique constraint added for this (a `(user, trip)` uniqueness constraint would also have been reasonable, but the get-or-build-in-the-view approach needed no migration and is simple enough for this scale). Structurally scoped to `user=request.user`, matching every other trip view.
+- Trip detail page now shows existing feedback - rating, comment, and tag labels translated from the stored keys (`excellent_food`) to their human-readable form (`Excellent food`) via a small dict built from `FEEDBACK_TAG_CHOICES` in the view - with an "Edit feedback" link, or "Leave feedback" if none exists yet.
+
+**Validation:**
+
+- 6 new tests: create with rating/tags/comment, reject an out-of-range rating (11), resubmission updates rather than duplicating, cross-user access 404s, and the tag-label translation actually shows "Excellent food" rather than the raw `excellent_food` key. 99/99 total tests passing, `ruff check .` clean, no new migrations (the model didn't change).
+- **Verified live**: used the trip saved during Phase 13's live test ("October trip" → Marrakech), opened its feedback form, checked "Excellent food" and "Too crowded," rated it 8/10, added a comment, and saved - the trip detail page immediately showed "Rating: 8/10," "Tags: Excellent food, Too crowded" (correct labels, not keys), and the comment text.
+
+`PROJECT_STATE.md` updated - Phase 14 done. Next per the phase order: Phase 15 (Learning From Feedback) - a Joint Review phase to decide how this feedback should actually influence future recommendation scoring, not something to design unilaterally given `05_AI_DESIGN.md` §8's note that "disliking one destination does not necessarily mean the user dislikes every destination with similar characteristics."

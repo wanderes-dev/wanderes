@@ -3,7 +3,7 @@
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
 **Last updated:** 2026-08-29
-**Current phase:** Phases 0-13 complete. There is a working, live-validated chat UI at `/chat/` — start it with `docker compose up -d` and open http://localhost:8000/chat/ (see README). `OPENAI_API_KEY` is configured in `.env` (never committed). Phase 11 (Joint Review) found and fixed real gaps and closed with an explicit human decision on recommendation philosophy. Phase 12 (Travel History) added `TravelHistoryEntry` + CRUD. Phase 13 (Trip Management) added full `Trip` CRUD plus "save this recommendation as a trip" directly from the chat page — the whole loop (chat → recommendation → save → view trip) works for real, live-tested. Repo is pushed to https://github.com/wanderes-dev/wanderes.git (remote `origin`, branch `master`). Next: Phase 14 (Feedback).
+**Current phase:** Phases 0-14 complete. There is a working, live-validated chat UI at `/chat/` — start it with `docker compose up -d` and open http://localhost:8000/chat/ (see README). `OPENAI_API_KEY` is configured in `.env` (never committed). Phase 11 (Joint Review) found and fixed real gaps and closed with an explicit human decision on recommendation philosophy. Phase 12 (Travel History) added `TravelHistoryEntry` + CRUD. Phase 13 (Trip Management) added full `Trip` CRUD plus "save this recommendation as a trip" directly from chat. Phase 14 (Feedback) added a small, human-approved tag taxonomy plus rating/comment feedback per trip — collection only, not yet used in scoring (that's Phase 15). The whole loop (chat → recommendation → save trip → leave feedback) works for real, live-tested. Repo is pushed to https://github.com/wanderes-dev/wanderes.git (remote `origin`, branch `master`). Next: Phase 15 (Learning From Feedback, Joint Review).
 
 **Product decision (2026-08-29):** UI is English-only for now, built translation-ready (`LocaleMiddleware`, `LOCALE_PATHS`, `LANGUAGES` already configured — see `CLAUDE.md` rule 5). Working/communication language with the user also switched to English as of this date.
 
@@ -125,7 +125,14 @@ Blocked / not started:
   - Linked from the account page ("My trips").
   - 16 new tests (Trip CRUD + authorization, prefill-from-query-param, and the recommendations-footer behavior on the streaming view) — 93/93 total passing, `ruff check .` clean.
   - **Verified the full real, live flow end-to-end**: asked Lunna for a real recommendation in the browser → got 5 "Save as trip" links with clean (non-leaked) reply text → clicked "Save Marrakech as a trip" → form opened with Marrakech pre-selected → saved as "October trip" → landed on the trip detail page → confirmed it appears in the trip list.
-- [ ] Phase 14 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list (Phase 14 — Feedback)
+- [x] **Phase 14 — Feedback** ✅ Done 2026-08-29. Per `15_IMPLEMENTATION_GUIDE.md` Phase 14 / `14_MVP_IMPLEMENTATION_PLAN.md` Milestone 9 (the Feedback half only — "Learning From Feedback," i.e. using it to influence recommendations, is Phase 15, a separate Joint Review phase not yet done). Explicitly flagged as a **Human Decision** in the guide ("Define the initial feedback taxonomy. Keep it small.") — proposed and got approval before implementing:
+  - **Approved tag taxonomy** (`trips.FEEDBACK_TAG_CHOICES`, 8 tags): Excellent food, Great value, Friendly locals, Beautiful scenery / Too crowded, Overpriced, Poor weather, Hard to get around. Not enforced as a DB `choices=` constraint (`Feedback.tags` is a JSONField list) — `FeedbackForm` restricts the UI to these values via `CheckboxSelectMultiple`.
+  - `Feedback` model unchanged (already existed from Phase 4 with `rating` 1–10, `tags`, `comment`, `destination`/`trip`) — this phase adds the actual form/view/persistence/tests, which didn't exist yet.
+  - `/trips/<pk>/feedback/`: one feedback entry per (user, trip) — resubmitting **edits** the existing entry rather than creating a duplicate (`get_or_create`-style lookup, not a hard DB unique constraint). Structurally scoped to `user=request.user` like every other trip view.
+  - Trip detail page now shows existing feedback (rating, human-readable tag labels — not raw keys like `excellent_food` — and comment) with an edit link, or a "Leave feedback" link if none exists yet.
+  - 6 new tests (create, reject out-of-range rating, resubmission updates not duplicates, cross-user 404, tag-label display) — 99/99 total passing, `ruff check .` clean, no new migrations.
+  - **Verified live**: opened the feedback form for the trip saved in Phase 13, checked "Excellent food" + "Too crowded," rated 8/10, added a comment, saved — trip detail page correctly showed "Rating: 8/10," "Tags: Excellent food, Too crowded" (proper labels, not keys), and the comment.
+- [ ] Phase 15 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list (Phase 15 — Learning From Feedback: a Joint Review phase to actually use this feedback in recommendation scoring)
 
 ## What exists in the repo right now
 
@@ -162,7 +169,7 @@ TravelAgent/
 
 ## Next actionable steps
 
-Per `15_IMPLEMENTATION_GUIDE.md`'s phase list, the next unstarted phase is **Phase 14 — Feedback** (owner: Claude Code + Human Review). See the phase-by-phase checklist above for everything already done.
+Per `15_IMPLEMENTATION_GUIDE.md`'s phase list, the next unstarted phase is **Phase 15 — Learning From Feedback** (owner: Joint Review). See the phase-by-phase checklist above for everything already done.
 
 ## Resume checklist for a fresh Claude session
 

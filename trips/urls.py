@@ -14,4 +14,5 @@ urlpatterns = [
     path("<int:pk>/", views.trip_detail, name="trip-detail"),
     path("<int:pk>/edit/", views.trip_edit, name="trip-edit"),
     path("<int:pk>/delete/", views.trip_delete, name="trip-delete"),
+    path("<int:pk>/feedback/", views.trip_feedback, name="trip-feedback"),
 ]

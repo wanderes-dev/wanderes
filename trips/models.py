@@ -18,6 +18,22 @@ TRIP_STATUS_CHOICES = [
     ("cancelled", "Cancelled"),
 ]
 
+# Initial feedback taxonomy, decided with the user 2026-08-29 (Phase 14,
+# 15_IMPLEMENTATION_GUIDE.md: "Define the initial feedback taxonomy. Keep
+# it small."). Deliberately not enforced as a DB choices= constraint since
+# `Feedback.tags` is a JSONField list - FeedbackForm restricts the UI to
+# these values instead.
+FEEDBACK_TAG_CHOICES = [
+    ("excellent_food", "Excellent food"),
+    ("great_value", "Great value"),
+    ("friendly_locals", "Friendly locals"),
+    ("beautiful_scenery", "Beautiful scenery"),
+    ("too_crowded", "Too crowded"),
+    ("overpriced", "Overpriced"),
+    ("poor_weather", "Poor weather"),
+    ("hard_to_get_around", "Hard to get around"),
+]
+
 
 def rating_validators():
     return [MinValueValidator(1), MaxValueValidator(10)]

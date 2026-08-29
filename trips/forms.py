@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import TravelHistoryEntry, Trip
+from .models import FEEDBACK_TAG_CHOICES, Feedback, TravelHistoryEntry, Trip
 
 
 class TravelHistoryEntryForm(forms.ModelForm):
@@ -17,3 +17,13 @@ class TripForm(forms.ModelForm):
             "start_date": forms.DateInput(attrs={"type": "date"}),
             "end_date": forms.DateInput(attrs={"type": "date"}),
         }
+
+
+class FeedbackForm(forms.ModelForm):
+    tags = forms.MultipleChoiceField(
+        choices=FEEDBACK_TAG_CHOICES, required=False, widget=forms.CheckboxSelectMultiple
+    )
+
+    class Meta:
+        model = Feedback
+        fields = ["rating", "tags", "comment"]

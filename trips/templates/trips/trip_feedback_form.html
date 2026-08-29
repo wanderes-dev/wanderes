@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}Feedback - {{ trip.name|default:trip.destination.name }} - TravelAgent{% endblock %}
+
+{% block content %}
+<h1>Feedback for {{ trip.name|default:trip.destination.name }}</h1>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Save feedback</button>
+</form>
+<p><a href="{% url 'trips:trip-detail' trip.pk %}">Back to trip</a></p>
+{% endblock %}
