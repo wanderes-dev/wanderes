@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}My traveler profile - TravelAgent{% endblock %}
+
+{% block content %}
+<h1>My traveler profile</h1>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Save</button>
+</form>
+<p><a href="{% url 'users:account' %}">Back to my account</a></p>
+{% endblock %}

@@ -237,3 +237,26 @@ Implemented per `10_EXTERNAL_INTEGRATIONS.md` §3 (Integration Layer: `Recommend
 - **Also smoke-tested against the real Open-Meteo API** (not mocked) inside the Docker container: `get_climate_provider().get_monthly_climate(latitude=38.72, longitude=-9.14, month=10)` → Lisbon, October 2025, avg high 24.8°C / avg low 17.1°C / 48.6mm precipitation — plausible and consistent with the curated dataset's "best season Mar-Oct" entry for Lisbon. This confirms Milestone 3's Definition of Done for real, not just against mocks.
 
 `PROJECT_STATE.md` updated to mark Phase 7 done and Phase 6 explicitly outstanding. The OpenAI adapter (the other half of the Phase 2/3 provider work) is also still not implemented.
+
+---
+
+## 2026-08-29 — Phase 6: traveler profile edit/retrieve
+
+Closed the gap deliberately left open after Phase 7. Per `14_MVP_IMPLEMENTATION_PLAN.md` Milestone 6, kept the profile itself intentionally minimal ("do not create a large questionnaire unnecessarily... the profile should grow organically") — this reuses the same `TravelerProfile` model defined back in Phase 4 (`preferred_trip_types`, `preferred_cost_of_living`), no new fields added.
+
+**Implemented:**
+
+- `TravelerProfileForm` (`users/forms.py`) — a `ModelForm` overriding `preferred_trip_types` with a `MultipleChoiceField` + `CheckboxSelectMultiple` widget, so editing a JSONField-backed list of tags is a normal checkbox group in the UI rather than a raw JSON textarea.
+- `users:profile` view — `@login_required`, `get_or_create`s the caller's own `TravelerProfile` (handles users who registered before this phase existed, or via `createsuperuser`), renders/saves the form, redirects back to itself with a success message on save.
+- Authorization is structural, not an explicit permission check: the view only ever reads/writes `request.user`'s own profile — there's no profile-id URL parameter for another user's data to leak through.
+- Linked from the account page.
+
+**Note on Milestone 6's full Definition of Done** ("TravelAgent can use authorized profile information to personalize recommendations") - only the edit/retrieve/authorization half exists after this phase. The recommendation engine that would actually consume `preferred_trip_types`/`preferred_cost_of_living` is Phase 8, which hasn't been built yet - expected at this point in the sequence, not a shortfall specific to this phase.
+
+**Validation:**
+
+- 4 new tests: login-required redirect, auto-create-on-first-visit, save persists both fields correctly, and one user's profile edits don't affect another user's profile.
+- All 27 project tests passing, `ruff check .` clean, no new migrations.
+- Verified live in a browser against the running Docker container: opened the profile form, checked "Beach" and "Culture", selected "Medium" cost tier, saved - got the success message, and confirmed via `manage.py shell` that the database held exactly `['beach', 'culture']` and `3`.
+
+`PROJECT_STATE.md` updated - Phase 6 is done, closing out the "skipped ahead" note from the Phase 7 entry. Next per the phase order: Phase 8 (first recommendation algorithm) - noting the OpenAI adapter (Phase 2's other deliverable) and Milestone 4 (AI Foundation) are still not implemented.

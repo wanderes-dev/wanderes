@@ -6,6 +6,7 @@
 <h1>My account</h1>
 <p>Email: {{ user.email }}</p>
 <p>Member since: {{ user.date_joined|date:"Y-m-d" }}</p>
+<p><a href="{% url 'users:profile' %}">Edit my traveler profile</a></p>
 <form method="post" action="{% url 'users:logout' %}">
     {% csrf_token %}
     <button type="submit">Log out</button>

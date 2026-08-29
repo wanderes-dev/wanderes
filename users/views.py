@@ -1,8 +1,10 @@
+from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 
-from .forms import UserRegistrationForm
+from .forms import TravelerProfileForm, UserRegistrationForm
+from .models import TravelerProfile
 
 
 def register(request):
@@ -24,3 +26,22 @@ def register(request):
 @login_required
 def account(request):
     return render(request, "users/account.html", {"user": request.user})
+
+
+@login_required
+def profile(request):
+    # Always operates on request.user's own profile - never accepts a
+    # profile id from the URL, so there is no cross-user access to guard
+    # against by construction.
+    traveler_profile, _ = TravelerProfile.objects.get_or_create(user=request.user)
+
+    if request.method == "POST":
+        form = TravelerProfileForm(request.POST, instance=traveler_profile)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Your traveler profile was updated.")
+            return redirect("users:profile")
+    else:
+        form = TravelerProfileForm(instance=traveler_profile)
+
+    return render(request, "users/profile.html", {"form": form})

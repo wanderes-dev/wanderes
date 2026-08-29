@@ -3,7 +3,7 @@
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
 **Last updated:** 2026-08-29
-**Current phase:** Phases 0-5 and Phase 7 complete (Phase 7 done ahead of Phase 6 at the user's explicit request). Phase 2 (OpenAI), Phase 3 (curated dataset + Open-Meteo), Phase 4 (domain models), Phase 5 (authentication), and Phase 7 (Open-Meteo climate adapter, real end-to-end) are all done. **Phase 6 (traveler profile edit/retrieve) is still outstanding** — skipped over, not forgotten. Next: Phase 6, or Phase 8 (first recommendation algorithm), or the OpenAI adapter (also still not implemented).
+**Current phase:** Phases 0-7 complete (Phase 7 was done before Phase 6, at the user's explicit request, then Phase 6 was completed right after). Next: Phase 8 (first recommendation algorithm) — note the OpenAI adapter itself is still not implemented, and Milestone 4 (AI Foundation) hasn't started either.
 
 **Product decision (2026-08-29):** UI is English-only for now, built translation-ready (`LocaleMiddleware`, `LOCALE_PATHS`, `LANGUAGES` already configured — see `CLAUDE.md` rule 5). Working/communication language with the user also switched to English as of this date.
 
@@ -57,7 +57,12 @@ Blocked / not started:
   - **Documented MVP simplification:** without an explicit `year`, the adapter uses the most recently completed occurrence of the requested month as a stand-in for "typical" conditions — not a genuine multi-year climatological average. Noted as a natural future improvement, not a current requirement.
   - 7 new tests (mocked HTTP — success/cache-hit/network-failure/malformed-response/factory), all passing. **Also smoke-tested against the real Open-Meteo API** (not mocked): Lisbon in October 2025 → 24.8°C avg high, 17.1°C avg low, 48.6mm precipitation — consistent with the curated dataset's "best season Mar-Oct" for Lisbon.
   - Added `requests` to `requirements/base.txt`.
-- [ ] Phase 6 — Traveler profile (edit/retrieve, authorization) — not yet done, taken out of order per user request
+- [x] **Phase 6 — Traveler profile (edit/retrieve, authorization)** ✅ Done 2026-08-29 (out of order, after Phase 7, per user request). Reuses the `TravelerProfile` model from Phase 4 — kept intentionally minimal per `14_MVP_IMPLEMENTATION_PLAN.md` Milestone 6 ("do not create a large questionnaire unnecessarily... grow organically").
+  - `users:profile` — `@login_required` view, always operates on `request.user`'s own profile (never accepts a profile id from the URL, so cross-user access isn't possible by construction), `get_or_create`s the profile on first visit.
+  - `TravelerProfileForm` — `preferred_trip_types` rendered as checkboxes (`CheckboxSelectMultiple`) instead of a raw JSON textarea; `preferred_cost_of_living` as a normal select.
+  - Linked from the account page ("Edit my traveler profile").
+  - **Note on Milestone 6's full DoD** ("TravelAgent can use authorized profile information to personalize recommendations"): only the edit/retrieve/authorization half is done here — the recommendation engine that would consume this data doesn't exist yet (Phase 8). Expected at this point in the sequence, not a gap specific to this phase.
+  - 4 new tests (login-required redirect, auto-create on first visit, save persists correctly, one user's edits don't affect another's) — 27/27 total passing. `ruff check .` clean, no new migrations. Verified live in a browser: checked "Beach" + "Culture", selected "Medium" cost tier, saved, confirmed success message and correct DB persistence.
 - [ ] Phase 8 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list
 
 ## What exists in the repo right now
