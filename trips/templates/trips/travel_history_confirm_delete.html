@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}Remove from travel history - TravelAgent{% endblock %}
+
+{% block content %}
+<h1>Remove from your travel history?</h1>
+<p>{{ entry.destination.name }}, {{ entry.destination.country }}{% if entry.visited_year %} ({{ entry.visited_year }}){% endif %}</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit">Remove</button>
+</form>
+<p><a href="{% url 'trips:history-list' %}">Cancel</a></p>
+{% endblock %}

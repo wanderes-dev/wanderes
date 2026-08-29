@@ -3,7 +3,7 @@ from django.test import TestCase
 from integrations.climate.base import ClimateProviderError, MonthlyClimateSummary
 from recommendations.scoring import RecommendationRequest, generate_recommendations
 from travel.models import Destination
-from trips.models import Trip
+from trips.models import TravelHistoryEntry, Trip
 from users.models import TravelerProfile, User
 
 
@@ -132,6 +132,16 @@ class GenerateRecommendationsTests(TestCase):
         by_slug = {r.destination.slug: r for r in results}
         self.assertEqual(by_slug["warm-cheap"].repetition_penalty, 3.0)
         self.assertEqual(by_slug["warm-expensive"].repetition_penalty, 0.0)
+
+    def test_repetition_penalty_lowers_score_for_travel_history_entries(self):
+        user = User.objects.create_user(email="traveler@example.com", password="testpass123")
+        TravelHistoryEntry.objects.create(user=user, destination=self.warm_cheap, visited_year=2019)
+        request = RecommendationRequest(month=10, user=user)
+
+        results = generate_recommendations(request, climate_provider=self.climate)
+
+        by_slug = {r.destination.slug: r for r in results}
+        self.assertEqual(by_slug["warm-cheap"].repetition_penalty, 3.0)
 
     def test_anonymous_request_has_no_preference_or_repetition_effects(self):
         request = RecommendationRequest(month=10, user=None)

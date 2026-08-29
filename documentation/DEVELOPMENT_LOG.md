@@ -426,3 +426,28 @@ This resolves the open Phase 11 question without adding new `Destination` catego
 - **Confirmed live**: called `get_travel_recommendation("We want a romantic getaway in June")` against the real OpenAI API - console output showed exactly `No deterministic constraints extracted - relying on AI judgment. message='We want a romantic getaway in June' month=6`, immediately before the (real, working) AI-reasoned reply.
 
 `PROJECT_STATE.md` updated with Claude Code's assessment that this satisfies Phase 11's checkpoint - but noted explicitly that the user has not yet said "continue expanding" in so many words, so that should be confirmed rather than assumed before treating Phase 12+ as greenlit.
+
+**User confirmed explicitly: "yes u can follow."** Phase 11 marked closed in `PROJECT_STATE.md`.
+
+---
+
+## 2026-08-29 — Phase 12: Travel History
+
+Per `15_IMPLEMENTATION_GUIDE.md` Phase 12 (record visited destinations, associate with users, allow correction, use history in recommendations) and `14_MVP_IMPLEMENTATION_PLAN.md` Milestone 7. `04_DATABASE_DESIGN.md` §2/§4 lists "Travel History" and "Trip" as separate entities under `User`, not the same thing - a Trip is a planned/completed experience with its own items (flights, accommodations, Phase 4); Travel History is meant to be much simpler, a standalone "I've been to X, roughly year Y" record that doesn't require ever creating a full Trip.
+
+Worth noting: the repetition-penalty logic added back in Phase 8 (`recommendations.scoring._visited_destination_slugs()`) already looked at `Trip.objects.filter(status="completed")` - but there has never been a Trip-creation UI (that's Phase 13, not built yet), so that code path was real but practically unreachable by any actual user until this phase gave a second, simpler way to record "I've been here."
+
+**Implemented:**
+
+- `trips.TravelHistoryEntry` - `user` FK, `destination` FK, `visited_year` (nullable `PositiveSmallIntegerField` - "approximate travel dates where useful," not a full date).
+- Full CRUD in the `trips` app (its first views/urls/templates): `/trips/history/` (list), `/history/add/`, `/history/<pk>/edit/`, `/history/<pk>/delete/` (confirmation page, POST to actually delete). All `login_required`; authorization is structural - every view fetches via `get_object_or_404(TravelHistoryEntry, pk=pk, user=request.user)`, so another user's entry 404s rather than leaking or being editable, matching the pattern already established for `users:profile`.
+- `recommendations.scoring._visited_destination_slugs()` updated to union completed `Trip` destinations **and** `TravelHistoryEntry` destinations - either is sufficient to trigger the existing soft repetition penalty. No change to the penalty mechanic itself (still a score subtraction, not a hard exclusion) - `05_AI_DESIGN.md` §5 and this phase's own "important rule" both say previously-visited destinations should be deprioritized, not banned, and that was already correctly implemented.
+- Linked from the account page ("My travel history").
+- Registered in Django admin.
+
+**Validation:**
+
+- 10 new tests: a model `__str__` test, and 7 view tests covering the full CRUD flow plus authorization (list only shows own entries, cannot edit/delete another user's entry - both 404), plus one `recommendations.scoring` test confirming a `TravelHistoryEntry` alone (no Trip) triggers the same penalty. 83/83 total tests passing, `ruff check .` clean. One new migration, `trips.0003_travelhistoryentry`.
+- **Live-verified the actual effect on scoring, not just the CRUD UI**: added "Chiang Mai, 2019" through the real browser for a real logged-in user (`browsertest@example.com`, left over from earlier Phase 6 testing), then called `get_travel_recommendation(..., user=that_user)` against the real OpenAI + Open-Meteo APIs. Chiang Mai's `repetition_penalty` came back `3.0` and it dropped from top-ranked (as seen in earlier Phase 8/11 live tests with no history) down to 5th place - still present in the results, just deprioritized, exactly matching the intended behavior.
+
+`PROJECT_STATE.md` updated - Phase 12 done. Next per the phase order: Phase 13 (Trip Management) - create/edit/view/delete a real `Trip`, which will finally make the completed-Trip repetition-penalty path reachable by real users too, not just Travel History entries.

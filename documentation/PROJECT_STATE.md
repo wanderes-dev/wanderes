@@ -3,7 +3,7 @@
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
 **Last updated:** 2026-08-29
-**Current phase:** Phases 0-10 complete; Phase 11 (Joint Review) in progress. There is a working, live-validated chat UI at `/chat/` — start it with `docker compose up -d` and open http://localhost:8000/chat/ (see README). `OPENAI_API_KEY` is configured in `.env` (never committed). Phase 11's live scenario testing found and fixed a real gap (trip_type filtering and exclusions had no effect) — see the Phase 11 entry above. Two gaps remain open and undecided: "romantic"/"family-friendly" have no data-model representation, and the AI has occasionally added facts not present in our dataset. **The Human Decision this phase calls for — is the experience good enough to keep expanding — has not been explicitly made yet.**
+**Current phase:** Phases 0-12 complete. There is a working, live-validated chat UI at `/chat/` — start it with `docker compose up -d` and open http://localhost:8000/chat/ (see README). `OPENAI_API_KEY` is configured in `.env` (never committed). Phase 11 (Joint Review) found and fixed real gaps (trip_type filtering, exclusions) and closed with an explicit human decision on recommendation philosophy (unplanned requests fall to AI judgment, logged for review — not modeled preemptively). Phase 12 (Travel History) adds a `TravelHistoryEntry` model + CRUD, feeding the existing repetition-penalty scoring for the first time in a way real users can actually trigger. Next: Phase 13 (Trip Management).
 
 **Product decision (2026-08-29):** UI is English-only for now, built translation-ready (`LocaleMiddleware`, `LOCALE_PATHS`, `LANGUAGES` already configured — see `CLAUDE.md` rule 5). Working/communication language with the user also switched to English as of this date.
 
@@ -110,7 +110,15 @@ Blocked / not started:
     - WARNING when an `AIProviderError` occurs (intent extraction or mid-stream) — a genuine failure, not a philosophy choice.
     - 3 new tests using Django's `assertLogs`; 74/74 total passing, `ruff check .` clean. Confirmed live: a real "romantic getaway" request logged exactly the intended line.
   - Still open, not addressed by this decision: in a couple of replies during testing the AI added supplementary facts not present in our dataset (e.g. "Lisbon has nearby beaches," "Kyoto is known for safety") — a grounding concern, separate from the recommendation-philosophy question.
-  - **Assessment (not yet an explicit human sign-off):** the two concrete bugs are fixed, and the remaining "gap" (romantic/family) was reclassified as expected behavior by design, not a defect — Claude Code's read is that this satisfies Phase 11's checkpoint, but the user has not explicitly said "continue expanding" in so many words. Confirm before assuming Phase 12+ is greenlit.
+  - **✅ Human Decision made 2026-08-29: "yes, continue expanding."** Phase 11 is closed.
+- [x] **Phase 12 — Travel History** ✅ Done 2026-08-29. Per `04_DATABASE_DESIGN.md` §2/§4, Travel History is a distinct entity from `Trip` (a much simpler standalone record — "visited X, roughly year Y" — not a full itinerary with items). Note: the existing `Trip.status="completed"` repetition-penalty logic from Phase 8 was real code but practically unreachable by any user until now, since there's still no Trip-creation UI (that's Phase 13).
+  - `trips.TravelHistoryEntry` (new model): `user`, `destination`, `visited_year` (nullable — "approximate... where useful").
+  - Full CRUD at `/trips/history/` (`login_required`; structural authorization — every view scopes to `user=request.user`, confirmed via tests that another user's entries 404 rather than leak or allow editing).
+  - `recommendations.scoring._visited_destination_slugs()` now unions completed `Trip`s **and** `TravelHistoryEntry` records — either counts as "visited" for the soft repetition penalty (not a hard exclusion, per the "important rule" in both `05_AI_DESIGN.md` §5 and this phase's own framing).
+  - Linked from the account page ("My travel history").
+  - 10 new tests (model, 7 view/authorization cases, repetition-penalty-from-history) — 83/83 total passing, `ruff check .` clean. One new migration (`trips.0003_travelhistoryentry`).
+  - **Verified live, including the actual scoring effect**: added "Chiang Mai, 2019" via the real browser UI for a real logged-in user, then confirmed via `get_travel_recommendation(..., user=that_user)` against the real OpenAI + Open-Meteo APIs that Chiang Mai's `repetition_penalty` became `3.0` and it dropped from top-ranked to 5th place — present, just deprioritized, exactly as intended.
+- [ ] Phase 13 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list (Phase 13 — Trip Management: create/edit/view/delete a `Trip`, which will make the existing completed-Trip repetition-penalty path reachable by real users too)
 
 ## What exists in the repo right now
 
@@ -123,7 +131,7 @@ TravelAgent/
 │   └── data/curated_destinations.json   Approved initial destination dataset (Phase 3, 18 entries)
 ├── users/                         Custom User (email login) + TravelerProfile
 ├── travel/                        Destination model + `load_destinations` management command
-├── trips/                         Trip, TripFlight, TripAccommodation, Feedback
+├── trips/                         Trip, TripFlight, TripAccommodation, Feedback, TravelHistoryEntry (+ CRUD at /trips/history/)
 ├── integrations/                  climate/ - ClimateProvider interface + Open-Meteo adapter (no models)
 ├── ai/                             provider/ (incl. streaming) + orchestration.py + prompts.py (Lunna); views.py/urls.py/templates - the /chat/ page (no models)
 ├── recommendations/                scoring.py - deterministic recommendation scoring/ranking (no models)

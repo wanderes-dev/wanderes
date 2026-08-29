@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Feedback, Trip, TripAccommodation, TripFlight
+from .models import Feedback, TravelHistoryEntry, Trip, TripAccommodation, TripFlight
 
 
 class TripFlightInline(admin.TabularInline):
@@ -24,3 +24,9 @@ class TripAdmin(admin.ModelAdmin):
 class FeedbackAdmin(admin.ModelAdmin):
     list_display = ["user", "destination", "trip", "rating", "created_at"]
     list_filter = ["rating"]
+
+
+@admin.register(TravelHistoryEntry)
+class TravelHistoryEntryAdmin(admin.ModelAdmin):
+    list_display = ["user", "destination", "visited_year"]
+    list_filter = ["visited_year"]

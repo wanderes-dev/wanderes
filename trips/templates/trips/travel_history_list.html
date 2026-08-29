@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}My travel history - TravelAgent{% endblock %}
+
+{% block content %}
+<h1>My travel history</h1>
+<p><a href="{% url 'trips:history-add' %}">Add a destination I've visited</a></p>
+
+{% if entries %}
+<ul>
+    {% for entry in entries %}
+    <li>
+        {{ entry.destination.name }}, {{ entry.destination.country }}
+        {% if entry.visited_year %}({{ entry.visited_year }}){% endif %}
+        - <a href="{% url 'trips:history-edit' entry.pk %}">Edit</a>
+        - <a href="{% url 'trips:history-delete' entry.pk %}">Delete</a>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p>You haven't recorded any past destinations yet.</p>
+{% endif %}
+
+<p><a href="{% url 'users:account' %}">Back to my account</a></p>
+{% endblock %}

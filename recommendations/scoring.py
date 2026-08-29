@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from integrations.climate import ClimateProviderError, get_climate_provider
 from travel.models import Destination
-from trips.models import Trip
+from trips.models import TravelHistoryEntry, Trip
 from users.models import TravelerProfile
 
 # Tunable weights for the v1 scoring formula (05_AI_DESIGN.md §6). Kept as
@@ -136,12 +136,18 @@ def _preferred_trip_types(user) -> frozenset:
 
 def _visited_destination_slugs(user) -> frozenset:
     # Previously-visited destinations should generally rank lower
-    # (05_AI_DESIGN.md §5), not be excluded outright - so this is a soft
-    # scoring penalty, not a hard constraint.
+    # (05_AI_DESIGN.md §5, 14_MVP_IMPLEMENTATION_PLAN.md Milestone 7), not
+    # be excluded outright - so this is a soft scoring penalty, not a hard
+    # constraint. Two independent sources count as "visited": a completed
+    # Trip, or a manually-recorded TravelHistoryEntry (Phase 12) - a user
+    # doesn't need a full Trip on file just to tell us they've been
+    # somewhere before.
     if user is None or not user.is_authenticated:
         return frozenset()
-    return frozenset(
-        Trip.objects.filter(user=user, status="completed").values_list(
-            "destination__slug", flat=True
-        )
+    completed_trip_slugs = Trip.objects.filter(user=user, status="completed").values_list(
+        "destination__slug", flat=True
     )
+    history_slugs = TravelHistoryEntry.objects.filter(user=user).values_list(
+        "destination__slug", flat=True
+    )
+    return frozenset(completed_trip_slugs) | frozenset(history_slugs)

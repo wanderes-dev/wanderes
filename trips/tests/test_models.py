@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from travel.models import Destination
-from trips.models import Feedback, Trip, TripAccommodation, TripFlight
+from trips.models import Feedback, TravelHistoryEntry, Trip, TripAccommodation, TripFlight
 from users.models import User
 
 
@@ -61,3 +61,10 @@ class TripModelsTests(TestCase):
 
         self.assertEqual(feedback.destination, self.destination)
         self.assertIsNone(feedback.trip)
+
+    def test_travel_history_entry_str(self):
+        entry = TravelHistoryEntry.objects.create(
+            user=self.user, destination=self.destination, visited_year=2019
+        )
+
+        self.assertEqual(str(entry), "traveler@example.com visited Lisbon")

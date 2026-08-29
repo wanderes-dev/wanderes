@@ -99,6 +99,37 @@ class TripAccommodation(models.Model):
         return self.name or self.address
 
 
+class TravelHistoryEntry(models.Model):
+    """A record that the user has actually visited a destination.
+
+    Distinct from Trip (04_DATABASE_DESIGN.md §2 lists them as separate
+    entities): a Trip is a planned/completed travel experience with its
+    own items (flights, accommodations); this is a much simpler standalone
+    record - "I've been to X, roughly around year Y" - usable even without
+    ever creating a full Trip. Both feed the same repetition-penalty
+    scoring in recommendations.scoring.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="travel_history"
+    )
+    destination = models.ForeignKey(
+        "travel.Destination", on_delete=models.CASCADE, related_name="travel_history"
+    )
+    visited_year = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Approximate year of the visit, if known."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-visited_year", "-created_at"]
+        verbose_name_plural = "travel history entries"
+
+    def __str__(self):
+        return f"{self.user.email} visited {self.destination.name}"
+
+
 class Feedback(models.Model):
     """A user's evaluation of a destination or trip.
 

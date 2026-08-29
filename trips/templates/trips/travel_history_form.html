@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_edit %}Edit{% else %}Add{% endif %} travel history - TravelAgent{% endblock %}
+
+{% block content %}
+<h1>{% if is_edit %}Edit{% else %}Add{% endif %} a visited destination</h1>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Save</button>
+</form>
+<p><a href="{% url 'trips:history-list' %}">Back to my travel history</a></p>
+{% endblock %}
