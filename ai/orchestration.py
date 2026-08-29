@@ -7,7 +7,9 @@ from recommendations.scoring import (
     ScoredDestination,
     generate_recommendations,
 )
+from travel.models import Destination
 from travel.services import find_destination_slugs_by_name
+from trips.models import FEEDBACK_TAG_CHOICES, Feedback, TravelHistoryEntry, Trip
 
 from .prompts import SYSTEM_PROMPT
 from .provider import AIMessage, AIProvider, AIProviderError, get_ai_provider
@@ -15,6 +17,7 @@ from .provider import AIMessage, AIProvider, AIProviderError, get_ai_provider
 logger = logging.getLogger(__name__)
 
 MAX_EXPLAINED_CANDIDATES = 5
+FEEDBACK_TAG_KEYS = {key for key, _label in FEEDBACK_TAG_CHOICES}
 
 OFF_TOPIC_REPLY = (
     "I'm Lunna, TravelAgent's travel consultant, so I can only help with "
@@ -27,14 +30,27 @@ NO_MATCHES_REPLY = (
 FALLBACK_REPLY = (
     "I'm having trouble reaching my reasoning engine right now. Please try again in a moment."
 )
+NEEDS_LOGIN_REPLY = (
+    "I'd love to remember that for you, but you'll need to log in or create an "
+    "account first so I can save it to your profile."
+)
 
 INTENT_EXTRACTION_SYSTEM_PROMPT = (
-    "You extract structured travel search constraints from a traveler's message. "
-    "Set is_travel_request to false if the message is not about travel planning. "
-    "Set needs_clarification to true, with a short clarification_question, if the "
-    "message is a travel request but is missing information you would need - at "
-    "minimum, a target month. Never guess a month the user did not state or "
-    "clearly imply.\n\n"
+    "You classify a traveler's message and extract structured information "
+    "from it. Set message_type to exactly one of:\n"
+    "- 'recommendation': the user wants a travel suggestion right now.\n"
+    "- 'feedback': the user is sharing their opinion or experience about a "
+    "place they have already been to (a rating, likes/dislikes, a comment).\n"
+    "- 'future_intent': the user says they want to travel somewhere someday "
+    "or are planning to, without asking for a recommendation right now.\n"
+    "- 'off_topic': the message is not about travel at all.\n"
+    "Only fill in the fields relevant to the chosen message_type - leave "
+    "every other field at its default (null, false, or an empty list).\n\n"
+    "--- Fields for message_type = 'recommendation' ---\n"
+    "Set needs_clarification to true, with a short clarification_question, if "
+    "the message is a travel request but is missing information you would "
+    "need - at minimum, a target month. Never guess a month the user did not "
+    "state or clearly imply.\n"
     "For temperature and budget, the user will often describe them "
     "qualitatively rather than with an exact number - translate that "
     "description into a concrete threshold using these anchors, so the "
@@ -48,27 +64,45 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "luxury, or says nothing at all about budget, leave max_cost_of_living null.\n"
     "Only leave min_temp_c or max_cost_of_living null when the user gave no "
     "indication at all for that dimension - do not leave it null just "
-    "because they used words instead of a number.\n\n"
+    "because they used words instead of a number.\n"
     "For trip_type, only set it when the message clearly matches one of "
     "exactly these four categories: 'beach' (beach/coastal holiday), "
     "'city' (city break/urban trip), 'nature' (outdoors/adventure/hiking), "
     "'culture' (history/museums/cultural immersion). Leave it null if the "
     "request doesn't clearly match one of these four, or matches more than "
     "one - do not force-fit a vibe like 'romantic' or 'family-friendly' "
-    "into one of these categories just because you have to pick something.\n\n"
+    "into one of these categories just because you have to pick something.\n"
     "If the user asks to avoid or exclude specific places, countries, or "
     "regions, list the place/country names they mentioned in "
     "excluded_place_names (e.g. ['Marrakech', 'Morocco']). Leave it as an "
-    "empty list if they mentioned no exclusions."
+    "empty list if they mentioned no exclusions.\n\n"
+    "--- Fields for message_type = 'feedback' ---\n"
+    "feedback_destination_name: the name of the place they're giving "
+    "feedback about, as they wrote it. Null if unclear.\n"
+    "feedback_rating: a 1-10 rating if the user gave or clearly implied one "
+    "(e.g. 'amazing' ~ 9, 'terrible' ~ 2). Null if no sentiment was expressed "
+    "at all - never invent a rating from a neutral factual statement.\n"
+    "feedback_tags: choose zero or more from exactly these values - "
+    "excellent_food, great_value, friendly_locals, beautiful_scenery, "
+    "too_crowded, overpriced, poor_weather, hard_to_get_around. Only include "
+    "a tag when the message clearly supports it.\n"
+    "feedback_comment: a short paraphrase of any free-form remark they made, "
+    "or null.\n\n"
+    "--- Fields for message_type = 'future_intent' ---\n"
+    "future_destination_name: the name of the place they want to visit "
+    "someday, as written. Null if unclear."
 )
 
 INTENT_SCHEMA = {
-    "name": "travel_intent",
+    "name": "travel_message",
     "strict": True,
     "schema": {
         "type": "object",
         "properties": {
-            "is_travel_request": {"type": "boolean"},
+            "message_type": {
+                "type": "string",
+                "enum": ["recommendation", "feedback", "future_intent", "off_topic"],
+            },
             "needs_clarification": {"type": "boolean"},
             "clarification_question": {"type": ["string", "null"]},
             "month": {"type": ["integer", "null"]},
@@ -79,9 +113,14 @@ INTENT_SCHEMA = {
                 "enum": ["beach", "city", "nature", "culture", None],
             },
             "excluded_place_names": {"type": "array", "items": {"type": "string"}},
+            "feedback_destination_name": {"type": ["string", "null"]},
+            "feedback_rating": {"type": ["integer", "null"]},
+            "feedback_tags": {"type": "array", "items": {"type": "string"}},
+            "feedback_comment": {"type": ["string", "null"]},
+            "future_destination_name": {"type": ["string", "null"]},
         },
         "required": [
-            "is_travel_request",
+            "message_type",
             "needs_clarification",
             "clarification_question",
             "month",
@@ -89,6 +128,11 @@ INTENT_SCHEMA = {
             "max_cost_of_living",
             "trip_type",
             "excluded_place_names",
+            "feedback_destination_name",
+            "feedback_rating",
+            "feedback_tags",
+            "feedback_comment",
+            "future_destination_name",
         ],
         "additionalProperties": False,
     },
@@ -116,15 +160,18 @@ def stream_travel_recommendation(
     ai_provider: AIProvider | None = None,
     climate_provider=None,
 ) -> StreamingOrchestrationResult:
-    """Turn one natural-language travel message into a grounded, explained
-    recommendation, streaming the explanation incrementally.
+    """Handle one chat message: a recommendation request, feedback about a
+    past visit, a stated future travel intention, or an off-topic message.
 
-    Pipeline (09_AI_ORCHESTRATION.md §3): Intent Understanding -> Travel Data
-    + Rules & Constraints -> Recommendation Scoring -> AI Reasoning (streamed).
-    This is the core orchestration logic; get_travel_recommendation() is a
+    Pipeline (09_AI_ORCHESTRATION.md §3): Intent Understanding -> (per type)
+    Travel Data + Rules & Constraints -> Recommendation Scoring -> AI
+    Reasoning (streamed), OR direct persistence + a templated acknowledgment
+    for feedback/future_intent - those don't need a second AI call. This is
+    the core orchestration logic; get_travel_recommendation() is a
     non-streaming convenience wrapper around it. Does NOT handle conversation
-    history/persistence - each call is independent (Phase 10's chat UI keeps
-    per-visit display only, not true multi-turn context yet).
+    history/persistence across messages - each call is independent (Phase
+    10's chat UI keeps per-visit display only, not true multi-turn context
+    yet), though feedback/future_intent do persist to the database.
 
     Recommendation philosophy (decided 2026-08-29, Phase 11 review): a real
     user will ask for things this system has no deterministic model for
@@ -145,9 +192,20 @@ def stream_travel_recommendation(
         logger.warning("Could not extract intent - AI provider failure. message=%r", message)
         return StreamingOrchestrationResult(False, [], iter([FALLBACK_REPLY]))
 
-    if not intent["is_travel_request"]:
+    message_type = intent["message_type"]
+
+    if message_type == "off_topic":
         return StreamingOrchestrationResult(False, [], iter([OFF_TOPIC_REPLY]))
 
+    if message_type == "feedback":
+        reply = _handle_feedback(intent, user=user)
+        return StreamingOrchestrationResult(False, [], iter([reply]))
+
+    if message_type == "future_intent":
+        reply = _handle_future_intent(intent, user=user)
+        return StreamingOrchestrationResult(False, [], iter([reply]))
+
+    # message_type == "recommendation" (also the safe default/fallback).
     if intent["needs_clarification"]:
         question = intent["clarification_question"] or "Could you tell me more about your trip?"
         return StreamingOrchestrationResult(True, [], iter([question]))
@@ -227,6 +285,82 @@ def get_travel_recommendation(
     )
 
 
+def _handle_feedback(intent: dict, *, user) -> str:
+    """Persist feedback shared conversationally, and register that the
+    trip actually happened - giving feedback implies a visit occurred, per
+    the user's explicit request that the AI register travel that occurred."""
+    if user is None or not user.is_authenticated:
+        return NEEDS_LOGIN_REPLY
+
+    destination_name = intent["feedback_destination_name"]
+    if not destination_name:
+        return "I'd love to hear about your trip - which destination are you talking about?"
+
+    destination = _resolve_destination(destination_name)
+    if destination is None:
+        logger.info("Feedback mentioned an unrecognized destination. name=%r", destination_name)
+        return (
+            f"I don't have {destination_name} in my catalog yet, but thanks for sharing - "
+            "I've made a note of it!"
+        )
+
+    # Register that this travel occurred, regardless of whether a rating was given.
+    TravelHistoryEntry.objects.get_or_create(user=user, destination=destination)
+
+    rating = intent["feedback_rating"]
+    if rating is None:
+        return (
+            f"Got it - I've noted that you've visited {destination.name}. Feel free to tell me "
+            "how you'd rate it (1-10) if you'd like!"
+        )
+
+    Feedback.objects.update_or_create(
+        user=user,
+        destination=destination,
+        trip=None,
+        defaults={
+            "rating": rating,
+            "tags": intent["feedback_tags"],
+            "comment": intent["feedback_comment"] or "",
+        },
+    )
+    return f"Thanks! I've recorded your feedback on {destination.name}: {rating}/10."
+
+
+def _handle_future_intent(intent: dict, *, user) -> str:
+    if user is None or not user.is_authenticated:
+        return NEEDS_LOGIN_REPLY
+
+    destination_name = intent["future_destination_name"]
+    if not destination_name:
+        return "That sounds exciting - which destination did you have in mind?"
+
+    destination = _resolve_destination(destination_name)
+    if destination is None:
+        logger.info(
+            "Future travel intent mentioned an unrecognized destination. name=%r", destination_name
+        )
+        return (
+            f"I don't have {destination_name} in my catalog yet, but I've made a note that "
+            "you'd like to go!"
+        )
+
+    _trip, created = Trip.objects.get_or_create(
+        user=user,
+        destination=destination,
+        status="planned",
+        defaults={"name": f"Someday: {destination.name}"},
+    )
+    if created:
+        return f"Got it! I've added {destination.name} to your trips to plan for someday."
+    return f"You already have {destination.name} noted as a future trip - I'll keep it there!"
+
+
+def _resolve_destination(name: str):
+    slugs = find_destination_slugs_by_name([name])
+    return Destination.objects.filter(slug__in=slugs).first()
+
+
 def _extract_intent(message: str, *, ai_provider: AIProvider) -> dict:
     messages = [
         AIMessage(role="system", content=INTENT_EXTRACTION_SYSTEM_PROMPT),
@@ -239,10 +373,13 @@ def _extract_intent(message: str, *, ai_provider: AIProvider) -> dict:
 def _validate_intent(data: dict) -> dict:
     # Response Validation (09_AI_ORCHESTRATION.md §9): never trust the
     # model's structured output blindly, even with a schema.
+    if data.get("message_type") not in {"recommendation", "feedback", "future_intent", "off_topic"}:
+        data["message_type"] = "recommendation"
+
     month = data.get("month")
     if not isinstance(month, int) or not (1 <= month <= 12):
         data["month"] = None
-        if data.get("is_travel_request") and not data.get("needs_clarification"):
+        if data.get("message_type") == "recommendation" and not data.get("needs_clarification"):
             data["needs_clarification"] = True
             data["clarification_question"] = (
                 data.get("clarification_question") or "Which month are you thinking of traveling?"
@@ -255,15 +392,22 @@ def _validate_intent(data: dict) -> dict:
     if data.get("trip_type") not in {"beach", "city", "nature", "culture", None}:
         data["trip_type"] = None
 
-    excluded_place_names = data.get("excluded_place_names")
-    if not isinstance(excluded_place_names, list):
-        data["excluded_place_names"] = []
-    else:
-        data["excluded_place_names"] = [
-            name for name in excluded_place_names if isinstance(name, str) and name.strip()
-        ]
+    data["excluded_place_names"] = _clean_string_list(data.get("excluded_place_names"))
+
+    feedback_rating = data.get("feedback_rating")
+    if feedback_rating is not None and not (1 <= feedback_rating <= 10):
+        data["feedback_rating"] = None
+
+    cleaned_tags = _clean_string_list(data.get("feedback_tags"))
+    data["feedback_tags"] = [tag for tag in cleaned_tags if tag in FEEDBACK_TAG_KEYS]
 
     return data
+
+
+def _clean_string_list(value) -> list:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item.strip()]
 
 
 def _build_explanation_messages(

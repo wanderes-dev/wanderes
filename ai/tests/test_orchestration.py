@@ -2,6 +2,7 @@ from django.test import TestCase
 
 from ai.orchestration import (
     FALLBACK_REPLY,
+    NEEDS_LOGIN_REPLY,
     NO_MATCHES_REPLY,
     OFF_TOPIC_REPLY,
     get_travel_recommendation,
@@ -10,6 +11,8 @@ from ai.orchestration import (
 from ai.provider.base import AIProviderError
 from integrations.climate.base import ClimateProviderError, MonthlyClimateSummary
 from travel.models import Destination
+from trips.models import Feedback, TravelHistoryEntry, Trip
+from users.models import User
 
 
 class StubClimateProvider:
@@ -66,7 +69,7 @@ def _make_destination(slug, *, lat, lon, trip_type="beach", cost_of_living=1):
 
 def _intent(
     *,
-    is_travel_request=True,
+    message_type="recommendation",
     needs_clarification=False,
     clarification_question=None,
     month=None,
@@ -74,9 +77,14 @@ def _intent(
     max_cost_of_living=None,
     trip_type=None,
     excluded_place_names=None,
+    feedback_destination_name=None,
+    feedback_rating=None,
+    feedback_tags=None,
+    feedback_comment=None,
+    future_destination_name=None,
 ):
     return {
-        "is_travel_request": is_travel_request,
+        "message_type": message_type,
         "needs_clarification": needs_clarification,
         "clarification_question": clarification_question,
         "month": month,
@@ -84,6 +92,11 @@ def _intent(
         "max_cost_of_living": max_cost_of_living,
         "trip_type": trip_type,
         "excluded_place_names": excluded_place_names or [],
+        "feedback_destination_name": feedback_destination_name,
+        "feedback_rating": feedback_rating,
+        "feedback_tags": feedback_tags or [],
+        "feedback_comment": feedback_comment,
+        "future_destination_name": future_destination_name,
     }
 
 
@@ -97,7 +110,7 @@ class GetTravelRecommendationTests(TestCase):
         )
 
     def test_off_topic_message_returns_canned_reply_without_calling_ai_again(self):
-        ai_provider = StubAIProvider(structured_response=_intent(is_travel_request=False))
+        ai_provider = StubAIProvider(structured_response=_intent(message_type="off_topic"))
 
         result = get_travel_recommendation(
             "what's the capital of France?", ai_provider=ai_provider, climate_provider=self.climate
@@ -213,7 +226,7 @@ class StreamTravelRecommendationTests(TestCase):
         self.assertEqual(chunks, ["Partial reply... ", FALLBACK_REPLY])
 
     def test_off_topic_yields_single_canned_chunk(self):
-        ai_provider = StubAIProvider(structured_response=_intent(is_travel_request=False))
+        ai_provider = StubAIProvider(structured_response=_intent(message_type="off_topic"))
 
         result = stream_travel_recommendation(
             "what's the capital of France?", ai_provider=ai_provider, climate_provider=self.climate
@@ -327,3 +340,158 @@ class UnhandledRequestLoggingTests(TestCase):
             )
 
         self.assertTrue(any("AI provider failure" in message for message in logs.output))
+
+
+class ConversationalFeedbackAndFutureIntentTests(TestCase):
+    """The AI must be able to receive feedback and register a past visit,
+    or a stated future travel intention, directly from the chat - no
+    separate page needed (2026-08-29 requirement)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(email="traveler@example.com", password="testpass123")
+        self.destination = _make_destination("lisbon", lat=38.72, lon=-9.14, trip_type="city")
+        self.climate = StubClimateProvider({})
+
+    def test_feedback_with_rating_creates_feedback_and_history(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="feedback",
+                feedback_destination_name="lisbon",
+                feedback_rating=8,
+                feedback_tags=["excellent_food", "too_crowded"],
+                feedback_comment="Loved the food.",
+            )
+        )
+
+        result = get_travel_recommendation(
+            "I went to Lisbon, it was amazing, 8/10, great food but too crowded",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        feedback = Feedback.objects.get(user=self.user, destination=self.destination)
+        self.assertEqual(feedback.rating, 8)
+        self.assertEqual(feedback.tags, ["excellent_food", "too_crowded"])
+        self.assertTrue(
+            TravelHistoryEntry.objects.filter(user=self.user, destination=self.destination).exists()
+        )
+        self.assertIn("lisbon", result.reply)
+        self.assertEqual(ai_provider.stream_reply_calls, [])
+
+    def test_feedback_without_rating_only_registers_history(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="feedback", feedback_destination_name="lisbon"
+            )
+        )
+
+        result = get_travel_recommendation(
+            "I visited Lisbon last year",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertTrue(
+            TravelHistoryEntry.objects.filter(user=self.user, destination=self.destination).exists()
+        )
+        self.assertFalse(Feedback.objects.filter(user=self.user).exists())
+        self.assertIn("lisbon", result.reply)
+
+    def test_resubmitting_feedback_updates_rather_than_duplicates(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="feedback", feedback_destination_name="lisbon", feedback_rating=5
+            )
+        )
+        get_travel_recommendation(
+            "Lisbon was ok, 5/10",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        ai_provider2 = StubAIProvider(
+            structured_response=_intent(
+                message_type="feedback", feedback_destination_name="lisbon", feedback_rating=9
+            )
+        )
+        get_travel_recommendation(
+            "Actually Lisbon was amazing, 9/10",
+            user=self.user,
+            ai_provider=ai_provider2,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(Feedback.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(Feedback.objects.get(user=self.user).rating, 9)
+
+    def test_feedback_requires_login(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="feedback", feedback_destination_name="lisbon", feedback_rating=8
+            )
+        )
+
+        result = get_travel_recommendation(
+            "Lisbon was great, 8/10",
+            user=None,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.reply, NEEDS_LOGIN_REPLY)
+        self.assertFalse(Feedback.objects.exists())
+
+    def test_future_intent_creates_planned_trip(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="future_intent", future_destination_name="lisbon"
+            )
+        )
+
+        result = get_travel_recommendation(
+            "I want to go to Lisbon someday",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        trip = Trip.objects.get(user=self.user, destination=self.destination)
+        self.assertEqual(trip.status, "planned")
+        self.assertIn("lisbon", result.reply)
+
+    def test_future_intent_requires_login(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="future_intent", future_destination_name="lisbon"
+            )
+        )
+
+        result = get_travel_recommendation(
+            "I want to go to Lisbon someday",
+            user=None,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.reply, NEEDS_LOGIN_REPLY)
+        self.assertFalse(Trip.objects.exists())
+
+    def test_unrecognized_destination_in_feedback_does_not_crash(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="feedback", feedback_destination_name="Nowhereland", feedback_rating=7
+            )
+        )
+
+        result = get_travel_recommendation(
+            "Nowhereland was great, 7/10",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertFalse(Feedback.objects.exists())
+        self.assertIn("Nowhereland", result.reply)

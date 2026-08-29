@@ -512,3 +512,39 @@ The guide explicitly flags one thing as a **Human Decision**: "Define the initia
 - **Verified live**: used the trip saved during Phase 13's live test ("October trip" → Marrakech), opened its feedback form, checked "Excellent food" and "Too crowded," rated it 8/10, added a comment, and saved - the trip detail page immediately showed "Rating: 8/10," "Tags: Excellent food, Too crowded" (correct labels, not keys), and the comment text.
 
 `PROJECT_STATE.md` updated - Phase 14 done. Next per the phase order: Phase 15 (Learning From Feedback) - a Joint Review phase to decide how this feedback should actually influence future recommendation scoring, not something to design unilaterally given `05_AI_DESIGN.md` §8's note that "disliking one destination does not necessarily mean the user dislikes every destination with similar characteristics."
+
+---
+
+## 2026-08-29 — Conversational feedback, travel history, and future-intent capture
+
+User request, direct and out-of-sequence relative to the guide's numbered phases: feedback should be givable straight through the chat - "no need to go to another page to do it" - and the AI should register a past visit or a stated future travel intention from the conversation itself, not only through the dedicated forms built in Phases 12-14.
+
+This is a delivery-channel extension of Phases 12/13/14's existing models (`TravelHistoryEntry`, `Trip`, `Feedback`), not Phase 15 ("Learning From Feedback" - using feedback to influence recommendation scoring, still untouched).
+
+**Design decision: one classification call, not a separate one.** Every chat message already went through a single AI call (`_extract_intent`) to determine recommendation constraints. Rather than adding a whole extra "classify this message" call ahead of it (which would have added cost/latency to the most common path, recommendation requests, for the sake of the less common ones), the existing extraction schema was widened to also classify `message_type` into `recommendation` / `feedback` / `future_intent` / `off_topic` in the same call, with type-specific fields alongside the existing recommendation fields (all still required by OpenAI's strict structured-output mode, populated only for the matching type). `is_travel_request` (a boolean) was replaced by the more general `message_type` enum - a breaking change to the schema's shape, so every existing test's `_intent()` factory and the two hardcoded `is_travel_request=False` call sites needed updating (straightforward, no logic changes).
+
+**Feedback via chat:**
+
+- Extracts `feedback_destination_name`, an optional `feedback_rating` (1-10, explicitly instructed to never invent one from a neutral factual statement), `feedback_tags` (constrained to the same 8-tag taxonomy approved in Phase 14), and `feedback_comment`.
+- Resolves the destination name through the existing `travel.services.find_destination_slugs_by_name()` (the same helper Phase 11's exclusion fix uses) - no new resolution logic needed.
+- **Giving feedback always registers a `TravelHistoryEntry` too** (`get_or_create`) - directly answers "the AI must... register a travel that occurred by user": you can't credibly rate a place you haven't been.
+- If no rating was expressed, only the history entry is created - `Feedback.rating` is a required field, so a half-formed Feedback row was never an option; the acknowledgment gently invites a rating instead of silently dropping the mention.
+- Feedback persists via `update_or_create` keyed on `(user, destination, trip=None)` - repeating/correcting feedback in a later message updates the same record. This is deliberately independent from trip-specific feedback given through `/trips/<pk>/feedback/` (which is keyed by an actual `trip`, not `None`) - a user can have both a general destination opinion and a trip-specific one; this phase didn't attempt to merge or reconcile the two.
+
+**Future travel intent via chat:**
+
+- Extracts `future_destination_name`, resolves it the same way, and creates a `Trip` with `status="planned"` via `get_or_create` (so stating the same intent twice doesn't create duplicate trips) with an auto-generated name (`"Someday: {destination}"`).
+
+**Shared handling for both new paths:**
+
+- Anonymous users get `NEEDS_LOGIN_REPLY` - there's no account to attach a history entry, feedback, or trip to. Recommendations remain available to anonymous users as before (unchanged).
+- An unrecognized destination name (not in the curated 18-destination dataset) degrades gracefully: acknowledges the message without crashing or persisting a broken/missing reference, and logs it at INFO level - the same "log what fell outside the deterministic model" pattern established in Phase 11's recommendation-philosophy decision, now applied to catalog gaps too.
+- Acknowledgment replies are templated strings, not a second AI call - these are simple confirmations, and adding a paid API call just to phrase "thanks, noted" more elaborately isn't worth it given the project's consistent cost-consciousness (`09_AI_ORCHESTRATION.md` §13).
+
+**Validation:**
+
+- 8 new tests covering: feedback with a rating (creates both `Feedback` and `TravelHistoryEntry`), feedback without a rating (history only), resubmission updates rather than duplicates, both new paths correctly gate anonymous users, future-intent creates a planned `Trip`, and an unrecognized destination name doesn't crash. Also fixed a test-authoring bug along the way: three assertions checked for `"Lisbon"` (capitalized) against a test fixture destination whose `name` field was actually the lowercase `slug` value (`"lisbon"`) - fixed the assertions, not the shared fixture helper other tests rely on.
+- 106/106 total tests passing, `ruff check .` clean, no new migrations (every model involved already existed).
+- **Verified live in one continuous real conversation** against the actual OpenAI API: "I went to Marrakech last month, it was amazing! Great food but way too crowded, I'd give it a 9/10" → correctly classified as feedback, created a real `Feedback` row (rating 9, tags `['excellent_food', 'too_crowded']`) and a `TravelHistoryEntry`, both confirmed via shell. "I want to visit Bali someday" → correctly classified as future intent, created a real `Trip` (status `planned`, name `"Someday: Bali"`), confirmed via shell. Then, in the same conversation, "somewhere warm and cheap in December" → the original recommendation flow still worked exactly as before, including Phase 13's "Save as trip" links - confirming no regression from widening the schema.
+
+`PROJECT_STATE.md` updated. This does not change what Phase 15 (Learning From Feedback) still needs to do - feedback collected this way, like feedback collected through the standalone form, does not yet influence recommendation scoring.
