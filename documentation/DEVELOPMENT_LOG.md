@@ -260,3 +260,25 @@ Closed the gap deliberately left open after Phase 7. Per `14_MVP_IMPLEMENTATION_
 - Verified live in a browser against the running Docker container: opened the profile form, checked "Beach" and "Culture", selected "Medium" cost tier, saved - got the success message, and confirmed via `manage.py shell` that the database held exactly `['beach', 'culture']` and `3`.
 
 `PROJECT_STATE.md` updated - Phase 6 is done, closing out the "skipped ahead" note from the Phase 7 entry. Next per the phase order: Phase 8 (first recommendation algorithm) - noting the OpenAI adapter (Phase 2's other deliverable) and Milestone 4 (AI Foundation) are still not implemented.
+
+---
+
+## 2026-08-29 — OpenAI adapter implemented (Milestone 4 — AI Foundation)
+
+Closed the other half of Phase 2's deliverable (the AI provider decision itself was made earlier; "Claude implements adapter" was still outstanding). Scoped this strictly to Milestone 4's component list (`14_MVP_IMPLEMENTATION_PLAN.md`): provider interface, adapter, request/response handling, error handling, basic token awareness, travel-only scope prompt - **not** the full orchestrator (context construction from `TravelerProfile`/`Destination`/conversation history, summarization, caching), which is Phase 9's job and would have been scope creep here.
+
+**Implemented**, mirroring the `integrations.climate` pattern for consistency:
+
+- New `ai` app, model-free like `integrations`.
+- `ai/provider/base.py` - `AIProvider` ABC (`generate_reply(messages, max_tokens=None) -> AIResponse`), `AIMessage`/`AIResponse` dataclasses, `AIProviderError`. Deliberately doesn't inject a system prompt itself - callers stay in control of exactly what's sent, per `09_AI_ORCHESTRATION.md` §4.
+- `ai/provider/openai_provider.py` - `OpenAIProvider`, wrapping OpenAI's Chat Completions API. Validates/normalizes the response (raises `AIProviderError` on SDK errors, missing choices, or empty content), defaults to 600 max output tokens for cost containment (`09_AI_ORCHESTRATION.md` §13), and raises a friendly `ImproperlyConfigured` pointing at `.env.example` if `OPENAI_API_KEY` is blank instead of letting a cryptic SDK auth error surface.
+- `ai/provider/__init__.py` - `get_ai_provider()` factory reading `settings.AI_PROVIDER` (default `"openai"`), same settings-driven swap pattern as the climate provider.
+- `ai/prompts.py` - `SYSTEM_PROMPT`, encoding the assistant name **"Lunna"** (the Phase 2 decision) plus two already-documented product rules: stay travel-only (`09_AI_ORCHESTRATION.md` §10) and never invent travel data (`05_AI_DESIGN.md` §7). Exists as a constant for the future orchestrator to prepend - not auto-injected by the adapter, keeping it a thin, opinion-free wrapper.
+- Settings: `AI_PROVIDER`, `AI_MODEL` (default `gpt-4o-mini`), `OPENAI_API_KEY` (blank by default). Added to `.env.example` with a comment pointing at where to get a key.
+- Added `openai` to `requirements/base.txt`.
+
+**Deliberately not real-smoke-tested against the live OpenAI API**, unlike Open-Meteo: a real call costs money on the user's account, and there's no real `OPENAI_API_KEY` configured yet (it's the user's to provide). All 6 new tests mock the OpenAI client via `unittest.mock.patch("ai.provider.openai_provider.OpenAI")`, covering: successful normalization, wrapped SDK errors, empty-content handling, and the missing-API-key config error. Manually confirmed via `manage.py shell` that calling `get_ai_provider()` without a key raises exactly the intended friendly message.
+
+**Validation:** 33/33 tests passing, `ruff check .` clean, no new migrations.
+
+`PROJECT_STATE.md` updated with a clear flag: the adapter is fully built and tested, but **won't work at runtime until the user adds a real `OPENAI_API_KEY` to `.env`.** Next per the phase order: Phase 8 (recommendation algorithm) or Phase 9 (AI orchestration, which will be the first real consumer of this adapter).

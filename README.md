@@ -66,9 +66,12 @@ users/           Custom User (email login) and TravelerProfile
 travel/          Destination model; `load_destinations` management command
 trips/           Trip, TripFlight, TripAccommodation, Feedback
 integrations/    External provider adapters (e.g. climate/ - Open-Meteo), no models
+ai/              AI provider adapter (OpenAI) and the Lunna system prompt, no models
 documentation/   Product & architecture docs, development log, decision log
 requirements/    Python dependencies (base / development / production)
 ```
+
+The AI adapter needs a real `OPENAI_API_KEY` in `.env` to work at runtime (see `.env.example`) — without one it raises a clear configuration error rather than a cryptic SDK failure.
 
 Load the curated destination dataset (after migrating) with:
 
@@ -76,4 +79,4 @@ Load the curated destination dataset (after migrating) with:
 python manage.py load_destinations
 ```
 
-Remaining domain apps (`recommendations`, `ai`) are introduced in later phases — see `documentation/15_IMPLEMENTATION_GUIDE.md`.
+The remaining domain app (`recommendations`) is introduced in a later phase — see `documentation/15_IMPLEMENTATION_GUIDE.md`.

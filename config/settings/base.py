@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "travel",
     "trips",
     "integrations",
+    "ai",
 ]
 
 # Custom user model (email login, no username field) — see users/models.py.
@@ -137,6 +138,12 @@ LOGOUT_REDIRECT_URL = "users:login"
 # Which climate provider adapter backs integrations.climate.get_climate_provider().
 # Phase 3 decision: Open-Meteo, kept swappable per 10_EXTERNAL_INTEGRATIONS.md §3.
 CLIMATE_PROVIDER = env("CLIMATE_PROVIDER", default="open_meteo")
+
+# Which AI provider adapter backs ai.provider.get_ai_provider().
+# Phase 2 decision: OpenAI, kept swappable per 05_AI_DESIGN.md §10.
+AI_PROVIDER = env("AI_PROVIDER", default="openai")
+AI_MODEL = env("AI_MODEL", default="gpt-4o-mini")
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 
 LOGGING = {
     "version": 1,

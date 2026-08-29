@@ -3,7 +3,7 @@
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
 **Last updated:** 2026-08-29
-**Current phase:** Phases 0-7 complete (Phase 7 was done before Phase 6, at the user's explicit request, then Phase 6 was completed right after). Next: Phase 8 (first recommendation algorithm) — note the OpenAI adapter itself is still not implemented, and Milestone 4 (AI Foundation) hasn't started either.
+**Current phase:** Phases 0-7 complete, plus the OpenAI adapter (Milestone 4 — AI Foundation) is now implemented too. **Important:** `OPENAI_API_KEY` in `.env` is still blank — the adapter is fully built and tested (mocked) but won't actually work at runtime until the user adds a real key. Next: Phase 8 (first recommendation algorithm) or Phase 9 (AI orchestration — the context-building layer that will actually use this adapter).
 
 **Product decision (2026-08-29):** UI is English-only for now, built translation-ready (`LocaleMiddleware`, `LOCALE_PATHS`, `LANGUAGES` already configured — see `CLAUDE.md` rule 5). Working/communication language with the user also switched to English as of this date.
 
@@ -63,6 +63,14 @@ Blocked / not started:
   - Linked from the account page ("Edit my traveler profile").
   - **Note on Milestone 6's full DoD** ("TravelAgent can use authorized profile information to personalize recommendations"): only the edit/retrieve/authorization half is done here — the recommendation engine that would consume this data doesn't exist yet (Phase 8). Expected at this point in the sequence, not a gap specific to this phase.
   - 4 new tests (login-required redirect, auto-create on first visit, save persists correctly, one user's edits don't affect another's) — 27/27 total passing. `ruff check .` clean, no new migrations. Verified live in a browser: checked "Beach" + "Culture", selected "Medium" cost tier, saved, confirmed success message and correct DB persistence.
+- [x] **OpenAI adapter (Phase 2's remaining deliverable / Milestone 4 — AI Foundation)** ✅ Done 2026-08-29. New `ai` app (no models, same style as `integrations`):
+  - `ai.provider.AIProvider` — internal AI Provider Abstraction (`05_AI_DESIGN.md` §10, `09_AI_ORCHESTRATION.md` §11), ABC with `generate_reply(messages, max_tokens=None) -> AIResponse`. `AIMessage`/`AIResponse` are plain dataclasses so the interface stays provider-agnostic.
+  - `ai.provider.openai_provider.OpenAIProvider` — calls OpenAI's Chat Completions API. Validates/normalizes the response, wraps `OpenAIError`/empty-content/malformed-response cases in `AIProviderError`, defaults `max_tokens=600` for cost containment, raises a friendly `ImproperlyConfigured` (pointing at `.env.example`) if `OPENAI_API_KEY` is blank rather than a cryptic SDK error.
+  - `ai.provider.get_ai_provider()` — factory reading `settings.AI_PROVIDER` (default `"openai"`), same swappable-via-settings pattern as the climate provider.
+  - `ai/prompts.py` — the `SYSTEM_PROMPT` constant naming the assistant "Lunna" (per the Phase 2 decision) and encoding two product rules: travel-only scope (`09_AI_ORCHESTRATION.md` §10) and never inventing travel data (`05_AI_DESIGN.md` §7). Not auto-injected by the adapter — callers (the future orchestration layer, Phase 9) prepend it explicitly.
+  - **Explicitly not built here:** the actual orchestrator that constructs context from `TravelerProfile`/`Destination`/conversation history, summarization, and response caching — those are Phase 9 (AI orchestration) concerns. This phase only delivers the swappable provider adapter itself, matching Milestone 4's scope.
+  - Added `openai` to `requirements/base.txt`; `OPENAI_API_KEY`/`AI_MODEL` documented in `.env.example` (key left blank — real value is the user's to provide, never committed).
+  - 6 new tests, all mocking the OpenAI client (no real API calls, unlike the free Open-Meteo adapter — a real call costs money on the user's account and needs a real key we don't have). 33/33 total tests passing, `ruff check .` clean, no new migrations. Manually confirmed the missing-key path raises the intended friendly error.
 - [ ] Phase 8 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list
 
 ## What exists in the repo right now
@@ -78,6 +86,7 @@ TravelAgent/
 ├── travel/                        Destination model + `load_destinations` management command
 ├── trips/                         Trip, TripFlight, TripAccommodation, Feedback
 ├── integrations/                  climate/ - ClimateProvider interface + Open-Meteo adapter (no models)
+├── ai/                             provider/ - AIProvider interface + OpenAI adapter; prompts.py (Lunna) (no models)
 ├── requirements/                  base.txt / development.txt / production.txt
 ├── docker-compose.yml             db (Postgres 16) + redis (7) + web + worker (celery)
 ├── Dockerfile                     multi-stage (builder installs deps, runtime stays slim)
