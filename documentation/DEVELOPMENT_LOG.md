@@ -580,3 +580,22 @@ This had been completely harmless for 14 phases' worth of tests, because nothing
 - **Verified against the real Celery worker**, not eager mode: created real `Feedback` via `manage.py shell` (not a test), confirmed via `docker compose logs worker` that the task was received and processed by the actual separate worker process, then confirmed the real `TravelerProfile` was updated exactly as the approved rules specify - `preferred_trip_types` gained `beach` after two 9/10 ratings on beach destinations, while `preferred_cost_of_living` correctly stayed at its existing value (`3`, set manually back during Phase 6's live testing) rather than being overwritten by the new signal, even though the new destinations' cost tier would otherwise have qualified.
 
 `PROJECT_STATE.md` updated - Phase 15 done, all 15 numbered phases from `15_IMPLEMENTATION_GUIDE.md` now complete. The test-settings tooling note is recorded in `CLAUDE.md` for future sessions.
+
+---
+
+## 2026-08-30 — Post-Phase-15 revision (code + infrastructure review)
+
+**Milestone:** Not a numbered guide phase - a user-requested full review pass across all 15 completed phases before starting Phase 16, to catch anything that had slipped through 15 phases of forward momentum.
+
+**What was reviewed:** full Docker-based validation (migrations, 115/115 tests under `config.settings.test`, `ruff check .`, `manage.py check --deploy`), plus a manual critical-read pass over settings (`base.py`/`production.py`/`test.py`), the AI orchestration/provider layer, every view's authorization pattern, the recommendation scoring module, the Phase 15 Celery task, and the Docker/CI configuration.
+
+**Two real, previously-unnoticed issues found and fixed:**
+
+1. **CI never actually ran on push.** `.github/workflows/ci.yml`'s `push:` trigger was scoped to `branches: [main]`, but this repo's only branch has always been `master` (confirmed via `git branch -a` - no `main` ever existed here). Every push made across this entire session silently did not trigger CI - the "tests + lint validate every push" safety net assumed throughout the project log did not actually exist for direct pushes, only for pull requests (of which there have been none). **Fixed**: changed the trigger to `branches: [master]`.
+2. **Production settings had no fail-fast guard for a missing `SECRET_KEY`.** `production.py` already raised `RuntimeError` if `ALLOWED_HOSTS` was unset, but had no equivalent check for `SECRET_KEY` - if `DJANGO_SECRET_KEY` were ever missing in a real deployment, it would have silently fallen back to `base.py`'s hardcoded insecure default string instead of failing loudly. **Fixed** by adding the same fail-fast pattern. **Caught a bug in the fix itself during verification**: the first version only checked `SECRET_KEY == "unsafe-development-key-change-me"`, but `django-environ` doesn't fall back to that default when the env var is explicitly set to an *empty* string - it stays `""`. Verified this gap concretely (`docker compose exec -e DJANGO_SECRET_KEY= ...` passed `check --deploy` with only a warning, not the intended hard failure) before broadening the condition to `if not SECRET_KEY or SECRET_KEY == "unsafe-development-key-change-me"`, then re-verified both the empty-string case (now raises) and the real-key case (still passes cleanly).
+
+**Reviewed and confirmed already correct (no changes needed):** CSRF handling in the chat page's JS, structural per-user authorization on every trip/history/feedback view, no SQL-injection surface (all ORM-parametrized), AI-generated text rendered via `textContent` (no XSS path), and the Phase 15 Celery task's retry-safety/additive-only rules matching exactly what was approved.
+
+**Noted but not acted on (deliberately, not urgent):** `recommendations.scoring.generate_recommendations()` calls the climate provider once per candidate destination in a loop - fine at the curated dataset's current size (18, Redis-cached), would need batching if the catalog grows substantially. The `Dockerfile` still installs `development.txt` and runs `manage.py runserver` rather than `gunicorn` (already present unused in `requirements/base.txt`) - correct for the current dev-only setup; switching to a real production image is a small, already-anticipated future step, not a current gap.
+
+**Validation:** full suite re-run after both fixes - 115/115 tests passing, `ruff check .` clean. Docker stack brought back down afterward (review-only run, nothing needs to stay up).

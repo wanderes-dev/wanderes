@@ -12,6 +12,9 @@ DEBUG = False
 if not ALLOWED_HOSTS:
     raise RuntimeError("DJANGO_ALLOWED_HOSTS must be set in production.")
 
+if not SECRET_KEY or SECRET_KEY == "unsafe-development-key-change-me":
+    raise RuntimeError("DJANGO_SECRET_KEY must be set in production.")
+
 SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
