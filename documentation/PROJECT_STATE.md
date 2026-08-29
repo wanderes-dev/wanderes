@@ -3,7 +3,7 @@
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
 **Last updated:** 2026-08-29
-**Current phase:** Phases 0-12 complete. There is a working, live-validated chat UI at `/chat/` — start it with `docker compose up -d` and open http://localhost:8000/chat/ (see README). `OPENAI_API_KEY` is configured in `.env` (never committed). Phase 11 (Joint Review) found and fixed real gaps (trip_type filtering, exclusions) and closed with an explicit human decision on recommendation philosophy (unplanned requests fall to AI judgment, logged for review — not modeled preemptively). Phase 12 (Travel History) adds a `TravelHistoryEntry` model + CRUD, feeding the existing repetition-penalty scoring for the first time in a way real users can actually trigger. Next: Phase 13 (Trip Management).
+**Current phase:** Phases 0-13 complete. There is a working, live-validated chat UI at `/chat/` — start it with `docker compose up -d` and open http://localhost:8000/chat/ (see README). `OPENAI_API_KEY` is configured in `.env` (never committed). Phase 11 (Joint Review) found and fixed real gaps and closed with an explicit human decision on recommendation philosophy. Phase 12 (Travel History) added `TravelHistoryEntry` + CRUD. Phase 13 (Trip Management) added full `Trip` CRUD plus "save this recommendation as a trip" directly from the chat page — the whole loop (chat → recommendation → save → view trip) works for real, live-tested. Repo is pushed to https://github.com/wanderes-dev/wanderes.git (remote `origin`, branch `master`). Next: Phase 14 (Feedback).
 
 **Product decision (2026-08-29):** UI is English-only for now, built translation-ready (`LocaleMiddleware`, `LOCALE_PATHS`, `LANGUAGES` already configured — see `CLAUDE.md` rule 5). Working/communication language with the user also switched to English as of this date.
 
@@ -118,7 +118,14 @@ Blocked / not started:
   - Linked from the account page ("My travel history").
   - 10 new tests (model, 7 view/authorization cases, repetition-penalty-from-history) — 83/83 total passing, `ruff check .` clean. One new migration (`trips.0003_travelhistoryentry`).
   - **Verified live, including the actual scoring effect**: added "Chiang Mai, 2019" via the real browser UI for a real logged-in user, then confirmed via `get_travel_recommendation(..., user=that_user)` against the real OpenAI + Open-Meteo APIs that Chiang Mai's `repetition_penalty` became `3.0` and it dropped from top-ranked to 5th place — present, just deprioritized, exactly as intended.
-- [ ] Phase 13 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list (Phase 13 — Trip Management: create/edit/view/delete a `Trip`, which will make the existing completed-Trip repetition-penalty path reachable by real users too)
+- [x] **Phase 13 — Trip Management** ✅ Done 2026-08-29. Per `15_IMPLEMENTATION_GUIDE.md` Phase 13 / `14_MVP_IMPLEMENTATION_PLAN.md` Milestone 8: create/edit/view/delete a `Trip` (name, destination, dates), plus "save relevant recommendations." **Do not build advanced itinerary management** — respected; no new Trip Item types added.
+  - `Trip` gained a `name` field (nickname, e.g. "Summer in Lisbon"; blank falls back to `"{destination}"` in `__str__`/display). Migration `trips.0004_trip_name`.
+  - Full CRUD at `/trips/` (list), `/trips/create/`, `/trips/<pk>/` (detail), `/trips/<pk>/edit/`, `/trips/<pk>/delete/` — all `login_required`, structurally scoped to `user=request.user` (another user's trip 404s, matching the established pattern).
+  - **"Save relevant recommendations" implemented for real**, not skipped as a stretch goal: `/api/v1/recommendations/`'s streaming response now appends a trailing delimiter + JSON footer (`[{slug, name, country}, ...]` for the top recommended destinations) after the visible reply text. The chat page's JS buffers the stream, strips the footer out of the displayed bubble text, parses it, and renders a "Save as trip" link per destination pointing at `/trips/create/?destination=<slug>` (which pre-fills that destination in the create form).
+  - Linked from the account page ("My trips").
+  - 16 new tests (Trip CRUD + authorization, prefill-from-query-param, and the recommendations-footer behavior on the streaming view) — 93/93 total passing, `ruff check .` clean.
+  - **Verified the full real, live flow end-to-end**: asked Lunna for a real recommendation in the browser → got 5 "Save as trip" links with clean (non-leaked) reply text → clicked "Save Marrakech as a trip" → form opened with Marrakech pre-selected → saved as "October trip" → landed on the trip detail page → confirmed it appears in the trip list.
+- [ ] Phase 14 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list (Phase 14 — Feedback)
 
 ## What exists in the repo right now
 
@@ -131,7 +138,7 @@ TravelAgent/
 │   └── data/curated_destinations.json   Approved initial destination dataset (Phase 3, 18 entries)
 ├── users/                         Custom User (email login) + TravelerProfile
 ├── travel/                        Destination model + `load_destinations` management command
-├── trips/                         Trip, TripFlight, TripAccommodation, Feedback, TravelHistoryEntry (+ CRUD at /trips/history/)
+├── trips/                         Trip (+ CRUD at /trips/), TripFlight, TripAccommodation, Feedback, TravelHistoryEntry (+ CRUD at /trips/history/)
 ├── integrations/                  climate/ - ClimateProvider interface + Open-Meteo adapter (no models)
 ├── ai/                             provider/ (incl. streaming) + orchestration.py + prompts.py (Lunna); views.py/urls.py/templates - the /chat/ page (no models)
 ├── recommendations/                scoring.py - deterministic recommendation scoring/ranking (no models)
@@ -150,13 +157,12 @@ TravelAgent/
 - **A PostgreSQL 18 server is also installed and running as a Windows service** (`postgresql-x64-18`, listening on `0.0.0.0:5432`) — pre-existing system state, not created for TravelAgent, unrelated to TravelAgent's Dockerized Postgres 16. Claude Code does not have its credentials and has not touched it. Note: Docker Compose's `db` service also publishes host port 5432 and bound successfully during validation — the two do not appear to conflict in practice (likely because they're not both listening at the same time), but avoid running both simultaneously if port-binding errors ever appear.
 - Local Python available via the `py` launcher (3.14). A `.venv` exists at the repo root with dependencies installed; `python manage.py check` and `ruff check .` both pass outside Docker too.
 - The Docker image pins Python 3.12 (more predictable wheel availability for `psycopg`) — confirmed working (3.12.14 inside the built image).
-- Local `.env` now exists (gitignored) with a generated `DJANGO_SECRET_KEY`, copied from `.env.example`. Future sessions on this machine don't need to recreate it.
+- Local `.env` now exists (gitignored) with a generated `DJANGO_SECRET_KEY`, copied from `.env.example`. Future sessions on this machine don't need to recreate it — it also has a real `OPENAI_API_KEY` as of Phase 9's live-testing session (2026-08-29).
+- **GitHub remote configured** (2026-08-29): `origin` → `https://github.com/wanderes-dev/wanderes.git`, branch `master` pushed and tracking `origin/master`. Push authentication goes through Windows Git Credential Manager — the cached credential is for the `wanderes-dev` GitHub account (a different, earlier-cached `cantarino10` credential was rejected since it didn't have access to this repo). If push auth ever fails again with "Repository not found," check which GitHub account GCM is using (`git credential fill` with `protocol=https`/`host=github.com`) before assuming the repo itself is missing.
 
-## Next action once you unblock Phase 2 & 3
+## Next actionable steps
 
-1. Tell Claude Code your AI provider decision and travel data provider decision(s) — see `DECISIONS_PENDING.md` for the specific questions.
-2. Claude Code implements the corresponding provider adapters (Phase 2 → AI adapter; Phase 3 → travel data adapters) behind the internal interfaces described in `05_AI_DESIGN.md` §10 and `10_EXTERNAL_INTEGRATIONS.md` §3.
-3. Then Phase 4 (initial domain models: User, Traveler Profile, Destination, Trip, Feedback) becomes a **Joint Review** task — Claude Code will propose the Django models based on `04_DATABASE_DESIGN.md`, and you review before they're implemented for real.
+Per `15_IMPLEMENTATION_GUIDE.md`'s phase list, the next unstarted phase is **Phase 14 — Feedback** (owner: Claude Code + Human Review). See the phase-by-phase checklist above for everything already done.
 
 ## Resume checklist for a fresh Claude session
 

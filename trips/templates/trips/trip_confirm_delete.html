@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}Delete trip - TravelAgent{% endblock %}
+
+{% block content %}
+<h1>Delete this trip?</h1>
+<p>{{ trip.name|default:trip.destination.name }} - {{ trip.destination.name }}, {{ trip.destination.country }}</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit">Delete</button>
+</form>
+<p><a href="{% url 'trips:trip-detail' trip.pk %}">Cancel</a></p>
+{% endblock %}

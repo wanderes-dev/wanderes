@@ -451,3 +451,41 @@ Worth noting: the repetition-penalty logic added back in Phase 8 (`recommendatio
 - **Live-verified the actual effect on scoring, not just the CRUD UI**: added "Chiang Mai, 2019" through the real browser for a real logged-in user (`browsertest@example.com`, left over from earlier Phase 6 testing), then called `get_travel_recommendation(..., user=that_user)` against the real OpenAI + Open-Meteo APIs. Chiang Mai's `repetition_penalty` came back `3.0` and it dropped from top-ranked (as seen in earlier Phase 8/11 live tests with no history) down to 5th place - still present in the results, just deprioritized, exactly matching the intended behavior.
 
 `PROJECT_STATE.md` updated - Phase 12 done. Next per the phase order: Phase 13 (Trip Management) - create/edit/view/delete a real `Trip`, which will finally make the completed-Trip repetition-penalty path reachable by real users too, not just Travel History entries.
+
+---
+
+## 2026-08-29 — Repository pushed to GitHub (wanderes-dev/wanderes)
+
+User asked to push the project to `https://github.com/wanderes-dev/wanderes.git`. First attempt failed with "Repository not found" even though Windows Git Credential Manager had a cached credential - turned out GCM was authenticating as `cantarino10`, an account without access to that repo. User confirmed it should be a different account. Rejected the `cantarino10` credential (`git credential reject`), which revealed GCM had a *second* cached credential for github.com under `wanderes-dev` - the correct account. Re-ran the push and it succeeded (`master` → `origin/master`, tracking set up). Did not enter any password/token on the user's behalf at any point - only removed a stale cached credential so GCM would offer the already-cached correct one instead.
+
+Confirmed `.env` was never staged or pushed (gitignored from the start, per Milestone 1's setup).
+
+---
+
+## 2026-08-29 — Phase 13: Trip Management
+
+Per `15_IMPLEMENTATION_GUIDE.md` Phase 13 / `14_MVP_IMPLEMENTATION_PLAN.md` Milestone 8: create/edit/view/delete a `Trip`, add destination/dates, and "save relevant recommendations." Explicitly not building advanced itinerary management - no new Trip Item types, no complex planning tools.
+
+**Trip CRUD:**
+
+- Added `Trip.name` (blank-able nickname field, e.g. "Summer in Lisbon") - Milestone 8 explicitly lists "Name a trip" as a feature the existing `Trip` model (Phase 4) didn't have. Migration `trips.0004_trip_name`.
+- `TripForm` (`name`, `destination`, `start_date`, `end_date`, `status`), with HTML5 date inputs for the date fields.
+- Views: `trip_list`, `trip_create`, `trip_detail`, `trip_edit`, `trip_delete` - all `login_required`, all structurally scoped to `user=request.user` (`get_object_or_404(Trip, pk=pk, user=request.user)`), matching the authorization pattern already established for `TravelHistoryEntry` and `users:profile`. Delete has a confirmation page, matching the Travel History delete flow.
+- Linked from the account page ("My trips").
+
+**"Save relevant recommendations" - implemented for real, not deferred as a stretch goal:**
+
+Phase 10's chat page deliberately didn't expose structured destination data to the frontend (documented then as "a reasonable future enhancement"). This phase is that enhancement. Rather than adding a second endpoint or server-side session state to remember "what was just recommended," the streaming response itself now carries both pieces of information in one request:
+
+- `ai/views.py`'s `recommendations_stream` appends a distinctive delimiter (`\n<<<TRAVELAGENT_RECOMMENDATIONS>>>\n`) followed by a JSON array of `{slug, name, country}` for the recommended destinations, after the visible reply text finishes streaming.
+- The chat page's JS now buffers the incoming stream into a string (rather than appending each chunk directly to the bubble), checks for the delimiter on every read, and only ever displays the portion before it - so the bubble never shows the raw footer even momentarily. Once the stream ends, whatever comes after the delimiter is parsed as JSON and rendered as a list of "Save `<name>` as a trip" links, each pointing at `/trips/create/?destination=<slug>`.
+- `trip_create`'s view reads that `?destination=` query parameter and pre-selects it in the form via `initial=`.
+
+This keeps the "AI Provider Abstraction" and orchestration layers completely untouched - the extra data was already sitting in `StreamingOrchestrationResult.recommendations`, computed synchronously before the text stream even starts; this only changes how the view packages the response and how the page renders it.
+
+**Validation:**
+
+- 16 new tests: full Trip CRUD + authorization (list/detail/edit/delete all scope-checked the same way as Travel History's), the destination-prefill-from-query-param behavior, and a `recommendations_stream` test confirming the footer is present/absent/well-formed. Hit one test bug (not a code bug): hardcoded `value="1"` assuming a fresh auto-increment sequence - Postgres doesn't reset `SERIAL` counters between rolled-back test transactions, so the real PK was 77. Fixed by asserting against `self.destination.pk` instead of a literal. 93/93 total tests passing, `ruff check .` clean.
+- **Full real, live end-to-end verification**, not just the CRUD pages in isolation: asked Lunna a real question in the browser ("somewhere warm in October, not too expensive"), got a real streamed reply plus 5 clean "Save as trip" links (no leaked delimiter/JSON in the visible text), clicked "Save Marrakech as a trip," confirmed the create form opened with Marrakech pre-selected, saved it as "October trip," landed on its detail page, and confirmed it appears in the trip list. The whole chat → recommend → save → view loop works for real.
+
+`PROJECT_STATE.md` updated - Phase 13 done. Next per the phase order: Phase 14 (Feedback).

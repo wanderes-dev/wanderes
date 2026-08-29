@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}My trips - TravelAgent{% endblock %}
+
+{% block content %}
+<h1>My trips</h1>
+<p><a href="{% url 'trips:trip-create' %}">Create a new trip</a></p>
+
+{% if trips %}
+<ul>
+    {% for trip in trips %}
+    <li>
+        <a href="{% url 'trips:trip-detail' trip.pk %}">
+            {{ trip.name|default:trip.destination.name }} - {{ trip.destination.name }}, {{ trip.destination.country }}
+        </a>
+        ({{ trip.get_status_display }})
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p>You haven't saved any trips yet.</p>
+{% endif %}
+
+<p><a href="{% url 'users:account' %}">Back to my account</a></p>
+{% endblock %}

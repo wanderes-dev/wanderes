@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}{{ trip.name|default:trip.destination.name }} - TravelAgent{% endblock %}
+
+{% block content %}
+<h1>{{ trip.name|default:trip.destination.name }}</h1>
+<p>Destination: {{ trip.destination.name }}, {{ trip.destination.country }}</p>
+<p>Status: {{ trip.get_status_display }}</p>
+{% if trip.start_date or trip.end_date %}
+<p>Dates: {{ trip.start_date|default:"?" }} - {{ trip.end_date|default:"?" }}</p>
+{% endif %}
+
+<p>
+    <a href="{% url 'trips:trip-edit' trip.pk %}">Edit</a>
+    - <a href="{% url 'trips:trip-delete' trip.pk %}">Delete</a>
+</p>
+<p><a href="{% url 'trips:trip-list' %}">Back to my trips</a></p>
+{% endblock %}

@@ -34,6 +34,9 @@ class Trip(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="trips"
     )
+    name = models.CharField(
+        max_length=200, blank=True, help_text="A short nickname, e.g. 'Summer in Lisbon'."
+    )
     destination = models.ForeignKey(
         "travel.Destination", on_delete=models.PROTECT, related_name="trips"
     )
@@ -44,7 +47,7 @@ class Trip(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.user.email} -> {self.destination.name} ({self.status})"
+        return self.name or f"{self.user.email} -> {self.destination.name} ({self.status})"
 
 
 class TripFlight(models.Model):

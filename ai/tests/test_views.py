@@ -1,9 +1,13 @@
+import json
 from unittest.mock import patch
 
 from django.test import TestCase
 from django.urls import reverse
 
 from ai.orchestration import StreamingOrchestrationResult
+from ai.views import RECOMMENDATIONS_DELIMITER
+from recommendations.scoring import ScoredDestination
+from travel.models import Destination
 from users.models import User
 
 
@@ -52,6 +56,47 @@ class RecommendationsStreamViewTests(TestCase):
         mock_stream.assert_called_once()
         _, kwargs = mock_stream.call_args
         self.assertIsNone(kwargs["user"])
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_appends_recommendations_footer_when_present(self, mock_stream):
+        destination = Destination.objects.create(
+            slug="lisbon-pt",
+            name="Lisbon",
+            country="Portugal",
+            latitude="38.72000",
+            longitude="-9.14000",
+            trip_type="city",
+            cost_of_living=3,
+            best_season="Mar-Oct",
+            worst_season="Dec-Feb",
+            short_description="A hilly coastal capital.",
+            points_of_interest=[],
+        )
+        scored = ScoredDestination(
+            destination=destination,
+            avg_high_c=24.0,
+            avg_low_c=16.0,
+            preference_fit=0.0,
+            budget_fit=0.0,
+            temperature_fit=0.0,
+            repetition_penalty=0.0,
+            score=0.0,
+        )
+        mock_stream.return_value = StreamingOrchestrationResult(
+            needs_clarification=False,
+            recommendations=[scored],
+            reply_chunks=iter(["Try Lisbon!"]),
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "somewhere warm"}
+        )
+
+        content = b"".join(response.streaming_content).decode()
+        text_part, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
+        self.assertEqual(text_part, "Try Lisbon!")
+        parsed = json.loads(json_part)
+        self.assertEqual(parsed, [{"slug": "lisbon-pt", "name": "Lisbon", "country": "Portugal"}])
 
     @patch("ai.views.stream_travel_recommendation")
     def test_passes_authenticated_user_through(self, mock_stream):

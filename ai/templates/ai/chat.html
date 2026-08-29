@@ -68,6 +68,17 @@
         padding: 0.6rem 1rem;
         font-size: 1rem;
     }
+    .save-trip-links {
+        align-self: flex-start;
+        max-width: 85%;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        margin-top: -0.5rem;
+    }
+    .save-trip-links a {
+        font-size: 0.9rem;
+    }
     @media (max-width: 480px) {
         .chat-page { padding: 0.5rem; }
         .chat-bubble { max-width: 95%; }
@@ -101,6 +112,7 @@
     const sendButton = document.getElementById("send-button");
     const messages = document.getElementById("chat-messages");
     const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]").value;
+    const RECOMMENDATIONS_DELIMITER = "\n<<<TRAVELAGENT_RECOMMENDATIONS>>>\n";
 
     function addBubble(text, className) {
         const bubble = document.createElement("div");
@@ -114,6 +126,22 @@
     function setLoading(isLoading) {
         input.disabled = isLoading;
         sendButton.disabled = isLoading;
+    }
+
+    function addSaveTripLinks(destinations) {
+        if (!destinations || !destinations.length) {
+            return;
+        }
+        const container = document.createElement("div");
+        container.className = "save-trip-links";
+        destinations.forEach(function (destination) {
+            const link = document.createElement("a");
+            link.href = "/trips/create/?destination=" + encodeURIComponent(destination.slug);
+            link.textContent = "Save " + destination.name + " as a trip";
+            container.appendChild(link);
+        });
+        messages.appendChild(container);
+        messages.scrollTop = messages.scrollHeight;
     }
 
     async function sendMessage(message) {
@@ -149,6 +177,13 @@
         const replyBubble = addBubble("", "assistant");
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let buffer = "";
+
+        function render() {
+            const delimiterIndex = buffer.indexOf(RECOMMENDATIONS_DELIMITER);
+            replyBubble.textContent = delimiterIndex === -1 ? buffer : buffer.slice(0, delimiterIndex);
+            messages.scrollTop = messages.scrollHeight;
+        }
 
         try {
             while (true) {
@@ -156,11 +191,22 @@
                 if (done) {
                     break;
                 }
-                replyBubble.textContent += decoder.decode(value, { stream: true });
-                messages.scrollTop = messages.scrollHeight;
+                buffer += decoder.decode(value, { stream: true });
+                render();
             }
         } catch (streamError) {
-            replyBubble.textContent += "\n[Connection interrupted]";
+            buffer += "\n[Connection interrupted]";
+            render();
+        }
+
+        const delimiterIndex = buffer.indexOf(RECOMMENDATIONS_DELIMITER);
+        if (delimiterIndex !== -1) {
+            const jsonText = buffer.slice(delimiterIndex + RECOMMENDATIONS_DELIMITER.length);
+            try {
+                addSaveTripLinks(JSON.parse(jsonText));
+            } catch (parseError) {
+                // No usable recommendations footer - not an error the user needs to see.
+            }
         }
 
         setLoading(false);
