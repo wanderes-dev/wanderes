@@ -1,0 +1,94 @@
+from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import UserManager as DjangoUserManager
+from django.db import models
+
+# Same 1-5 scale used by travel.Destination.cost_of_living, so a traveler's
+# preferred cost of living and a destination's cost of living are directly
+# comparable.
+COST_OF_LIVING_CHOICES = [
+    (1, "Very low"),
+    (2, "Low"),
+    (3, "Medium"),
+    (4, "High"),
+    (5, "Very high"),
+]
+
+TRIP_TYPE_CHOICES = [
+    ("beach", "Beach"),
+    ("city", "City"),
+    ("nature", "Nature"),
+    ("culture", "Culture"),
+]
+
+
+class UserManager(DjangoUserManager):
+    """Creates users by email instead of Django's default username field."""
+
+    def _create_user(self, email=None, password=None, **extra_fields):
+        if not email:
+            raise ValueError("Users must have an email address")
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_user(self, email=None, password=None, **extra_fields):
+        extra_fields.setdefault("is_staff", False)
+        extra_fields.setdefault("is_superuser", False)
+        return self._create_user(email, password, **extra_fields)
+
+    def create_superuser(self, email=None, password=None, **extra_fields):
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        if extra_fields.get("is_staff") is not True:
+            raise ValueError("Superuser must have is_staff=True.")
+        if extra_fields.get("is_superuser") is not True:
+            raise ValueError("Superuser must have is_superuser=True.")
+        return self._create_user(email, password, **extra_fields)
+
+
+class User(AbstractUser):
+    """TravelAgent account and authentication identity.
+
+    Login is by email (not username) per the 2026-08-29 product decision.
+    Google OAuth is a planned future login method (not yet implemented) —
+    this model doesn't need extra fields for that; it would be handled by
+    a social-auth library (e.g. django-allauth) linking to this model.
+    """
+
+    username = None
+    email = models.EmailField("email address", unique=True)
+
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = []
+
+    objects = UserManager()
+
+    def __str__(self):
+        return self.email
+
+
+class TravelerProfile(models.Model):
+    """Minimal traveler preferences.
+
+    Deliberately thin per 14_MVP_IMPLEMENTATION_PLAN.md Milestone 2
+    ("do not build the complete traveler profile yet"). Preference
+    history, inferred preferences, and feedback-driven learning belong to
+    later milestones.
+    """
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="traveler_profile")
+    preferred_trip_types = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of preferred trip type codes, e.g. ['beach', 'culture'].",
+    )
+    preferred_cost_of_living = models.PositiveSmallIntegerField(
+        choices=COST_OF_LIVING_CHOICES, null=True, blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Traveler profile for {self.user.email}"

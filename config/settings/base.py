@@ -33,7 +33,15 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "core",
+    "users",
+    "travel",
+    "trips",
 ]
+
+# Custom user model (email login, no username field) — see users/models.py.
+# Must be set before the first migration; do not change once real user
+# data exists without a data migration plan.
+AUTH_USER_MODEL = "users.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

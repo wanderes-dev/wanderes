@@ -62,8 +62,17 @@ ruff check .
 ```
 config/          Django project settings, URLs, WSGI/ASGI, Celery app
 core/            Cross-cutting infrastructure (health check, shared utilities)
+users/           Custom User (email login) and TravelerProfile
+travel/          Destination model; `load_destinations` management command
+trips/           Trip, TripFlight, TripAccommodation, Feedback
 documentation/   Product & architecture docs, development log, decision log
 requirements/    Python dependencies (base / development / production)
 ```
 
-Domain apps (users, traveler profiles, trips, recommendations, AI orchestration, integrations) are introduced in later phases, once the relevant provider and architecture decisions are made — see `documentation/15_IMPLEMENTATION_GUIDE.md`.
+Load the curated destination dataset (after migrating) with:
+
+```bash
+python manage.py load_destinations
+```
+
+Remaining domain apps (`recommendations`, `ai`, `integrations`) are introduced in later phases, once the relevant provider work is implemented — see `documentation/15_IMPLEMENTATION_GUIDE.md`.

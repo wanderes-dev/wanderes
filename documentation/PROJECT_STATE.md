@@ -3,7 +3,7 @@
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
 **Last updated:** 2026-08-29
-**Current phase:** Phase 1 fully validated (DoD complete). Phase 2 (OpenAI) and Phase 3 (curated dataset + Open-Meteo, including the actual 18-destination dataset) both decided. No open human decisions blocking progress — next steps are provider adapter implementation and Phase 4 (domain models, Joint Review).
+**Current phase:** Phases 0-4 complete. Phase 2 (OpenAI), Phase 3 (curated dataset + Open-Meteo), and Phase 4 (initial domain models — User/TravelerProfile/Destination/Trip/TripFlight/TripAccommodation/Feedback) are all done. Next up: Phase 5 (authentication) or provider adapter implementation.
 
 **Product decision (2026-08-29):** UI is English-only for now, built translation-ready (`LocaleMiddleware`, `LOCALE_PATHS`, `LANGUAGES` already configured — see `CLAUDE.md` rule 5). Working/communication language with the user also switched to English as of this date.
 
@@ -34,8 +34,15 @@ Blocked / not started:
 
 - [x] **Phase 2 — Select AI provider** ✅ Decided 2026-08-28: **OpenAI**, behind the internal AI Provider Abstraction. Assistant persona named **"Lunna"**. See `DECISIONS_PENDING.md` §1 for the full decision record and implementation priorities (conversation context vs. persistent memory, context summarization, relevant-data-only, caching). **Adapter not yet implemented — next actionable step.**
 - [x] **Phase 3 — Select travel data providers** ✅ Decided 2026-08-28: **curated static dataset** for destination data (name/country/description/POIs) + **Open-Meteo** for real climate data, both behind the internal Travel Data Interface. Flights/hotels deferred per the MVP plan. See `DECISIONS_PENDING.md` §2. Initial curated destination list (18 destinations) drafted and approved 2026-08-29 — stored at `documentation/data/curated_destinations.json`. **Adapters (Open-Meteo client + destination data access) not yet implemented — next actionable step.**
-- [ ] Phase 4 — Define initial domain models (Joint Review) — depends on Phase 2 & 3
-- [ ] Phase 5 — Authentication
+- [x] **Phase 4 — Define initial domain models (Joint Review)** ✅ Done 2026-08-29. Proposed, reviewed/iterated, and implemented. See `DEVELOPMENT_LOG.md` for the full design discussion. Summary:
+  - `users.User` — custom user model, **email-based login** (no username field). Google OAuth is a planned future login method (per user request) but **not implemented yet** — deferred, same as `14_MVP_IMPLEMENTATION_PLAN.md` Milestone 2 originally specified.
+  - `users.TravelerProfile` — deliberately minimal (preferred trip types, preferred cost-of-living tier).
+  - `travel.Destination` — shaped to match `documentation/data/curated_destinations.json` exactly; loadable via `python manage.py load_destinations`.
+  - `trips.Trip`, `trips.TripFlight`, `trips.TripAccommodation`, `trips.Feedback` — `TripFlight`/`TripAccommodation` are real relational models (not JSON), so prices/ratings stay properly typed and a trip can have multiple flight legs (connections) as ordered rows. `Feedback` has a DB-level constraint requiring at least a destination or a trip.
+  - `TripItem` (generic) and community-intelligence entities (`CommunityReview`, etc.) explicitly deferred to later milestones/phases, per `04_DATABASE_DESIGN.md`'s "avoid speculative entities."
+  - Migrations validated end-to-end in Docker (`makemigrations` → `migrate` → `pytest` — 9 passing model tests — → `ruff check .` clean). The curated dataset was loaded for real (18/18 destinations).
+  - **Note:** validating this required dropping and recreating the local dev Postgres volume (`docker compose down -v`), since `AUTH_USER_MODEL` can't change after migrations have been applied against it. The old volume only held the empty Milestone 1 smoke-test state — no real data was lost.
+- [ ] Phase 5 — Authentication (registration/login/logout with email; Google OAuth explicitly deferred)
 - [ ] Phase 6 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list
 
 ## What exists in the repo right now
@@ -47,6 +54,9 @@ TravelAgent/
 ├── core/                          Infra-only app: GET /health/ (checks DB connectivity) + test
 ├── documentation/                 Architecture docs (01–15) + this tracking set
 │   └── data/curated_destinations.json   Approved initial destination dataset (Phase 3, 18 entries)
+├── users/                         Custom User (email login) + TravelerProfile
+├── travel/                        Destination model + `load_destinations` management command
+├── trips/                         Trip, TripFlight, TripAccommodation, Feedback
 ├── requirements/                  base.txt / development.txt / production.txt
 ├── docker-compose.yml             db (Postgres 16) + redis (7) + web + worker (celery)
 ├── Dockerfile                     multi-stage (builder installs deps, runtime stays slim)
@@ -54,7 +64,7 @@ TravelAgent/
 ├── manage.py, pyproject.toml (ruff+pytest config), .gitignore, .dockerignore, README.md
 ```
 
-No domain apps exist yet (no `users`, `travel`, `trips`, `recommendations`, `ai`, `integrations`). This is intentional — see `DEVELOPMENT_LOG.md` entry for 2026-08-28.
+`users`, `travel`, and `trips` now exist (Phase 4, 2026-08-29). `recommendations`, `ai`, and `integrations` still don't — deliberately, until the phases that need them (AI orchestration, provider adapters) are reached. See `DEVELOPMENT_LOG.md`.
 
 ## Known environment gaps (not decisions — just missing local tooling)
 
