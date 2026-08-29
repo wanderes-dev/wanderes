@@ -214,3 +214,26 @@ Per `07_API_DESIGN.md` §3, authentication uses **Django's built-in session-base
 - Manually exercised the full flow in a real browser against the running Docker container: register → auto-login → account page (showing the registered email) → logout → redirected to login → log back in → account page again. All worked as expected.
 
 `PROJECT_STATE.md` updated to mark Phase 5 done. Next per the phase order: Phase 6 (traveler profile) or Phase 7 (first travel data integration / provider adapters).
+
+---
+
+## 2026-08-29 — Phase 7: first travel data integration (Open-Meteo climate adapter)
+
+The user explicitly asked to do Phase 7 next, ahead of Phase 6 (traveler profile). Noted in `PROJECT_STATE.md` as a deliberate reordering at the user's request, not an accidentally skipped phase — Phase 6 is still outstanding and tracked as such.
+
+Implemented per `10_EXTERNAL_INTEGRATIONS.md` §3 (Integration Layer: `Recommendation System -> Travel Data Interface -> Provider Adapter -> External Provider`) and `14_MVP_IMPLEMENTATION_PLAN.md` Milestone 3's deliverables (provider interface, first adapter, response validation, normalization, timeout handling, basic error handling):
+
+- New `integrations` app — deliberately model-free (no `migrations/`), just Python modules + one `AppConfig` registration, since it holds no persistent data of its own.
+- `integrations/climate/base.py` — `ClimateProvider` ABC (the internal Travel Data Interface) and `MonthlyClimateSummary` (the normalized return type), plus `ClimateProviderError`.
+- `integrations/climate/open_meteo.py` — `OpenMeteoClimateProvider`, calling Open-Meteo's free, keyless Historical Weather (archive) API for a given month/coordinates. Validates the response shape, normalizes daily arrays into averaged highs/lows/precipitation, wraps network failures and malformed responses in `ClimateProviderError` (never lets raw provider exceptions/response details leak upward, per `07_API_DESIGN.md` §10), and caches results in Redis for 7 days (`10_EXTERNAL_INTEGRATIONS.md` §7 — historical data for a past month doesn't change).
+- `integrations/climate/get_climate_provider()` — factory reading `settings.CLIMATE_PROVIDER` (default `"open_meteo"`) so the provider is swappable via settings, not application code (`10_EXTERNAL_INTEGRATIONS.md` §3, "Provider replaceability is an architectural requirement").
+- **Documented MVP simplification:** without an explicit `year` argument, the adapter defaults to the most recently completed occurrence of the requested month as a proxy for "typical" conditions, rather than a genuine multi-year climatological average. This keeps the first adapter simple (one HTTP call) while still being grounded in real data rather than invented; averaging across several past years is a natural future refinement once real usage justifies the added complexity/cost, not a current requirement.
+- Added `requests` to `requirements/base.txt` (no HTTP client existed yet).
+
+**Validation:**
+
+- 7 new tests, all mocking the HTTP call (`unittest.mock.patch`) so nothing hits the real network during the suite — covers successful averaging, cache-hit behavior, network failure, malformed response, and the provider factory (including an unknown-provider-key error case). Hit one real bug during this: `override_settings(CACHES=...)` with Django's `LocMemCache` persists across tests in the same process (keyed by location, which defaults to a shared value), so the first test's cached result silently satisfied later tests that were supposed to exercise fresh HTTP calls/failures — fixed by clearing the cache in `setUp`.
+- All 23 project tests passing (16 previous + 7 new), `ruff check .` clean, no new migrations needed.
+- **Also smoke-tested against the real Open-Meteo API** (not mocked) inside the Docker container: `get_climate_provider().get_monthly_climate(latitude=38.72, longitude=-9.14, month=10)` → Lisbon, October 2025, avg high 24.8°C / avg low 17.1°C / 48.6mm precipitation — plausible and consistent with the curated dataset's "best season Mar-Oct" entry for Lisbon. This confirms Milestone 3's Definition of Done for real, not just against mocks.
+
+`PROJECT_STATE.md` updated to mark Phase 7 done and Phase 6 explicitly outstanding. The OpenAI adapter (the other half of the Phase 2/3 provider work) is also still not implemented.

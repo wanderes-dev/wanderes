@@ -65,6 +65,7 @@ core/            Cross-cutting infrastructure (health check, shared utilities)
 users/           Custom User (email login) and TravelerProfile
 travel/          Destination model; `load_destinations` management command
 trips/           Trip, TripFlight, TripAccommodation, Feedback
+integrations/    External provider adapters (e.g. climate/ - Open-Meteo), no models
 documentation/   Product & architecture docs, development log, decision log
 requirements/    Python dependencies (base / development / production)
 ```
@@ -75,4 +76,4 @@ Load the curated destination dataset (after migrating) with:
 python manage.py load_destinations
 ```
 
-Remaining domain apps (`recommendations`, `ai`, `integrations`) are introduced in later phases, once the relevant provider work is implemented — see `documentation/15_IMPLEMENTATION_GUIDE.md`.
+Remaining domain apps (`recommendations`, `ai`) are introduced in later phases — see `documentation/15_IMPLEMENTATION_GUIDE.md`.

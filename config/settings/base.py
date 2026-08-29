@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "users",
     "travel",
     "trips",
+    "integrations",
 ]
 
 # Custom user model (email login, no username field) — see users/models.py.
@@ -132,6 +133,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "users:login"
 LOGIN_REDIRECT_URL = "users:account"
 LOGOUT_REDIRECT_URL = "users:login"
+
+# Which climate provider adapter backs integrations.climate.get_climate_provider().
+# Phase 3 decision: Open-Meteo, kept swappable per 10_EXTERNAL_INTEGRATIONS.md §3.
+CLIMATE_PROVIDER = env("CLIMATE_PROVIDER", default="open_meteo")
 
 LOGGING = {
     "version": 1,

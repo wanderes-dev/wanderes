@@ -3,7 +3,7 @@
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
 **Last updated:** 2026-08-29
-**Current phase:** Phases 0-5 complete. Phase 2 (OpenAI), Phase 3 (curated dataset + Open-Meteo), Phase 4 (initial domain models), and Phase 5 (authentication — email register/login/logout, session-based) are all done. Next up per `15_IMPLEMENTATION_GUIDE.md`: Phase 6 (traveler profile — edit/retrieve, authorization) or Phase 7 (first travel data integration / provider adapters).
+**Current phase:** Phases 0-5 and Phase 7 complete (Phase 7 done ahead of Phase 6 at the user's explicit request). Phase 2 (OpenAI), Phase 3 (curated dataset + Open-Meteo), Phase 4 (domain models), Phase 5 (authentication), and Phase 7 (Open-Meteo climate adapter, real end-to-end) are all done. **Phase 6 (traveler profile edit/retrieve) is still outstanding** — skipped over, not forgotten. Next: Phase 6, or Phase 8 (first recommendation algorithm), or the OpenAI adapter (also still not implemented).
 
 **Product decision (2026-08-29):** UI is English-only for now, built translation-ready (`LocaleMiddleware`, `LOCALE_PATHS`, `LANGUAGES` already configured — see `CLAUDE.md` rule 5). Working/communication language with the user also switched to English as of this date.
 
@@ -49,7 +49,16 @@ Blocked / not started:
   - `LOGIN_URL`/`LOGIN_REDIRECT_URL`/`LOGOUT_REDIRECT_URL` configured; unauthenticated access to `account` redirects to login with `?next=`.
   - Google OAuth remains explicitly deferred (not implemented) — the user only asked for the door to stay open for it later.
   - 7 new tests (registration, login success/failure, logout, login-required redirect) — 16/16 total passing. Verified live in a real browser (register → auto-login → account → logout → login → account) in addition to automated tests. `ruff check .` clean, no new migrations needed.
-- [ ] Phase 6 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list
+- [x] **Phase 7 — First travel data integration** ✅ Done 2026-08-29 (done ahead of Phase 6, per explicit user request). New `integrations` app (no models, pure Python + one Django app registration):
+  - `integrations.climate.ClimateProvider` — internal Travel Data Interface (`10_EXTERNAL_INTEGRATIONS.md` §3), an ABC with `get_monthly_climate(latitude, longitude, month, year=None) -> MonthlyClimateSummary`.
+  - `integrations.climate.open_meteo.OpenMeteoClimateProvider` — the Phase 3-decided adapter, calling Open-Meteo's free Historical Weather (archive) API. Validated, normalized (averages daily highs/lows/precipitation), timeout (5s), and provider errors wrapped in `ClimateProviderError` rather than leaking raw provider details.
+  - `integrations.climate.get_climate_provider()` — factory reading `settings.CLIMATE_PROVIDER` (default `"open_meteo"`), so swapping providers is a settings change, not an app-code change.
+  - Redis-backed caching (7-day TTL — historical data for a past month doesn't change) per `10_EXTERNAL_INTEGRATIONS.md` §7.
+  - **Documented MVP simplification:** without an explicit `year`, the adapter uses the most recently completed occurrence of the requested month as a stand-in for "typical" conditions — not a genuine multi-year climatological average. Noted as a natural future improvement, not a current requirement.
+  - 7 new tests (mocked HTTP — success/cache-hit/network-failure/malformed-response/factory), all passing. **Also smoke-tested against the real Open-Meteo API** (not mocked): Lisbon in October 2025 → 24.8°C avg high, 17.1°C avg low, 48.6mm precipitation — consistent with the curated dataset's "best season Mar-Oct" for Lisbon.
+  - Added `requests` to `requirements/base.txt`.
+- [ ] Phase 6 — Traveler profile (edit/retrieve, authorization) — not yet done, taken out of order per user request
+- [ ] Phase 8 onward — see `15_IMPLEMENTATION_GUIDE.md` for the full phase list
 
 ## What exists in the repo right now
 
@@ -63,6 +72,7 @@ TravelAgent/
 ├── users/                         Custom User (email login) + TravelerProfile
 ├── travel/                        Destination model + `load_destinations` management command
 ├── trips/                         Trip, TripFlight, TripAccommodation, Feedback
+├── integrations/                  climate/ - ClimateProvider interface + Open-Meteo adapter (no models)
 ├── requirements/                  base.txt / development.txt / production.txt
 ├── docker-compose.yml             db (Postgres 16) + redis (7) + web + worker (celery)
 ├── Dockerfile                     multi-stage (builder installs deps, runtime stays slim)
