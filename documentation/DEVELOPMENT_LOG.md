@@ -331,3 +331,19 @@ Built `ai.orchestration.get_travel_recommendation(message, user=None)`, a **stat
 - 49/49 total tests passing, `ruff check .` clean, no new migrations (this app has none).
 
 `PROJECT_STATE.md` updated - Phase 9 done, `OPENAI_API_KEY` still flagged as blank. Next per the phase order: Phase 10 (chat interface) - Django templates, message submission, streaming, conversation display - the first thing that lets a person actually talk to Lunna through a browser.
+
+---
+
+## 2026-08-29 — Real OpenAI key added; live validation catches and fixes a real bug
+
+The user provided a real `OPENAI_API_KEY` directly in chat. Flagged that pasting a live secret into a conversation isn't great practice (recommended rotating it once done, since chat text can end up logged in ways `.env` isn't) and added it straight to the local `.env` (which predated the `OPENAI_API_KEY`/`AI_MODEL` lines added to `.env.example` during the adapter phase - `.env` itself needed the same two lines appended). Confirmed `.env` stays gitignored throughout.
+
+**Minimal live call** (`OpenAIProvider.generate_reply` asking for a one-word reply) confirmed the key works: real 200 response from `api.openai.com`, `gpt-4o-mini-2024-07-18`, 14+1 tokens.
+
+**Full live run of the Phase 9 orchestrator** - `get_travel_recommendation("I want somewhere warm in October, not too expensive")` - surfaced a real design bug, not just an interesting edge case: the intent-extraction prompt's "never guess a month, temperature, or budget the user did not state" instruction was *too* conservative. The model correctly refused to invent a specific number for "warm" or "not too expensive," so `min_temp_c`/`max_cost_of_living` both came back `null`. With no hard constraints active, **all 18 destinations passed through untouched and tied at score 0** - the deterministic scoring layer built in Phase 8 never actually engaged, and the second AI call ended up doing real selection work from an unranked, unfiltered candidate list instead of reasoning over already-scored data. Functionally the reply still looked reasonable (the model picked genuinely warm, cheap-looking destinations from the raw data it was shown), but the architecture Milestone 5 calls for - deterministic hard constraints and scoring, AI only explains - wasn't actually happening.
+
+**Fix:** extended `INTENT_EXTRACTION_SYSTEM_PROMPT` with explicit interpretation anchors - "hot" → `min_temp_c=28`, "warm" → `22`, "mild" → `18`; "very cheap/budget" → `max_cost_of_living=2`, "cheap/not too expensive" → `3`, "moderate" → `4` - with an instruction to only leave a field `null` when the user gave no indication *at all* for that dimension, not merely because they used words instead of a number. This is the AI **interpreting the traveler's own words** into an operational threshold the application defines, not inventing a fact about a destination - stays within `05_AI_DESIGN.md` §7's rule rather than violating it.
+
+Re-ran the same live query after the fix: correctly narrowed to 8 destinations (not all 18) with properly differentiated scores; top result matched Phase 8's own pure-scoring test exactly (Marrakech and Chiang Mai, cheapest and genuinely warmest in real climate data). Mocked test suite (49/49) and `ruff check .` both still pass unchanged - this fix is a prompt-text change, not a logic change, so it isn't meaningfully unit-testable; live testing is what caught and confirmed it, and that's an accepted limitation of this kind of change, not a gap to fix with more mocks.
+
+`PROJECT_STATE.md` updated with this finding under the Phase 9 entry. The AI pipeline (adapter + orchestrator) is now validated against real data end-to-end, not just mocks - a meaningfully stronger confidence level than when Phase 9 was first committed.
