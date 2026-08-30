@@ -6,7 +6,13 @@ from django.core.management.base import BaseCommand
 
 from travel.models import Destination
 
-DEFAULT_DATASET_PATH = settings.BASE_DIR / "documentation" / "data" / "curated_destinations.json"
+# Lives inside the travel app itself (not documentation/) specifically so
+# it's real application data, not developer documentation - the two got
+# conflated originally, which meant it was silently excluded from the
+# Docker image (.dockerignore excludes documentation/) and only ever
+# worked locally because docker-compose.yml bind-mounts the whole project
+# directory, masking the gap until a real deploy (no bind mount) hit it.
+DEFAULT_DATASET_PATH = settings.BASE_DIR / "travel" / "data" / "curated_destinations.json"
 
 
 class Command(BaseCommand):

@@ -20,7 +20,7 @@ TRIP_TYPE_CHOICES = [
 class Destination(models.Model):
     """A place that can be recommended, visited, planned, or discussed.
 
-    Shaped to match documentation/data/curated_destinations.json (the
+    Shaped to match travel/data/curated_destinations.json (the
     approved Phase 3 seed dataset) so loading it is a straight import, not
     a redesign. Real-time climate data is intentionally NOT stored here —
     it's fetched live from Open-Meteo by coordinates at request time, per
