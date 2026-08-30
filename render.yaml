@@ -73,7 +73,15 @@ services:
     dockerContext: .
     # Overrides the image's default CMD (gunicorn) - same image, different
     # process, exactly like docker-compose.yml's web/worker split.
-    dockerCommand: celery -A config worker -l info
+    # --concurrency=2: without it, Celery's prefork pool defaults to one
+    # process per detected CPU - it reported 16 on this plan's container,
+    # each a full copy of Django/Celery in memory, which likely exceeded
+    # the 512MB plan and got OOM-killed (seen as repeated "recovery"
+    # restarts in the logs, and "failed" status in the dashboard). This
+    # app currently has exactly one lightweight, low-volume task
+    # (trips.tasks.update_traveler_preferences_from_feedback) - it does
+    # not need 16-way parallelism, or even close to it.
+    dockerCommand: celery -A config worker -l info --concurrency=2
     plan: 0.5c-512mb
     envVars:
       - key: DJANGO_SETTINGS_MODULE
