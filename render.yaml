@@ -1,0 +1,102 @@
+# Render Blueprint (Phase 18 deploy prep, 2026-08-30) - declarative
+# web + worker + Postgres + Redis, mirroring docker-compose.yml's local
+# service split. Applied once via Render's "New Blueprint" flow (connects
+# this repo); after that, each `git push` to the connected branch redeploys.
+#
+# Secrets (sync: false) are never set here - Render prompts for them once
+# during the Blueprint creation flow and stores them only in its own
+# dashboard, never in this file or source control.
+#
+# Written against Render's documented Blueprint spec (render.com/docs/blueprint-spec)
+# but not yet validated against a live Render deploy - this repo has no
+# Render account. Report back the first deploy's result (and any syntax
+# Render's parser rejects) so this can be corrected quickly.
+
+databases:
+  - name: travelagent-db
+    plan: free
+    databaseName: travelagent
+    user: travelagent
+
+services:
+  - type: keyvalue
+    name: travelagent-redis
+    plan: free
+    # No public internet access needed - web/worker reach it over Render's
+    # private network via the REDIS_URL envVar below, not this allow list.
+    ipAllowList: []
+
+  - type: web
+    name: travelagent-web
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health/
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.production
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: travelagent-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: travelagent-redis
+          type: keyvalue
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: AI_PROVIDER
+        value: openai
+      - key: AI_MODEL
+        value: gpt-4o-mini
+      - key: CLIMATE_PROVIDER
+        value: open_meteo
+      # DJANGO_ALLOWED_HOSTS deliberately not set here - production.py
+      # falls back to Render's own RENDER_EXTERNAL_HOSTNAME env var (set
+      # automatically) so the first deploy works before a custom domain
+      # exists. Add DJANGO_ALLOWED_HOSTS manually once one does.
+
+  - type: worker
+    name: travelagent-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Overrides the image's default CMD (gunicorn) - same image, different
+    # process, exactly like docker-compose.yml's web/worker split.
+    dockerCommand: celery -A config worker -l info
+    plan: 0.5c-512mb
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.production
+      # Render's Blueprint spec has no documented way to share one
+      # service's plain envVar value with another (fromService only
+      # exposes connection properties like host/port/connectionString) -
+      # unlike DATABASE_URL/REDIS_URL below, this can't be wired
+      # automatically. Enter the exact same value used for
+      # travelagent-web's generated DJANGO_SECRET_KEY here by hand, so
+      # both processes share one key. Currently harmless if they drift
+      # (this worker never signs/verifies cookies, tokens, or sessions),
+      # but keep them matched as a matter of correctness.
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: travelagent-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: travelagent-redis
+          type: keyvalue
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: AI_PROVIDER
+        value: openai
+      - key: AI_MODEL
+        value: gpt-4o-mini
+      - key: CLIMATE_PROVIDER
+        value: open_meteo

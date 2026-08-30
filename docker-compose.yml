@@ -26,7 +26,9 @@ services:
       retries: 5
 
   web:
-    build: .
+    build:
+      context: .
+      target: runtime
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
@@ -43,7 +45,9 @@ services:
         condition: service_healthy
 
   worker:
-    build: .
+    build:
+      context: .
+      target: runtime
     command: celery -A config worker -l info
     volumes:
       - .:/app
