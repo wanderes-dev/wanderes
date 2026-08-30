@@ -78,6 +78,14 @@ services:
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings.production
+      # production.py fails fast if ALLOWED_HOSTS is empty (a real
+      # protection against Host-header attacks) - but that check only
+      # matters for a process serving HTTP requests, which this worker
+      # never does (no RENDER_EXTERNAL_HOSTNAME either, since it has no
+      # public URL). Any non-empty value satisfies the check; it is never
+      # actually consulted by anything this process does.
+      - key: DJANGO_ALLOWED_HOSTS
+        value: celery-worker
       # Render's Blueprint spec has no documented way to share one
       # service's plain envVar value with another (fromService only
       # exposes connection properties like host/port/connectionString) -
