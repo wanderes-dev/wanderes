@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 
+from analytics.services import record_event
 from travel.models import Destination
 
 from .forms import FeedbackForm, TravelHistoryEntryForm, TripForm
@@ -79,6 +80,15 @@ def trip_create(request):
             trip = form.save(commit=False)
             trip.user = request.user
             trip.save()
+            record_event(
+                "trip_created",
+                user=request.user,
+                metadata={
+                    "destination_slug": trip.destination.slug,
+                    "status": trip.status,
+                    "source": "form",
+                },
+            )
             messages.success(request, "Trip saved.")
             return redirect("trips:trip-detail", pk=trip.pk)
     else:
@@ -139,6 +149,15 @@ def trip_feedback(request, pk):
             feedback.trip = trip
             feedback.destination = trip.destination
             feedback.save()
+            record_event(
+                "feedback_submitted",
+                user=request.user,
+                metadata={
+                    "destination_slug": trip.destination.slug,
+                    "rating": feedback.rating,
+                    "source": "form",
+                },
+            )
             messages.success(request, "Thanks for your feedback!")
             return redirect("trips:trip-detail", pk=trip.pk)
     else:

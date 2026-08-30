@@ -3,6 +3,9 @@ from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 
+from analytics.models import Event
+from analytics.services import record_event
+
 from .forms import TravelerProfileForm, UserRegistrationForm
 from .models import TravelerProfile
 
@@ -16,6 +19,7 @@ def register(request):
         if form.is_valid():
             user = form.save()
             login(request, user)
+            record_event("user_registered", user=user)
             return redirect("users:account")
     else:
         form = UserRegistrationForm()
@@ -38,7 +42,16 @@ def profile(request):
     if request.method == "POST":
         form = TravelerProfileForm(request.POST, instance=traveler_profile)
         if form.is_valid():
-            form.save()
+            profile = form.save()
+            is_now_complete = bool(
+                profile.preferred_trip_types or profile.preferred_cost_of_living is not None
+            )
+            if is_now_complete and not Event.objects.filter(
+                user=request.user, event_type="profile_completed"
+            ).exists():
+                # Fired once, the first time the profile has real content -
+                # not on every subsequent edit.
+                record_event("profile_completed", user=request.user)
             messages.success(request, "Your traveler profile was updated.")
             return redirect("users:profile")
     else:

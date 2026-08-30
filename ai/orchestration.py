@@ -2,6 +2,7 @@ import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
 
+from analytics.services import record_event
 from recommendations.scoring import (
     RecommendationRequest,
     ScoredDestination,
@@ -324,6 +325,11 @@ def _handle_feedback(intent: dict, *, user) -> str:
             "comment": intent["feedback_comment"] or "",
         },
     )
+    record_event(
+        "feedback_submitted",
+        user=user,
+        metadata={"destination_slug": destination.slug, "rating": rating, "source": "chat"},
+    )
     return f"Thanks! I've recorded your feedback on {destination.name}: {rating}/10."
 
 
@@ -352,6 +358,11 @@ def _handle_future_intent(intent: dict, *, user) -> str:
         defaults={"name": f"Someday: {destination.name}"},
     )
     if created:
+        record_event(
+            "trip_created",
+            user=user,
+            metadata={"destination_slug": destination.slug, "status": "planned", "source": "chat"},
+        )
         return f"Got it! I've added {destination.name} to your trips to plan for someday."
     return f"You already have {destination.name} noted as a future trip - I'll keep it there!"
 

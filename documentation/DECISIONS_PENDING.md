@@ -85,6 +85,26 @@ Implements the provider adapter(s) behind the internal `Travel Data Interface` d
 
 ---
 
+## 3. Product Analytics Approach (blocks Phase 17) — ✅ RESOLVED 2026-08-30
+
+**Decision:**
+
+- **Approach: self-hosted, first-party.** A new `analytics` Django app with an `Event` model in our own Postgres - no third-party analytics vendor, no data ever leaves the app's own database. Consistent with every other choice so far (own DB, own auth, no vendor lock-in) and avoids the privacy tradeoff of sending user behavior data to an external provider.
+- **Events instrumented now**: `user_registered`, `profile_completed`, `travel_question_submitted`, `recommendation_generated`, `trip_created`, `feedback_submitted`. `travel_question_submitted` fires for *any* chat interaction, regardless of what it turns out to be (recommendation, feedback, future intent, or off-topic).
+- **`premium_started` and `affiliate_link_clicked` deliberately deferred** - the guide's candidate list includes them, but monetization/premium and an affiliate provider don't exist in the app yet (both still-undecided human decisions). Add them when those features are actually built.
+- **`recommendation_viewed` deliberately not created** - there is no separate results page; a recommendation already appears inline within the streamed chat reply, so a distinct "viewed" event would be redundant.
+- **Anonymous visitors tracked by anonymized IP, not a session identifier** - last IPv4 octet zeroed / IPv6 masked to its /48 prefix before ever being stored (same technique as Google Analytics'/Matomo's IP anonymization). Authenticated events store the user, never an IP.
+- **"Active user" definition** (the guide requires documenting this before using it for business decisions): an authenticated user who submitted at least one chat message (`travel_question_submitted`) within the window - 1 day for DAU, 7 for WAU, 30 for MAU. Anonymous chat use is tracked but never counts toward these.
+- **Privacy**: only small structured metadata is ever stored (e.g. a destination slug, a rating) - never free-text message or comment content. A simple, non-blocking transparency note was added to `templates/base.html`'s footer, since this is genuinely new data collection starting now - not a full cookie-consent banner, which the guide places in a later, pre-launch GDPR review phase (near Phase 30) that hasn't started yet.
+
+**Reference:** `15_IMPLEMENTATION_GUIDE.md` Phase 17; `11_SECURITY_&_PRIVACY.md` §11-12 (privacy/GDPR principles - purpose limitation, data minimization, transparency).
+
+### What Claude Code did once decided
+
+Implemented the `analytics` app (`Event` model, `services.record_event()`, `metrics.py` for DAU/WAU/MAU/retention/per-active-user rates, Django admin registration), wired `record_event()` calls into registration, profile completion, the chat view, conversational feedback/future-intent, and the standalone trip/feedback forms. See `DEVELOPMENT_LOG.md` for the full implementation record.
+
+---
+
 ## How to unblock
 
 Reply with your decision(s) — even a partial one (e.g., "let's start with just a destination dataset and Anthropic Claude, defer flights/hotels") is enough to resume work. Claude Code will then:

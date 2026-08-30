@@ -1,6 +1,7 @@
 from django.test import TestCase
 from django.urls import reverse
 
+from analytics.models import Event
 from users.models import TravelerProfile, User
 
 
@@ -33,6 +34,34 @@ class TravelerProfileViewTests(TestCase):
         profile = TravelerProfile.objects.get(user=self.user)
         self.assertEqual(profile.preferred_trip_types, ["beach", "culture"])
         self.assertEqual(profile.preferred_cost_of_living, 3)
+        self.assertTrue(
+            Event.objects.filter(user=self.user, event_type="profile_completed").exists()
+        )
+
+    def test_profile_completed_only_recorded_once(self):
+        self.client.force_login(self.user)
+        self.client.post(
+            reverse("users:profile"),
+            {"preferred_trip_types": ["beach"], "preferred_cost_of_living": 2},
+        )
+
+        self.client.post(
+            reverse("users:profile"),
+            {"preferred_trip_types": ["beach", "nature"], "preferred_cost_of_living": 2},
+        )
+
+        self.assertEqual(
+            Event.objects.filter(user=self.user, event_type="profile_completed").count(), 1
+        )
+
+    def test_empty_profile_save_does_not_record_profile_completed(self):
+        self.client.force_login(self.user)
+
+        self.client.post(reverse("users:profile"), {"preferred_trip_types": []})
+
+        self.assertFalse(
+            Event.objects.filter(user=self.user, event_type="profile_completed").exists()
+        )
 
     def test_users_cannot_affect_each_others_profile(self):
         other_user = User.objects.create_user(email="other@example.com", password="testpass123")

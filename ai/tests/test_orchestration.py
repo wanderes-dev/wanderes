@@ -9,6 +9,7 @@ from ai.orchestration import (
     stream_travel_recommendation,
 )
 from ai.provider.base import AIProviderError
+from analytics.models import Event
 from integrations.climate.base import ClimateProviderError, MonthlyClimateSummary
 from travel.models import Destination
 from trips.models import Feedback, TravelHistoryEntry, Trip
@@ -378,6 +379,27 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
         )
         self.assertIn("lisbon", result.reply)
         self.assertEqual(ai_provider.stream_reply_calls, [])
+        self.assertTrue(
+            Event.objects.filter(
+                user=self.user, event_type="feedback_submitted", metadata__source="chat"
+            ).exists()
+        )
+
+    def test_feedback_without_rating_does_not_record_feedback_submitted(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="feedback", feedback_destination_name="lisbon"
+            )
+        )
+
+        get_travel_recommendation(
+            "I visited Lisbon last year",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertFalse(Event.objects.filter(event_type="feedback_submitted").exists())
 
     def test_feedback_without_rating_only_registers_history(self):
         ai_provider = StubAIProvider(
@@ -461,6 +483,35 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
         trip = Trip.objects.get(user=self.user, destination=self.destination)
         self.assertEqual(trip.status, "planned")
         self.assertIn("lisbon", result.reply)
+        self.assertTrue(
+            Event.objects.filter(
+                user=self.user, event_type="trip_created", metadata__source="chat"
+            ).exists()
+        )
+
+    def test_future_intent_resubmission_does_not_duplicate_trip_created_event(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="future_intent", future_destination_name="lisbon"
+            )
+        )
+
+        get_travel_recommendation(
+            "I want to go to Lisbon someday",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+        get_travel_recommendation(
+            "I still want to go to Lisbon someday",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(
+            Event.objects.filter(user=self.user, event_type="trip_created").count(), 1
+        )
 
     def test_future_intent_requires_login(self):
         ai_provider = StubAIProvider(

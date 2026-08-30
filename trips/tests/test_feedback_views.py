@@ -1,6 +1,7 @@
 from django.test import TestCase
 from django.urls import reverse
 
+from analytics.models import Event
 from travel.models import Destination
 from trips.models import Feedback, Trip
 from users.models import User
@@ -58,6 +59,11 @@ class TripFeedbackViewTests(TestCase):
         self.assertEqual(feedback.tags, ["excellent_food", "too_crowded"])
         self.assertEqual(feedback.destination, self.destination)
         self.assertEqual(feedback.comment, "Loved the food, too many tourists though.")
+        self.assertTrue(
+            Event.objects.filter(
+                user=self.user, event_type="feedback_submitted", metadata__source="form"
+            ).exists()
+        )
 
     def test_rejects_rating_out_of_range(self):
         self.client.force_login(self.user)

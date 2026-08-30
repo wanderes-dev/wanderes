@@ -1,6 +1,7 @@
 from django.test import TestCase
 from django.urls import reverse
 
+from analytics.models import Event
 from users.models import User
 
 
@@ -18,6 +19,10 @@ class RegistrationTests(TestCase):
         self.assertRedirects(response, reverse("users:account"))
         self.assertTrue(User.objects.filter(email="newtraveler@example.com").exists())
         self.assertTrue(response.wsgi_request.user.is_authenticated)
+        user = User.objects.get(email="newtraveler@example.com")
+        self.assertTrue(
+            Event.objects.filter(user=user, event_type="user_registered").exists()
+        )
 
     def test_register_rejects_mismatched_passwords(self):
         response = self.client.post(

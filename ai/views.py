@@ -4,6 +4,8 @@ from django.http import HttpResponseBadRequest, StreamingHttpResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_POST
 
+from analytics.services import record_event
+
 from .orchestration import MAX_EXPLAINED_CANDIDATES, stream_travel_recommendation
 
 MAX_MESSAGE_LENGTH = 2000
@@ -31,7 +33,19 @@ def recommendations_stream(request):
         return HttpResponseBadRequest("Message is too long.")
 
     user = request.user if request.user.is_authenticated else None
+    # Any chat interaction counts, regardless of what it turns out to be
+    # (recommendation, feedback, future intent, or off-topic) - Phase 17
+    # decision, 2026-08-30.
+    record_event("travel_question_submitted", user=user, request=request)
+
     result = stream_travel_recommendation(message, user=user)
+    if result.recommendations:
+        record_event(
+            "recommendation_generated",
+            user=user,
+            request=request,
+            metadata={"result_count": len(result.recommendations)},
+        )
 
     def _chunks_with_recommendations_footer():
         yield from result.reply_chunks

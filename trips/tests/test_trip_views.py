@@ -1,6 +1,7 @@
 from django.test import TestCase
 from django.urls import reverse
 
+from analytics.models import Event
 from travel.models import Destination
 from trips.models import Trip
 from users.models import User
@@ -49,6 +50,11 @@ class TripViewsTests(TestCase):
         self.assertRedirects(response, reverse("trips:trip-detail", args=[trip.pk]))
         self.assertEqual(trip.name, "Summer in Lisbon")
         self.assertEqual(trip.destination, self.destination)
+        self.assertTrue(
+            Event.objects.filter(
+                user=self.user, event_type="trip_created", metadata__source="form"
+            ).exists()
+        )
 
     def test_create_prefills_destination_from_query_param(self):
         self.client.force_login(self.user)
