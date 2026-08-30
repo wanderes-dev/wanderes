@@ -42,8 +42,14 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "- 'recommendation': the user wants a travel suggestion right now.\n"
     "- 'feedback': the user is sharing their opinion or experience about a "
     "place they have already been to (a rating, likes/dislikes, a comment).\n"
-    "- 'future_intent': the user says they want to travel somewhere someday "
-    "or are planning to, without asking for a recommendation right now.\n"
+    "- 'future_intent': the user names or clearly implies a specific place "
+    "they want to visit someday or are planning to, without asking for a "
+    "recommendation right now. A message that only states timing (a month, "
+    "a season, 'someday', 'sometime soon') with no destination at all is "
+    "NOT future_intent, even if it uses the word 'someday' - it is almost "
+    "always the user answering what month they want to travel for an "
+    "ongoing recommendation request, so classify it as 'recommendation' "
+    "instead and extract the month from it.\n"
     "- 'off_topic': the message is not about travel at all.\n"
     "Only fill in the fields relevant to the chosen message_type - leave "
     "every other field at its default (null, false, or an empty list).\n\n"
@@ -51,7 +57,10 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "Set needs_clarification to true, with a short clarification_question, if "
     "the message is a travel request but is missing information you would "
     "need - at minimum, a target month. Never guess a month the user did not "
-    "state or clearly imply.\n"
+    "state or clearly imply. If the user names a range of two consecutive "
+    "months (e.g. 'September or October', 'between September and October'), "
+    "that counts as stating a month - extract the earlier of the two "
+    "(September in that example) rather than leaving month null.\n"
     "For temperature and budget, the user will often describe them "
     "qualitatively rather than with an exact number - translate that "
     "description into a concrete threshold using these anchors, so the "
@@ -290,12 +299,18 @@ def _handle_feedback(intent: dict, *, user) -> str:
     """Persist feedback shared conversationally, and register that the
     trip actually happened - giving feedback implies a visit occurred, per
     the user's explicit request that the AI register travel that occurred."""
-    if user is None or not user.is_authenticated:
-        return NEEDS_LOGIN_REPLY
-
     destination_name = intent["feedback_destination_name"]
     if not destination_name:
+        # Ask before gating on login: we don't yet know there's anything
+        # real to save, so there's nothing to require an account for. Also
+        # a safety net against an intent misclassification (e.g. a
+        # timing-only message that isn't really feedback at all) leaving
+        # an anonymous user stuck behind a login wall for no reason - the
+        # chat should never dead-end just because of that.
         return "I'd love to hear about your trip - which destination are you talking about?"
+
+    if user is None or not user.is_authenticated:
+        return NEEDS_LOGIN_REPLY
 
     destination = _resolve_destination(destination_name)
     if destination is None:
@@ -334,12 +349,15 @@ def _handle_feedback(intent: dict, *, user) -> str:
 
 
 def _handle_future_intent(intent: dict, *, user) -> str:
-    if user is None or not user.is_authenticated:
-        return NEEDS_LOGIN_REPLY
-
     destination_name = intent["future_destination_name"]
     if not destination_name:
+        # Same reasoning as _handle_feedback: don't gate on login before
+        # confirming there's an actual destination to save - keeps the
+        # chat going instead of dead-ending on a misclassified message.
         return "That sounds exciting - which destination did you have in mind?"
+
+    if user is None or not user.is_authenticated:
+        return NEEDS_LOGIN_REPLY
 
     destination = _resolve_destination(destination_name)
     if destination is None:

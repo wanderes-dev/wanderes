@@ -466,6 +466,25 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
         self.assertEqual(result.reply, NEEDS_LOGIN_REPLY)
         self.assertFalse(Feedback.objects.exists())
 
+    def test_feedback_without_destination_asks_instead_of_requiring_login(self):
+        # Regression test: an anonymous user must never hit a login wall
+        # before the app even knows there's a real destination to save -
+        # otherwise a misclassified message (e.g. a bare month/timing
+        # answer the model mistook for feedback) dead-ends the chat.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(message_type="feedback")
+        )
+
+        result = get_travel_recommendation(
+            "someday between september and october",
+            user=None,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertNotEqual(result.reply, NEEDS_LOGIN_REPLY)
+        self.assertIn("which destination", result.reply)
+
     def test_future_intent_creates_planned_trip(self):
         ai_provider = StubAIProvider(
             structured_response=_intent(
@@ -529,6 +548,25 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
 
         self.assertEqual(result.reply, NEEDS_LOGIN_REPLY)
         self.assertFalse(Trip.objects.exists())
+
+    def test_future_intent_without_destination_asks_instead_of_requiring_login(self):
+        # Regression test: reported live - "someday between september and
+        # october" (a month-only reply, no destination at all) was
+        # misclassified as future_intent and hard-blocked an anonymous
+        # user behind NEEDS_LOGIN_REPLY, killing the conversation. There is
+        # nothing to save without a destination, so there's nothing to
+        # gate on login for either.
+        ai_provider = StubAIProvider(structured_response=_intent(message_type="future_intent"))
+
+        result = get_travel_recommendation(
+            "someday between september and october",
+            user=None,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertNotEqual(result.reply, NEEDS_LOGIN_REPLY)
+        self.assertIn("which destination", result.reply)
 
     def test_unrecognized_destination_in_feedback_does_not_crash(self):
         ai_provider = StubAIProvider(
