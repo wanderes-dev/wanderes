@@ -1,5 +1,6 @@
 from django.test import TestCase
 
+from ai import memory
 from ai.orchestration import (
     FALLBACK_REPLY,
     NEEDS_LOGIN_REPLY,
@@ -584,3 +585,126 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
 
         self.assertFalse(Feedback.objects.exists())
         self.assertIn("Nowhereland", result.reply)
+
+
+class ConversationMemoryTests(TestCase):
+    """Conversation memory (ai.memory, added 2026-08-30): prior turns should
+    reach the intent extraction call so a short follow-up reply can be
+    understood in context, per the real conversation that surfaced this -
+    an anonymous user answering "what month?" with only a month, which is
+    meaningless taken in isolation but is exactly the missing piece once
+    the prior turn is visible."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+
+    def test_first_message_sends_no_history(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(message_type="off_topic")
+        )
+
+        get_travel_recommendation(
+            "what's the capital of France?",
+            session_key="session-1",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        sent_messages = ai_provider.generate_structured_reply_calls[0]
+        # Just the system prompt + the current message - no prior turns yet.
+        self.assertEqual(len(sent_messages), 2)
+
+    def test_second_message_includes_prior_turn_in_history(self):
+        first_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="recommendation", needs_clarification=True,
+                clarification_question="What month are you planning to travel?",
+            )
+        )
+        get_travel_recommendation(
+            "what do you suggest for a destination?",
+            session_key="session-2",
+            ai_provider=first_provider,
+            climate_provider=self.climate,
+        )
+
+        second_provider = StubAIProvider(
+            structured_response=_intent(message_type="recommendation", month=9)
+        )
+        get_travel_recommendation(
+            "someday between september and october",
+            session_key="session-2",
+            ai_provider=second_provider,
+            climate_provider=self.climate,
+        )
+
+        sent_messages = second_provider.generate_structured_reply_calls[0]
+        contents = [m.content for m in sent_messages]
+        self.assertIn("what do you suggest for a destination?", contents)
+        self.assertIn("What month are you planning to travel?", contents)
+
+    def test_different_sessions_do_not_share_history(self):
+        first_provider = StubAIProvider(structured_response=_intent(message_type="off_topic"))
+        get_travel_recommendation(
+            "message from session A",
+            session_key="session-a",
+            ai_provider=first_provider,
+            climate_provider=self.climate,
+        )
+
+        second_provider = StubAIProvider(structured_response=_intent(message_type="off_topic"))
+        get_travel_recommendation(
+            "message from session B",
+            session_key="session-b",
+            ai_provider=second_provider,
+            climate_provider=self.climate,
+        )
+
+        sent_messages = second_provider.generate_structured_reply_calls[0]
+        self.assertEqual(len(sent_messages), 2)  # no session-a history leaked in
+
+    def test_authenticated_user_history_persists_regardless_of_session(self):
+        user = User.objects.create_user(email="traveler@example.com", password="testpass123")
+        first_provider = StubAIProvider(structured_response=_intent(message_type="off_topic"))
+        get_travel_recommendation(
+            "first message",
+            user=user,
+            session_key="session-x",
+            ai_provider=first_provider,
+            climate_provider=self.climate,
+        )
+
+        second_provider = StubAIProvider(structured_response=_intent(message_type="off_topic"))
+        get_travel_recommendation(
+            "second message",
+            user=user,
+            session_key="session-y",  # different session, same user
+            ai_provider=second_provider,
+            climate_provider=self.climate,
+        )
+
+        contents = [m.content for m in second_provider.generate_structured_reply_calls[0]]
+        self.assertIn("first message", contents)
+
+    def test_streamed_reply_is_saved_to_history_once_fully_consumed(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="recommendation", month=10, min_temp_c=25.0
+            ),
+            reply_text="Try the warm-cheap destination!",
+        )
+
+        result = stream_travel_recommendation(
+            "somewhere warm in October",
+            session_key="session-stream",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+        full_reply = "".join(result.reply_chunks)
+
+        key = memory.conversation_key(user=None, session_key="session-stream")
+        history = memory.get_history(key)
+        self.assertEqual(history[-1], {"role": "assistant", "content": full_reply})

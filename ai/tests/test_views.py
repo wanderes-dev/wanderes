@@ -112,6 +112,18 @@ class RecommendationsStreamViewTests(TestCase):
         _, kwargs = mock_stream.call_args
         self.assertEqual(kwargs["user"], user)
 
+    @patch("ai.views.stream_travel_recommendation")
+    def test_passes_a_stable_session_key_for_anonymous_users(self, mock_stream):
+        mock_stream.return_value = StreamingOrchestrationResult(
+            needs_clarification=False, recommendations=[], reply_chunks=iter(["Hi!"])
+        )
+
+        self.client.post(reverse("ai:recommendations-api"), {"message": "hello"})
+
+        _, kwargs = mock_stream.call_args
+        self.assertTrue(kwargs["session_key"])
+        self.assertEqual(kwargs["session_key"], self.client.session.session_key)
+
 
 class RecommendationsStreamAnalyticsTests(TestCase):
     @patch("ai.views.stream_travel_recommendation")

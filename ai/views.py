@@ -38,7 +38,16 @@ def recommendations_stream(request):
     # decision, 2026-08-30.
     record_event("travel_question_submitted", user=user, request=request)
 
-    result = stream_travel_recommendation(message, user=user)
+    # Anonymous conversation memory (ai.memory) is keyed by the Django
+    # session, which is otherwise unused for anonymous visitors - force it
+    # to exist now rather than waiting for some other write to create it,
+    # so the very first message already has a stable key.
+    if not request.session.session_key:
+        request.session.save()
+
+    result = stream_travel_recommendation(
+        message, user=user, session_key=request.session.session_key
+    )
     if result.recommendations:
         record_event(
             "recommendation_generated",

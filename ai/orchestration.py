@@ -12,6 +12,7 @@ from travel.models import Destination
 from travel.services import find_destination_slugs_by_name
 from trips.models import FEEDBACK_TAG_CHOICES, Feedback, TravelHistoryEntry, Trip
 
+from . import memory
 from .prompts import SYSTEM_PROMPT
 from .provider import AIMessage, AIProvider, AIProviderError, get_ai_provider
 
@@ -167,6 +168,7 @@ def stream_travel_recommendation(
     message: str,
     *,
     user=None,
+    session_key: str | None = None,
     ai_provider: AIProvider | None = None,
     climate_provider=None,
 ) -> StreamingOrchestrationResult:
@@ -178,10 +180,21 @@ def stream_travel_recommendation(
     Reasoning (streamed), OR direct persistence + a templated acknowledgment
     for feedback/future_intent - those don't need a second AI call. This is
     the core orchestration logic; get_travel_recommendation() is a
-    non-streaming convenience wrapper around it. Does NOT handle conversation
-    history/persistence across messages - each call is independent (Phase
-    10's chat UI keeps per-visit display only, not true multi-turn context
-    yet), though feedback/future_intent do persist to the database.
+    non-streaming convenience wrapper around it.
+
+    Conversation memory (09_AI_ORCHESTRATION.md §7, added 2026-08-30): prior
+    turns for this conversation (see ai.memory) are loaded and passed to
+    intent extraction, so a short follow-up reply - "someday between
+    september and october" answering an earlier "what month?" - can be
+    understood in context instead of being (mis)classified in isolation.
+    `session_key` identifies an anonymous visitor's conversation (there is
+    no other stable identity for them); authenticated users are identified
+    by their account instead, regardless of session. Every branch below
+    appends its own (message, reply) turn before returning, including
+    failure/fallback paths, so the next message still has full context.
+    This is deliberately conversation *context* only (what's needed to
+    understand the current exchange) - not persistent traveler memory,
+    which continues to mean TravelerProfile/Feedback/TravelHistoryEntry.
 
     Recommendation philosophy (decided 2026-08-29, Phase 11 review): a real
     user will ask for things this system has no deterministic model for
@@ -195,29 +208,39 @@ def stream_travel_recommendation(
     here too, not just to TravelerProfile.
     """
     ai_provider = ai_provider or get_ai_provider()
+    conv_key = memory.conversation_key(user=user, session_key=session_key)
+    history = memory.get_history(conv_key)
+
+    def _remember(reply: str) -> None:
+        memory.append_turn(conv_key, user_message=message, assistant_reply=reply)
 
     try:
-        intent = _extract_intent(message, ai_provider=ai_provider)
+        intent = _extract_intent(message, ai_provider=ai_provider, history=history)
     except AIProviderError:
         logger.warning("Could not extract intent - AI provider failure. message=%r", message)
+        _remember(FALLBACK_REPLY)
         return StreamingOrchestrationResult(False, [], iter([FALLBACK_REPLY]))
 
     message_type = intent["message_type"]
 
     if message_type == "off_topic":
+        _remember(OFF_TOPIC_REPLY)
         return StreamingOrchestrationResult(False, [], iter([OFF_TOPIC_REPLY]))
 
     if message_type == "feedback":
         reply = _handle_feedback(intent, user=user)
+        _remember(reply)
         return StreamingOrchestrationResult(False, [], iter([reply]))
 
     if message_type == "future_intent":
         reply = _handle_future_intent(intent, user=user)
+        _remember(reply)
         return StreamingOrchestrationResult(False, [], iter([reply]))
 
     # message_type == "recommendation" (also the safe default/fallback).
     if intent["needs_clarification"]:
         question = intent["clarification_question"] or "Could you tell me more about your trip?"
+        _remember(question)
         return StreamingOrchestrationResult(True, [], iter([question]))
 
     no_deterministic_constraints = (
@@ -255,13 +278,17 @@ def stream_travel_recommendation(
             intent["max_cost_of_living"],
             intent["trip_type"],
         )
+        _remember(NO_MATCHES_REPLY)
         return StreamingOrchestrationResult(False, [], iter([NO_MATCHES_REPLY]))
 
     messages = _build_explanation_messages(message, results)
 
     def _stream_explanation():
+        collected = []
         try:
-            yield from ai_provider.stream_reply(messages)
+            for chunk in ai_provider.stream_reply(messages):
+                collected.append(chunk)
+                yield chunk
         except AIProviderError:
             # A partial reply may already have been yielded before a
             # mid-stream failure (09_AI_ORCHESTRATION.md §12: "Interrupted
@@ -270,7 +297,14 @@ def stream_travel_recommendation(
             logger.warning(
                 "AI provider failed mid-stream while explaining results. message=%r", message
             )
+            collected.append(FALLBACK_REPLY)
             yield FALLBACK_REPLY
+        finally:
+            # Runs even if the caller never fully consumes the stream (e.g.
+            # the client disconnects) - the conversation still gets
+            # whatever was produced, partial or complete, rather than
+            # silently losing this turn from memory.
+            _remember("".join(collected))
 
     return StreamingOrchestrationResult(False, results, _stream_explanation())
 
@@ -279,6 +313,7 @@ def get_travel_recommendation(
     message: str,
     *,
     user=None,
+    session_key: str | None = None,
     ai_provider: AIProvider | None = None,
     climate_provider=None,
 ) -> OrchestrationResult:
@@ -287,7 +322,11 @@ def get_travel_recommendation(
     doesn't need incremental output.
     """
     streaming_result = stream_travel_recommendation(
-        message, user=user, ai_provider=ai_provider, climate_provider=climate_provider
+        message,
+        user=user,
+        session_key=session_key,
+        ai_provider=ai_provider,
+        climate_provider=climate_provider,
     )
     reply = "".join(streaming_result.reply_chunks)
     return OrchestrationResult(
@@ -390,11 +429,14 @@ def _resolve_destination(name: str):
     return Destination.objects.filter(slug__in=slugs).first()
 
 
-def _extract_intent(message: str, *, ai_provider: AIProvider) -> dict:
-    messages = [
-        AIMessage(role="system", content=INTENT_EXTRACTION_SYSTEM_PROMPT),
-        AIMessage(role="user", content=message),
-    ]
+def _extract_intent(
+    message: str, *, ai_provider: AIProvider, history: list[dict] | None = None
+) -> dict:
+    messages = [AIMessage(role="system", content=INTENT_EXTRACTION_SYSTEM_PROMPT)]
+    messages.extend(
+        AIMessage(role=turn["role"], content=turn["content"]) for turn in history or []
+    )
+    messages.append(AIMessage(role="user", content=message))
     data = ai_provider.generate_structured_reply(messages, json_schema=INTENT_SCHEMA)
     return _validate_intent(data)
 
