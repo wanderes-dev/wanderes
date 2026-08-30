@@ -87,6 +87,26 @@ class OpenAIProviderTests(TestCase):
         self.assertEqual(result, {"month": 10, "is_travel_request": True})
         _, kwargs = mock_client.chat.completions.create.call_args
         self.assertEqual(kwargs["response_format"]["type"], "json_schema")
+        self.assertNotIn("temperature", kwargs)
+
+    @patch("ai.provider.openai_provider.OpenAI")
+    def test_generate_structured_reply_passes_temperature_when_given(self, mock_openai_class):
+        # Intent extraction calls this with temperature=0 for consistent
+        # results across near-identical calls - confirms it actually
+        # reaches the provider rather than being silently dropped.
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = _fake_completion(content='{"a": 1}')
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider()
+        provider.generate_structured_reply(
+            [AIMessage(role="user", content="hi")],
+            json_schema={"name": "test_schema", "strict": True, "schema": {}},
+            temperature=0,
+        )
+
+        _, kwargs = mock_client.chat.completions.create.call_args
+        self.assertEqual(kwargs["temperature"], 0)
 
     @patch("ai.provider.openai_provider.OpenAI")
     def test_generate_structured_reply_raises_on_invalid_json(self, mock_openai_class):

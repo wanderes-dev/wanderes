@@ -59,7 +59,12 @@ class AIProvider(ABC):
 
     @abstractmethod
     def generate_structured_reply(
-        self, messages: list[AIMessage], *, json_schema: dict, max_tokens: int | None = None
+        self,
+        messages: list[AIMessage],
+        *,
+        json_schema: dict,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
     ) -> dict:
         """Send a conversation to the provider and return a parsed JSON dict
         conforming to `json_schema`.
@@ -68,6 +73,11 @@ class AIProvider(ABC):
         extraction) - "prefer structured output over parsing arbitrary
         natural language" (09_AI_ORCHESTRATION.md §9). Any provider adapter
         must support this, not just OpenAI, to keep the abstraction real.
+
+        `temperature` lets a caller ask for more deterministic output (e.g.
+        0 for structured extraction, where consistent results across
+        near-identical calls matter more than variety) - `None` leaves the
+        provider's own default in effect.
         """
 
     @abstractmethod

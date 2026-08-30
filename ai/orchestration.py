@@ -501,7 +501,16 @@ def _extract_intent(
         AIMessage(role=turn["role"], content=turn["content"]) for turn in history or []
     )
     messages.append(AIMessage(role="user", content=message))
-    data = ai_provider.generate_structured_reply(messages, json_schema=INTENT_SCHEMA)
+    # temperature=0: this call's output feeds directly into deterministic
+    # application logic (which branch runs, what gets queried) - it needs
+    # to be as consistent as possible given the same conversation, not
+    # creative. Without this, the same message + history could extract
+    # different fields (e.g. month) on different calls (a real bug found
+    # live: flexible_month's effect from one turn silently disappeared on
+    # the very next, unprompted by anything the traveler said differently).
+    data = ai_provider.generate_structured_reply(
+        messages, json_schema=INTENT_SCHEMA, temperature=0
+    )
     return _validate_intent(data)
 
 

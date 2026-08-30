@@ -31,11 +31,17 @@ class OpenAIProvider(AIProvider):
         return self._normalize(response, content)
 
     def generate_structured_reply(
-        self, messages: list[AIMessage], *, json_schema: dict, max_tokens: int | None = None
+        self,
+        messages: list[AIMessage],
+        *,
+        json_schema: dict,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
     ) -> dict:
         response = self._complete(
             messages,
             max_tokens=max_tokens,
+            temperature=temperature,
             response_format={"type": "json_schema", "json_schema": json_schema},
         )
         content = self._extract_content(response)
@@ -64,12 +70,16 @@ class OpenAIProvider(AIProvider):
         except OpenAIError as exc:
             raise AIProviderError("Unable to reach the AI provider.") from exc
 
-    def _complete(self, messages: list[AIMessage], *, max_tokens=None, response_format=None):
+    def _complete(
+        self, messages: list[AIMessage], *, max_tokens=None, response_format=None, temperature=None
+    ):
         try:
             payload = [{"role": message.role, "content": message.content} for message in messages]
             kwargs = {}
             if response_format is not None:
                 kwargs["response_format"] = response_format
+            if temperature is not None:
+                kwargs["temperature"] = temperature
             return self._client.chat.completions.create(
                 model=settings.AI_MODEL,
                 messages=payload,

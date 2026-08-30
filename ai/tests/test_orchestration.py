@@ -34,7 +34,9 @@ class StubAIProvider:
         self.stream_reply_calls = []
         self.generate_structured_reply_calls = []
 
-    def generate_structured_reply(self, messages, *, json_schema, max_tokens=None):
+    def generate_structured_reply(
+        self, messages, *, json_schema, max_tokens=None, temperature=None
+    ):
         self.generate_structured_reply_calls.append(messages)
         return self.structured_response
 
@@ -45,7 +47,9 @@ class StubAIProvider:
 
 
 class FailingAIProvider:
-    def generate_structured_reply(self, messages, *, json_schema, max_tokens=None):
+    def generate_structured_reply(
+        self, messages, *, json_schema, max_tokens=None, temperature=None
+    ):
         raise AIProviderError("boom")
 
     def stream_reply(self, messages, *, max_tokens=None):
@@ -270,7 +274,9 @@ class StreamTravelRecommendationTests(TestCase):
 
     def test_mid_stream_failure_appends_fallback_chunk(self):
         class MidStreamFailingProvider:
-            def generate_structured_reply(self, messages, *, json_schema, max_tokens=None):
+            def generate_structured_reply(
+                self, messages, *, json_schema, max_tokens=None, temperature=None
+            ):
                 return _intent(month=10, min_temp_c=20.0)
 
             def stream_reply(self, messages, *, max_tokens=None):
