@@ -36,8 +36,14 @@ services:
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings.production
+      # sync: false (not generateValue) specifically so this is prompted
+      # for in the SAME Blueprint creation form as travelagent-worker's
+      # copy below - generateValue fills in silently, with nothing to
+      # copy from yet when the worker's prompt for the same key appears
+      # right after it. Enter one long random value here and paste the
+      # exact same value into the worker's DJANGO_SECRET_KEY prompt.
       - key: DJANGO_SECRET_KEY
-        generateValue: true
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: travelagent-db
@@ -76,11 +82,11 @@ services:
       # service's plain envVar value with another (fromService only
       # exposes connection properties like host/port/connectionString) -
       # unlike DATABASE_URL/REDIS_URL below, this can't be wired
-      # automatically. Enter the exact same value used for
-      # travelagent-web's generated DJANGO_SECRET_KEY here by hand, so
-      # both processes share one key. Currently harmless if they drift
-      # (this worker never signs/verifies cookies, tokens, or sessions),
-      # but keep them matched as a matter of correctness.
+      # automatically. Enter the exact same value typed into
+      # travelagent-web's DJANGO_SECRET_KEY prompt above, so both
+      # processes share one key. Currently harmless if they drift (this
+      # worker never signs/verifies cookies, tokens, or sessions), but
+      # keep them matched as a matter of correctness.
       - key: DJANGO_SECRET_KEY
         sync: false
       - key: DATABASE_URL
