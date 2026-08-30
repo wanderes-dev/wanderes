@@ -1,6 +1,10 @@
+import logging
+
 from django.db import connections
 from django.db.utils import OperationalError
 from django.http import JsonResponse
+
+logger = logging.getLogger(__name__)
 
 
 def health_check(request):
@@ -24,4 +28,9 @@ def _database_is_reachable():
         connections["default"].cursor()
         return True
     except OperationalError:
+        # Never swallow this silently - the real driver error (bad host,
+        # SSL requirement, connection limit, etc.) is exactly what's needed
+        # to diagnose a real "database unavailable" incident, and it was
+        # previously only visible as a generic 503 in the access log.
+        logger.error("Database health check failed.", exc_info=True)
         return False
