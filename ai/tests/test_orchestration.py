@@ -73,6 +73,7 @@ def _intent(
     message_type="recommendation",
     needs_clarification=False,
     clarification_question=None,
+    flexible_month=False,
     month=None,
     min_temp_c=None,
     max_cost_of_living=None,
@@ -88,6 +89,7 @@ def _intent(
         "message_type": message_type,
         "needs_clarification": needs_clarification,
         "clarification_question": clarification_question,
+        "flexible_month": flexible_month,
         "month": month,
         "min_temp_c": min_temp_c,
         "max_cost_of_living": max_cost_of_living,
@@ -204,6 +206,32 @@ class GetTravelRecommendationTests(TestCase):
 
         self.assertFalse(result.needs_clarification)
         self.assertEqual(len(result.recommendations), 1)
+
+    def test_flexible_month_substitutes_current_month_instead_of_looping(self):
+        # Regression test: reported live - a traveler who explicitly said
+        # "não sei o mês, me ajude a decidir" (I don't know the month, help
+        # me decide) kept getting asked for the month again anyway, since
+        # nothing distinguished "hasn't answered" from "explicitly declines
+        # to answer and wants us to decide". flexible_month=True should
+        # make the app pick a month itself and proceed, not loop.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(flexible_month=True),
+            reply_text="Here's a suggestion for right now!",
+        )
+
+        result = get_travel_recommendation(
+            "não sei o mês ainda, me ajude a decidir",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertFalse(result.needs_clarification)
+        self.assertEqual(len(result.recommendations), 1)
+        # The explanation call should have been told a month was assumed.
+        explanation_messages = ai_provider.stream_reply_calls[0]
+        self.assertTrue(
+            any("assumed" in m.content for m in explanation_messages if m.role == "user")
+        )
 
     def test_ai_provider_error_returns_fallback_reply(self):
         result = get_travel_recommendation(

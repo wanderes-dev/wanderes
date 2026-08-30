@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import date
 
 from analytics.services import record_event
 from recommendations.scoring import (
@@ -91,6 +92,20 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "same or a similar question again for any reason - treat their reply "
     "as enough and move on, even if trip_type/temperature/budget are still "
     "unclear.\n"
+    "flexible_month: set to true if the traveler explicitly says they "
+    "don't know or don't care what month, or asks you to just decide/help "
+    "them choose (e.g. 'não sei', 'me ajude a decidir', 'you choose', "
+    "'whenever works', 'surprise me') - especially if you already asked "
+    "about month before and they are telling you this instead of naming "
+    "one. This also stays true for later messages in the same "
+    "conversation once established, even if the current message is about "
+    "something else (trip_type, budget, who they're traveling with) and "
+    "doesn't repeat it - only stop treating month as flexible if the "
+    "traveler goes on to actually name a month. When flexible_month is "
+    "true, leave month null and set needs_clarification to false - the "
+    "application will pick a reasonable month on its own; do not keep "
+    "asking for one. False whenever the traveler hasn't indicated this at "
+    "any point so far.\n"
     "For temperature and budget, the user will often describe them "
     "qualitatively rather than with an exact number - translate that "
     "description into a concrete threshold using these anchors, so the "
@@ -145,6 +160,7 @@ INTENT_SCHEMA = {
             },
             "needs_clarification": {"type": "boolean"},
             "clarification_question": {"type": ["string", "null"]},
+            "flexible_month": {"type": "boolean"},
             "month": {"type": ["integer", "null"]},
             "min_temp_c": {"type": ["number", "null"]},
             "max_cost_of_living": {"type": ["integer", "null"]},
@@ -163,6 +179,7 @@ INTENT_SCHEMA = {
             "message_type",
             "needs_clarification",
             "clarification_question",
+            "flexible_month",
             "month",
             "min_temp_c",
             "max_cost_of_living",
@@ -318,7 +335,9 @@ def stream_travel_recommendation(
         )
         return StreamingOrchestrationResult(False, [], no_match_reply)
 
-    messages = _build_explanation_messages(message, results)
+    messages = _build_explanation_messages(
+        message, results, month_was_assumed=intent["month_was_assumed"], month=intent["month"]
+    )
     return StreamingOrchestrationResult(
         False,
         results,
@@ -495,6 +514,7 @@ def _validate_intent(data: dict) -> dict:
     month = data.get("month")
     month_is_valid = isinstance(month, int) and 1 <= month <= 12
     data["month"] = month if month_is_valid else None
+    data["month_was_assumed"] = False
 
     if data.get("message_type") == "recommendation":
         # Month is the only field RecommendationRequest actually requires -
@@ -505,6 +525,19 @@ def _validate_intent(data: dict) -> dict:
         # (a real bug this fixed: the model repeatedly asked for trip_type
         # as if required, even after the user had already answered twice).
         if month_is_valid:
+            data["needs_clarification"] = False
+            data["clarification_question"] = None
+        elif data.get("flexible_month"):
+            # The traveler explicitly said they don't know/care, or asked
+            # us to decide - a second real bug this fixes: previously
+            # nothing distinguished "hasn't answered yet" from "explicitly
+            # declines to give a month", so both looped on the same
+            # question forever. Substituting today's month is a reasonable
+            # concrete default (real climate data needs *some* month) - the
+            # explanation prompt is told this was assumed, not stated, so
+            # the reply can say so transparently.
+            data["month"] = date.today().month
+            data["month_was_assumed"] = True
             data["needs_clarification"] = False
             data["clarification_question"] = None
         else:
@@ -539,13 +572,25 @@ def _clean_string_list(value) -> list:
 
 
 def _build_explanation_messages(
-    message: str, results: list[ScoredDestination]
+    message: str,
+    results: list[ScoredDestination],
+    *,
+    month_was_assumed: bool = False,
+    month: int | None = None,
 ) -> list[AIMessage]:
     top_results = results[:MAX_EXPLAINED_CANDIDATES]
     candidates_summary = "\n".join(
         f"- {r.destination.name}, {r.destination.country}: avg high {r.avg_high_c}C, "
         f"cost tier {r.destination.cost_of_living}/5, trip type {r.destination.trip_type}"
         for r in top_results
+    )
+    assumed_month_note = (
+        f"\n\nThe traveler didn't say what month, so we assumed month {month} "
+        "(the current one) to be able to look up real climate data - mention "
+        "this briefly and let them know they can give a different month if "
+        "they have one in mind."
+        if month_was_assumed
+        else ""
     )
 
     return [
@@ -557,7 +602,8 @@ def _build_explanation_messages(
                 "Here are the top matching destinations, already filtered and "
                 "ranked by the application. Do not invent any other destinations "
                 "or facts beyond what is listed here:\n"
-                f"{candidates_summary}\n\n"
+                f"{candidates_summary}"
+                f"{assumed_month_note}\n\n"
                 "Write a short, natural reply recommending the best 1-3 options "
                 "and briefly explain why each fits."
             ),
