@@ -4,7 +4,6 @@ from ai import memory
 from ai.orchestration import (
     FALLBACK_REPLY,
     NEEDS_LOGIN_REPLY,
-    NO_MATCHES_REPLY,
     OFF_TOPIC_REPLY,
     get_travel_recommendation,
     stream_travel_recommendation,
@@ -154,16 +153,23 @@ class GetTravelRecommendationTests(TestCase):
         self.assertEqual(result.recommendations[0].destination.slug, "warm-cheap")
         self.assertEqual(len(ai_provider.stream_reply_calls), 1)
 
-    def test_no_matches_skips_the_explanation_call(self):
-        ai_provider = StubAIProvider(structured_response=_intent(month=10, min_temp_c=100.0))
+    def test_no_matches_asks_ai_to_help_instead_of_a_dead_end_reply(self):
+        # Per the Phase 11 recommendation philosophy and a direct user
+        # request: a hard-constraint dead end should not be a canned
+        # message - the AI should try to help from its own knowledge, or
+        # ask a genuine clarifying question, whichever fits.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=100.0),
+            reply_text="Here's a real suggestion from general knowledge.",
+        )
 
         result = get_travel_recommendation(
             "somewhere impossibly hot", ai_provider=ai_provider, climate_provider=self.climate
         )
 
-        self.assertEqual(result.reply, NO_MATCHES_REPLY)
+        self.assertEqual(result.reply, "Here's a real suggestion from general knowledge. ")
         self.assertEqual(result.recommendations, [])
-        self.assertEqual(ai_provider.stream_reply_calls, [])
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
 
     def test_invalid_month_from_ai_triggers_clarification(self):
         ai_provider = StubAIProvider(structured_response=_intent(month=42))

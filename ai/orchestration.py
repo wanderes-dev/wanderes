@@ -25,10 +25,6 @@ OFF_TOPIC_REPLY = (
     "I'm Lunna, TravelAgent's travel consultant, so I can only help with "
     "travel planning. What kind of trip are you thinking about?"
 )
-NO_MATCHES_REPLY = (
-    "I couldn't find a destination that fits everything you're looking for. "
-    "Want to relax one of your constraints - dates, budget, or temperature?"
-)
 FALLBACK_REPLY = (
     "I'm having trouble reaching my reasoning engine right now. Please try again in a moment."
 )
@@ -311,35 +307,51 @@ def stream_travel_recommendation(
             intent["max_cost_of_living"],
             intent["trip_type"],
         )
-        _remember(NO_MATCHES_REPLY)
-        return StreamingOrchestrationResult(False, [], iter([NO_MATCHES_REPLY]))
+        # Rather than a dead-end canned reply, let the AI try to actually
+        # help - either reasoning from its own general knowledge (same
+        # recommendation philosophy already approved for vibes our
+        # deterministic model doesn't cover, Phase 11) or asking a genuine
+        # clarifying question, whichever the message actually calls for.
+        no_match_messages = _build_no_matches_messages(message, intent)
+        no_match_reply = _stream_ai_reply(
+            no_match_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult(False, [], no_match_reply)
 
     messages = _build_explanation_messages(message, results)
+    return StreamingOrchestrationResult(
+        False,
+        results,
+        _stream_ai_reply(messages, message, ai_provider=ai_provider, remember=_remember),
+    )
 
-    def _stream_explanation():
-        collected = []
-        try:
-            for chunk in ai_provider.stream_reply(messages):
-                collected.append(chunk)
-                yield chunk
-        except AIProviderError:
-            # A partial reply may already have been yielded before a
-            # mid-stream failure (09_AI_ORCHESTRATION.md §12: "Interrupted
-            # streams" must be handled) - appending the fallback message is
-            # an acceptable degrade rather than losing the request entirely.
-            logger.warning(
-                "AI provider failed mid-stream while explaining results. message=%r", message
-            )
-            collected.append(FALLBACK_REPLY)
-            yield FALLBACK_REPLY
-        finally:
-            # Runs even if the caller never fully consumes the stream (e.g.
-            # the client disconnects) - the conversation still gets
-            # whatever was produced, partial or complete, rather than
-            # silently losing this turn from memory.
-            _remember("".join(collected))
 
-    return StreamingOrchestrationResult(False, results, _stream_explanation())
+def _stream_ai_reply(
+    messages: list[AIMessage], message: str, *, ai_provider: AIProvider, remember
+) -> Iterator[str]:
+    """Stream one AI reply, saving the full text to conversation memory once
+    fully produced (or on a mid-stream failure) - shared by both the normal
+    recommendation-explanation path and the no-matches path above, since
+    both need the same streaming/fallback/memory behavior."""
+    collected = []
+    try:
+        for chunk in ai_provider.stream_reply(messages):
+            collected.append(chunk)
+            yield chunk
+    except AIProviderError:
+        # A partial reply may already have been yielded before a mid-stream
+        # failure (09_AI_ORCHESTRATION.md §12: "Interrupted streams" must be
+        # handled) - appending the fallback message is an acceptable degrade
+        # rather than losing the request entirely.
+        logger.warning("AI provider failed mid-stream. message=%r", message)
+        collected.append(FALLBACK_REPLY)
+        yield FALLBACK_REPLY
+    finally:
+        # Runs even if the caller never fully consumes the stream (e.g. the
+        # client disconnects) - the conversation still gets whatever was
+        # produced, partial or complete, rather than silently losing this
+        # turn from memory.
+        remember("".join(collected))
 
 
 def get_travel_recommendation(
@@ -548,6 +560,50 @@ def _build_explanation_messages(
                 f"{candidates_summary}\n\n"
                 "Write a short, natural reply recommending the best 1-3 options "
                 "and briefly explain why each fits."
+            ),
+        ),
+    ]
+
+
+def _build_no_matches_messages(message: str, intent: dict) -> list[AIMessage]:
+    """Built when hard constraints eliminated every curated destination -
+    per the Phase 11 recommendation philosophy (a real user will ask for
+    things this system has no deterministic model for), a dead-end canned
+    reply is worse than letting the AI actually try to help: either reason
+    from its own general travel knowledge (clearly flagged as such, since
+    it isn't grounded in our verified data) or ask a genuine clarifying
+    question if the message truly didn't give enough to go on - the model's
+    call to make, not a fixed rule, since only it can judge which fits."""
+    constraints = []
+    if intent["month"]:
+        constraints.append(f"month={intent['month']}")
+    if intent["trip_type"]:
+        constraints.append(f"trip_type={intent['trip_type']}")
+    if intent["min_temp_c"] is not None:
+        constraints.append(f"min_temp_c={intent['min_temp_c']}")
+    if intent["max_cost_of_living"] is not None:
+        constraints.append(f"max_cost_of_living={intent['max_cost_of_living']}/5")
+    constraints_summary = ", ".join(constraints) if constraints else "no specific constraints"
+
+    return [
+        AIMessage(role="system", content=SYSTEM_PROMPT),
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler asked: "{message}"\n\n'
+                f"Our own curated destination data has no match for this "
+                f"({constraints_summary}). You have two options - pick "
+                "whichever the message actually calls for:\n"
+                "1. If the traveler gave you enough to go on (a vibe, "
+                "climate, budget, who they're traveling with), suggest 1-3 "
+                "real destinations from your own general travel knowledge "
+                "that fit. Say plainly that this comes from your own "
+                "knowledge rather than our verified travel data, since "
+                "exact current pricing/climate for it isn't something we "
+                "have on file.\n"
+                "2. If the message genuinely doesn't give you enough to "
+                "suggest anything sensible, ask a short, warm clarifying "
+                "question instead - don't guess just to give an answer."
             ),
         ),
     ]
