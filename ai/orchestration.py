@@ -55,13 +55,29 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "Only fill in the fields relevant to the chosen message_type - leave "
     "every other field at its default (null, false, or an empty list).\n\n"
     "--- Fields for message_type = 'recommendation' ---\n"
-    "Set needs_clarification to true, with a short clarification_question, if "
-    "the message is a travel request but is missing information you would "
-    "need - at minimum, a target month. Never guess a month the user did not "
-    "state or clearly imply. If the user names a range of two consecutive "
-    "months (e.g. 'September or October', 'between September and October'), "
-    "that counts as stating a month - extract the earlier of the two "
-    "(September in that example) rather than leaving month null.\n"
+    "The ONLY thing that can make needs_clarification true is a missing "
+    "month - it is the one piece of information a recommendation genuinely "
+    "requires. Never set needs_clarification to true because trip_type, "
+    "temperature, or budget are unspecified - those are optional dimensions "
+    "with their own 'leave null' handling below, not reasons to ask another "
+    "question. Never guess a month the user did not state or clearly imply. "
+    "If the user names a range of two consecutive months (e.g. 'September "
+    "or October', 'between September and October'), that counts as stating "
+    "a month - extract the earlier of the two (September in that example) "
+    "rather than leaving month null.\n"
+    "When you do need to ask for the month, write clarification_question "
+    "the way Lunna (a warm, friendly travel consultant) would actually "
+    "talk to someone - briefly and genuinely acknowledge whatever the "
+    "traveler already told you (budget, temperature, who they're "
+    "traveling with, vibe) before asking what month they're thinking of. "
+    "Never phrase it as a form or a list of categories to pick from (e.g. "
+    "do not write '(beach, city, nature, culture)' into a question - that "
+    "field is for internal classification, never for a question shown to "
+    "the traveler). If the conversation history shows you already asked a "
+    "clarification question and the traveler responded, do not ask the "
+    "same or a similar question again for any reason - treat their reply "
+    "as enough and move on, even if trip_type/temperature/budget are still "
+    "unclear.\n"
     "For temperature and budget, the user will often describe them "
     "qualitatively rather than with an exact number - translate that "
     "description into a concrete threshold using these anchors, so the "
@@ -448,9 +464,21 @@ def _validate_intent(data: dict) -> dict:
         data["message_type"] = "recommendation"
 
     month = data.get("month")
-    if not isinstance(month, int) or not (1 <= month <= 12):
-        data["month"] = None
-        if data.get("message_type") == "recommendation" and not data.get("needs_clarification"):
+    month_is_valid = isinstance(month, int) and 1 <= month <= 12
+    data["month"] = month if month_is_valid else None
+
+    if data.get("message_type") == "recommendation":
+        # Month is the only field RecommendationRequest actually requires -
+        # trip_type/temperature/budget are all optional with their own
+        # "leave null" handling. Deciding this here, in code, rather than
+        # just trusting the model's own needs_clarification choice, is what
+        # guarantees the chat can never loop asking about an optional field
+        # (a real bug this fixed: the model repeatedly asked for trip_type
+        # as if required, even after the user had already answered twice).
+        if month_is_valid:
+            data["needs_clarification"] = False
+            data["clarification_question"] = None
+        else:
             data["needs_clarification"] = True
             data["clarification_question"] = (
                 data.get("clarification_question") or "Which month are you thinking of traveling?"

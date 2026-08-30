@@ -174,6 +174,31 @@ class GetTravelRecommendationTests(TestCase):
 
         self.assertTrue(result.needs_clarification)
 
+    def test_month_present_never_needs_clarification_even_if_ai_says_so(self):
+        # Regression test: reported live - the model kept asking about
+        # trip_type (an optional field) as if it were required, looping
+        # forever even after the user answered twice. Month is the only
+        # thing RecommendationRequest actually requires, so once it's
+        # present the app must proceed regardless of what needs_clarification
+        # the model itself set.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                month=10,
+                needs_clarification=True,
+                clarification_question="What type of destination are you interested in?",
+            ),
+            reply_text="Try the warm, cheap destination!",
+        )
+
+        result = get_travel_recommendation(
+            "low cost trip and a warm place",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertFalse(result.needs_clarification)
+        self.assertEqual(len(result.recommendations), 1)
+
     def test_ai_provider_error_returns_fallback_reply(self):
         result = get_travel_recommendation(
             "somewhere warm in October",
