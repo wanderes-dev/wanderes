@@ -66,46 +66,21 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "Only fill in the fields relevant to the chosen message_type - leave "
     "every other field at its default (null, false, or an empty list). "
     "The traveler may write in any language - understand it and extract "
-    "from it the same way regardless of language, and write "
-    "clarification_question in that same language.\n\n"
+    "from it the same way regardless of language.\n\n"
     "--- Fields for message_type = 'recommendation' ---\n"
-    "The ONLY thing that can make needs_clarification true is a missing "
-    "month - it is the one piece of information a recommendation genuinely "
-    "requires. Never set needs_clarification to true because trip_type, "
-    "temperature, or budget are unspecified - those are optional dimensions "
-    "with their own 'leave null' handling below, not reasons to ask another "
-    "question. Never guess a month the user did not state or clearly imply. "
+    "Extract whatever the traveler actually gave you - never ask a "
+    "follow-up question and never treat any field as required. A real "
+    "person will rarely state every dimension (month, climate, budget, "
+    "trip type) in one message, and should never be blocked from getting "
+    "a real answer because of that - every field below is optional, and "
+    "leaving one null just means the application treats that dimension as "
+    "not relevant/unconstrained, not as something missing to chase.\n"
+    "month: extract only if stated or clearly implied - never guess one. "
     "If the user names a range of two consecutive months (e.g. 'September "
-    "or October', 'between September and October'), that counts as stating "
-    "a month - extract the earlier of the two (September in that example) "
-    "rather than leaving month null.\n"
-    "When you do need to ask for the month, write clarification_question "
-    f"the way {ASSISTANT_NAME} (a warm, friendly travel consultant) would actually "
-    "talk to someone - briefly and genuinely acknowledge whatever the "
-    "traveler already told you (budget, temperature, who they're "
-    "traveling with, vibe) before asking what month they're thinking of. "
-    "Never phrase it as a form or a list of categories to pick from (e.g. "
-    "do not write '(beach, city, nature, culture)' into a question - that "
-    "field is for internal classification, never for a question shown to "
-    "the traveler). If the conversation history shows you already asked a "
-    "clarification question and the traveler responded, do not ask the "
-    "same or a similar question again for any reason - treat their reply "
-    "as enough and move on, even if trip_type/temperature/budget are still "
-    "unclear.\n"
-    "flexible_month: set to true if the traveler explicitly says they "
-    "don't know or don't care what month, or asks you to just decide/help "
-    "them choose (e.g. 'não sei', 'me ajude a decidir', 'you choose', "
-    "'whenever works', 'surprise me') - especially if you already asked "
-    "about month before and they are telling you this instead of naming "
-    "one. This also stays true for later messages in the same "
-    "conversation once established, even if the current message is about "
-    "something else (trip_type, budget, who they're traveling with) and "
-    "doesn't repeat it - only stop treating month as flexible if the "
-    "traveler goes on to actually name a month. When flexible_month is "
-    "true, leave month null and set needs_clarification to false - the "
-    "application will pick a reasonable month on its own; do not keep "
-    "asking for one. False whenever the traveler hasn't indicated this at "
-    "any point so far.\n"
+    "or October', 'between September and October'), extract the earlier "
+    "of the two. If no month is stated at all, leave it null - the "
+    "application already assumes a reasonable month automatically in that "
+    "case, so this is never something to ask about.\n"
     "For temperature and budget, the user will often describe them "
     "qualitatively rather than with an exact number - translate that "
     "description into a concrete threshold using these anchors, so the "
@@ -158,9 +133,6 @@ INTENT_SCHEMA = {
                 "type": "string",
                 "enum": ["recommendation", "feedback", "future_intent", "off_topic"],
             },
-            "needs_clarification": {"type": "boolean"},
-            "clarification_question": {"type": ["string", "null"]},
-            "flexible_month": {"type": "boolean"},
             "month": {"type": ["integer", "null"]},
             "min_temp_c": {"type": ["number", "null"]},
             "max_cost_of_living": {"type": ["integer", "null"]},
@@ -177,9 +149,6 @@ INTENT_SCHEMA = {
         },
         "required": [
             "message_type",
-            "needs_clarification",
-            "clarification_question",
-            "flexible_month",
             "month",
             "min_temp_c",
             "max_cost_of_living",
@@ -199,13 +168,11 @@ INTENT_SCHEMA = {
 @dataclass(frozen=True)
 class OrchestrationResult:
     reply: str
-    needs_clarification: bool
     recommendations: list[ScoredDestination]
 
 
 @dataclass(frozen=True)
 class StreamingOrchestrationResult:
-    needs_clarification: bool
     recommendations: list[ScoredDestination]
     reply_chunks: Iterator[str]
 
@@ -265,30 +232,30 @@ def stream_travel_recommendation(
     except AIProviderError:
         logger.warning("Could not extract intent - AI provider failure. message=%r", message)
         _remember(FALLBACK_REPLY)
-        return StreamingOrchestrationResult(False, [], iter([FALLBACK_REPLY]))
+        return StreamingOrchestrationResult([], iter([FALLBACK_REPLY]))
 
     message_type = intent["message_type"]
 
     if message_type == "off_topic":
         _remember(OFF_TOPIC_REPLY)
-        return StreamingOrchestrationResult(False, [], iter([OFF_TOPIC_REPLY]))
+        return StreamingOrchestrationResult([], iter([OFF_TOPIC_REPLY]))
 
     if message_type == "feedback":
         reply = _handle_feedback(intent, user=user)
         _remember(reply)
-        return StreamingOrchestrationResult(False, [], iter([reply]))
+        return StreamingOrchestrationResult([], iter([reply]))
 
     if message_type == "future_intent":
         reply = _handle_future_intent(intent, user=user)
         _remember(reply)
-        return StreamingOrchestrationResult(False, [], iter([reply]))
+        return StreamingOrchestrationResult([], iter([reply]))
 
     # message_type == "recommendation" (also the safe default/fallback).
-    if intent["needs_clarification"]:
-        question = intent["clarification_question"] or "Could you tell me more about your trip?"
-        _remember(question)
-        return StreamingOrchestrationResult(True, [], iter([question]))
-
+    # No clarification gate here on purpose (removed 2026-08-30, per direct
+    # user feedback): a real user will rarely state every dimension in one
+    # message, and should never be blocked from a real answer for it -
+    # month is defaulted below if missing, and every other field already
+    # treats "unspecified" as "not relevant" rather than "missing".
     no_deterministic_constraints = (
         intent["trip_type"] is None
         and intent["min_temp_c"] is None
@@ -325,21 +292,22 @@ def stream_travel_recommendation(
             intent["trip_type"],
         )
         # Rather than a dead-end canned reply, let the AI try to actually
-        # help - either reasoning from its own general knowledge (same
-        # recommendation philosophy already approved for vibes our
-        # deterministic model doesn't cover, Phase 11) or asking a genuine
-        # clarifying question, whichever the message actually calls for.
+        # help - reason from its own general knowledge (same recommendation
+        # philosophy already approved for vibes our deterministic model
+        # doesn't cover, Phase 11), treating whichever constraint made
+        # everything unmatchable as relaxable rather than blocking (direct
+        # user feedback, 2026-08-30: never just ask for more when the app
+        # can attempt a real answer instead).
         no_match_messages = _build_no_matches_messages(message, intent)
         no_match_reply = _stream_ai_reply(
             no_match_messages, message, ai_provider=ai_provider, remember=_remember
         )
-        return StreamingOrchestrationResult(False, [], no_match_reply)
+        return StreamingOrchestrationResult([], no_match_reply)
 
     messages = _build_explanation_messages(
         message, results, month_was_assumed=intent["month_was_assumed"], month=intent["month"]
     )
     return StreamingOrchestrationResult(
-        False,
         results,
         _stream_ai_reply(messages, message, ai_provider=ai_provider, remember=_remember),
     )
@@ -393,9 +361,7 @@ def get_travel_recommendation(
         climate_provider=climate_provider,
     )
     reply = "".join(streaming_result.reply_chunks)
-    return OrchestrationResult(
-        reply, streaming_result.needs_clarification, streaming_result.recommendations
-    )
+    return OrchestrationResult(reply, streaming_result.recommendations)
 
 
 def _handle_feedback(intent: dict, *, user) -> str:
@@ -506,8 +472,8 @@ def _extract_intent(
     # to be as consistent as possible given the same conversation, not
     # creative. Without this, the same message + history could extract
     # different fields (e.g. month) on different calls (a real bug found
-    # live: flexible_month's effect from one turn silently disappeared on
-    # the very next, unprompted by anything the traveler said differently).
+    # live: an already-established value from one turn silently disappeared
+    # on the very next, unprompted by anything the traveler said differently).
     data = ai_provider.generate_structured_reply(
         messages, json_schema=INTENT_SCHEMA, temperature=0
     )
@@ -525,35 +491,17 @@ def _validate_intent(data: dict) -> dict:
     data["month"] = month if month_is_valid else None
     data["month_was_assumed"] = False
 
-    if data.get("message_type") == "recommendation":
-        # Month is the only field RecommendationRequest actually requires -
-        # trip_type/temperature/budget are all optional with their own
-        # "leave null" handling. Deciding this here, in code, rather than
-        # just trusting the model's own needs_clarification choice, is what
-        # guarantees the chat can never loop asking about an optional field
-        # (a real bug this fixed: the model repeatedly asked for trip_type
-        # as if required, even after the user had already answered twice).
-        if month_is_valid:
-            data["needs_clarification"] = False
-            data["clarification_question"] = None
-        elif data.get("flexible_month"):
-            # The traveler explicitly said they don't know/care, or asked
-            # us to decide - a second real bug this fixes: previously
-            # nothing distinguished "hasn't answered yet" from "explicitly
-            # declines to give a month", so both looped on the same
-            # question forever. Substituting today's month is a reasonable
-            # concrete default (real climate data needs *some* month) - the
-            # explanation prompt is told this was assumed, not stated, so
-            # the reply can say so transparently.
-            data["month"] = date.today().month
-            data["month_was_assumed"] = True
-            data["needs_clarification"] = False
-            data["clarification_question"] = None
-        else:
-            data["needs_clarification"] = True
-            data["clarification_question"] = (
-                data.get("clarification_question") or "Which month are you thinking of traveling?"
-            )
+    if data.get("message_type") == "recommendation" and not month_is_valid:
+        # Month is the only thing RecommendationRequest needs to look up
+        # real climate data, but a real user will rarely state every
+        # dimension in one message - rather than blocking on it (removed
+        # 2026-08-30, per direct user feedback: no field should ever gate
+        # a real answer), always default to the current month and say so
+        # transparently in the explanation, exactly like every other
+        # unspecified field (trip_type, temperature, budget) already just
+        # means "not relevant" rather than "missing".
+        data["month"] = date.today().month
+        data["month_was_assumed"] = True
 
     max_cost_of_living = data.get("max_cost_of_living")
     if max_cost_of_living is not None and not (1 <= max_cost_of_living <= 5):
@@ -621,14 +569,15 @@ def _build_explanation_messages(
 
 
 def _build_no_matches_messages(message: str, intent: dict) -> list[AIMessage]:
-    """Built when hard constraints eliminated every curated destination -
-    per the Phase 11 recommendation philosophy (a real user will ask for
-    things this system has no deterministic model for), a dead-end canned
-    reply is worse than letting the AI actually try to help: either reason
-    from its own general travel knowledge (clearly flagged as such, since
-    it isn't grounded in our verified data) or ask a genuine clarifying
-    question if the message truly didn't give enough to go on - the model's
-    call to make, not a fixed rule, since only it can judge which fits."""
+    """Built when hard constraints eliminated every curated destination.
+
+    Per the Phase 11 recommendation philosophy and direct user feedback
+    (2026-08-30 - never just ask for more when a real answer is possible),
+    this always tries to actually help rather than dead-ending or asking
+    another question: reason from general travel knowledge instead, and
+    treat whichever constraint made everything unmatchable as the one to
+    relax, exactly like a hard filter our own scoring never even had to
+    apply here would have been treated as a soft preference."""
     constraints = []
     if intent["month"]:
         constraints.append(f"month={intent['month']}")
@@ -646,19 +595,20 @@ def _build_no_matches_messages(message: str, intent: dict) -> list[AIMessage]:
             role="user",
             content=(
                 f'The traveler asked: "{message}"\n\n'
-                f"Our own curated destination data has no match for this "
-                f"({constraints_summary}). You have two options - pick "
-                "whichever the message actually calls for:\n"
-                "1. If the traveler gave you enough to go on (a vibe, "
-                "climate, budget, who they're traveling with), suggest 1-3 "
-                "real destinations from your own general travel knowledge "
-                "that fit. Say plainly that this comes from your own "
-                "knowledge rather than our verified travel data, since "
-                "exact current pricing/climate for it isn't something we "
-                "have on file.\n"
-                "2. If the message genuinely doesn't give you enough to "
-                "suggest anything sensible, ask a short, warm clarifying "
-                "question instead - don't guess just to give an answer."
+                "Our own curated destination data has no match for this "
+                f"({constraints_summary}) - taken together, these "
+                "constraints are too narrow for what we have on file. "
+                "Suggest 1-3 real destinations from your own general "
+                "travel knowledge that fit the traveler's request as well "
+                "as possible, relaxing whichever constraint seems least "
+                "essential to what they actually care about (never ask "
+                "them to do this for you). Say plainly that this comes "
+                "from your own knowledge rather than our verified travel "
+                "data, since exact current pricing/climate for it isn't "
+                "something we have on file. Only ask a clarifying question "
+                "instead if the message truly gives you nothing at all to "
+                "go on (not even a vibe, place type, or timing) - this "
+                "should be rare."
             ),
         ),
     ]

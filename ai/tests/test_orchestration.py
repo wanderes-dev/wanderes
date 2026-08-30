@@ -75,9 +75,6 @@ def _make_destination(slug, *, lat, lon, trip_type="beach", cost_of_living=1):
 def _intent(
     *,
     message_type="recommendation",
-    needs_clarification=False,
-    clarification_question=None,
-    flexible_month=False,
     month=None,
     min_temp_c=None,
     max_cost_of_living=None,
@@ -91,9 +88,6 @@ def _intent(
 ):
     return {
         "message_type": message_type,
-        "needs_clarification": needs_clarification,
-        "clarification_question": clarification_question,
-        "flexible_month": flexible_month,
         "month": month,
         "min_temp_c": min_temp_c,
         "max_cost_of_living": max_cost_of_living,
@@ -127,20 +121,25 @@ class GetTravelRecommendationTests(TestCase):
         self.assertEqual(result.recommendations, [])
         self.assertEqual(ai_provider.stream_reply_calls, [])
 
-    def test_missing_month_asks_for_clarification(self):
+    def test_missing_month_defaults_to_current_month_and_proceeds(self):
+        # No clarification gate (removed 2026-08-30, per direct user
+        # feedback): a real user will rarely state every dimension in one
+        # message, and should never be blocked from a real answer for it -
+        # month defaults to the current one instead of being asked about.
         ai_provider = StubAIProvider(
-            structured_response=_intent(
-                needs_clarification=True, clarification_question="Which month?"
-            )
+            structured_response=_intent(min_temp_c=20.0),
+            reply_text="Try the warm destination!",
         )
 
         result = get_travel_recommendation(
             "somewhere warm", ai_provider=ai_provider, climate_provider=self.climate
         )
 
-        self.assertTrue(result.needs_clarification)
-        self.assertEqual(result.reply, "Which month?")
-        self.assertEqual(result.recommendations, [])
+        self.assertEqual(len(result.recommendations), 1)
+        explanation_messages = ai_provider.stream_reply_calls[0]
+        self.assertTrue(
+            any("assumed" in m.content for m in explanation_messages if m.role == "user")
+        )
 
     def test_valid_request_returns_scored_recommendations_and_explanation(self):
         ai_provider = StubAIProvider(
@@ -160,10 +159,10 @@ class GetTravelRecommendationTests(TestCase):
         self.assertEqual(len(ai_provider.stream_reply_calls), 1)
 
     def test_no_matches_asks_ai_to_help_instead_of_a_dead_end_reply(self):
-        # Per the Phase 11 recommendation philosophy and a direct user
-        # request: a hard-constraint dead end should not be a canned
-        # message - the AI should try to help from its own knowledge, or
-        # ask a genuine clarifying question, whichever fits.
+        # Per the Phase 11 recommendation philosophy and direct user
+        # feedback: a hard-constraint dead end should not be a canned
+        # message - the AI should always try to help from its own
+        # knowledge rather than asking yet another question.
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=100.0),
             reply_text="Here's a real suggestion from general knowledge.",
@@ -177,65 +176,16 @@ class GetTravelRecommendationTests(TestCase):
         self.assertEqual(result.recommendations, [])
         self.assertEqual(len(ai_provider.stream_reply_calls), 1)
 
-    def test_invalid_month_from_ai_triggers_clarification(self):
-        ai_provider = StubAIProvider(structured_response=_intent(month=42))
+    def test_invalid_month_from_ai_defaults_to_current_month(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=42), reply_text="Try somewhere nice!"
+        )
 
         result = get_travel_recommendation(
             "somewhere nice sometime", ai_provider=ai_provider, climate_provider=self.climate
         )
 
-        self.assertTrue(result.needs_clarification)
-
-    def test_month_present_never_needs_clarification_even_if_ai_says_so(self):
-        # Regression test: reported live - the model kept asking about
-        # trip_type (an optional field) as if it were required, looping
-        # forever even after the user answered twice. Month is the only
-        # thing RecommendationRequest actually requires, so once it's
-        # present the app must proceed regardless of what needs_clarification
-        # the model itself set.
-        ai_provider = StubAIProvider(
-            structured_response=_intent(
-                month=10,
-                needs_clarification=True,
-                clarification_question="What type of destination are you interested in?",
-            ),
-            reply_text="Try the warm, cheap destination!",
-        )
-
-        result = get_travel_recommendation(
-            "low cost trip and a warm place",
-            ai_provider=ai_provider,
-            climate_provider=self.climate,
-        )
-
-        self.assertFalse(result.needs_clarification)
         self.assertEqual(len(result.recommendations), 1)
-
-    def test_flexible_month_substitutes_current_month_instead_of_looping(self):
-        # Regression test: reported live - a traveler who explicitly said
-        # "não sei o mês, me ajude a decidir" (I don't know the month, help
-        # me decide) kept getting asked for the month again anyway, since
-        # nothing distinguished "hasn't answered" from "explicitly declines
-        # to answer and wants us to decide". flexible_month=True should
-        # make the app pick a month itself and proceed, not loop.
-        ai_provider = StubAIProvider(
-            structured_response=_intent(flexible_month=True),
-            reply_text="Here's a suggestion for right now!",
-        )
-
-        result = get_travel_recommendation(
-            "não sei o mês ainda, me ajude a decidir",
-            ai_provider=ai_provider,
-            climate_provider=self.climate,
-        )
-
-        self.assertFalse(result.needs_clarification)
-        self.assertEqual(len(result.recommendations), 1)
-        # The explanation call should have been told a month was assumed.
-        explanation_messages = ai_provider.stream_reply_calls[0]
-        self.assertTrue(
-            any("assumed" in m.content for m in explanation_messages if m.role == "user")
-        )
 
     def test_ai_provider_error_returns_fallback_reply(self):
         result = get_travel_recommendation(
@@ -684,10 +634,8 @@ class ConversationMemoryTests(TestCase):
 
     def test_second_message_includes_prior_turn_in_history(self):
         first_provider = StubAIProvider(
-            structured_response=_intent(
-                message_type="recommendation", needs_clarification=True,
-                clarification_question="What month are you planning to travel?",
-            )
+            structured_response=_intent(message_type="recommendation", min_temp_c=22.0),
+            reply_text="Here's a warm suggestion for you!",
         )
         get_travel_recommendation(
             "what do you suggest for a destination?",
@@ -709,7 +657,7 @@ class ConversationMemoryTests(TestCase):
         sent_messages = second_provider.generate_structured_reply_calls[0]
         contents = [m.content for m in sent_messages]
         self.assertIn("what do you suggest for a destination?", contents)
-        self.assertIn("What month are you planning to travel?", contents)
+        self.assertIn("Here's a warm suggestion for you! ", contents)
 
     def test_different_sessions_do_not_share_history(self):
         first_provider = StubAIProvider(structured_response=_intent(message_type="off_topic"))

@@ -42,7 +42,6 @@ class RecommendationsStreamViewTests(TestCase):
     @patch("ai.views.stream_travel_recommendation")
     def test_streams_reply_chunks_for_anonymous_user(self, mock_stream):
         mock_stream.return_value = StreamingOrchestrationResult(
-            needs_clarification=False,
             recommendations=[],
             reply_chunks=iter(["Hello", " ", "traveler!"]),
         )
@@ -84,7 +83,6 @@ class RecommendationsStreamViewTests(TestCase):
             score=0.0,
         )
         mock_stream.return_value = StreamingOrchestrationResult(
-            needs_clarification=False,
             recommendations=[scored],
             reply_chunks=iter(["Try Lisbon!"]),
         )
@@ -102,7 +100,7 @@ class RecommendationsStreamViewTests(TestCase):
     @patch("ai.views.stream_travel_recommendation")
     def test_passes_authenticated_user_through(self, mock_stream):
         mock_stream.return_value = StreamingOrchestrationResult(
-            needs_clarification=False, recommendations=[], reply_chunks=iter(["Hi!"])
+            recommendations=[], reply_chunks=iter(["Hi!"])
         )
         user = User.objects.create_user(email="traveler@example.com", password="testpass123")
         self.client.force_login(user)
@@ -115,7 +113,7 @@ class RecommendationsStreamViewTests(TestCase):
     @patch("ai.views.stream_travel_recommendation")
     def test_passes_a_stable_session_key_for_anonymous_users(self, mock_stream):
         mock_stream.return_value = StreamingOrchestrationResult(
-            needs_clarification=False, recommendations=[], reply_chunks=iter(["Hi!"])
+            recommendations=[], reply_chunks=iter(["Hi!"])
         )
 
         self.client.post(reverse("ai:recommendations-api"), {"message": "hello"})
@@ -129,7 +127,7 @@ class RecommendationsStreamAnalyticsTests(TestCase):
     @patch("ai.views.stream_travel_recommendation")
     def test_any_message_records_travel_question_submitted(self, mock_stream):
         mock_stream.return_value = StreamingOrchestrationResult(
-            needs_clarification=False, recommendations=[], reply_chunks=iter(["Hi!"])
+            recommendations=[], reply_chunks=iter(["Hi!"])
         )
 
         self.client.post(reverse("ai:recommendations-api"), {"message": "what's the weather?"})
@@ -141,7 +139,7 @@ class RecommendationsStreamAnalyticsTests(TestCase):
     @patch("ai.views.stream_travel_recommendation")
     def test_anonymous_message_records_anonymized_ip_not_user(self, mock_stream):
         mock_stream.return_value = StreamingOrchestrationResult(
-            needs_clarification=False, recommendations=[], reply_chunks=iter(["Hi!"])
+            recommendations=[], reply_chunks=iter(["Hi!"])
         )
 
         self.client.post(
@@ -180,7 +178,7 @@ class RecommendationsStreamAnalyticsTests(TestCase):
             score=0.0,
         )
         mock_stream.return_value = StreamingOrchestrationResult(
-            needs_clarification=False, recommendations=[scored], reply_chunks=iter(["Try Lisbon!"])
+            recommendations=[scored], reply_chunks=iter(["Try Lisbon!"])
         )
 
         self.client.post(reverse("ai:recommendations-api"), {"message": "somewhere warm"})
@@ -192,7 +190,7 @@ class RecommendationsStreamAnalyticsTests(TestCase):
     @patch("ai.views.stream_travel_recommendation")
     def test_no_recommendations_does_not_record_recommendation_generated(self, mock_stream):
         mock_stream.return_value = StreamingOrchestrationResult(
-            needs_clarification=False, recommendations=[], reply_chunks=iter(["Hi!"])
+            recommendations=[], reply_chunks=iter(["Hi!"])
         )
 
         self.client.post(reverse("ai:recommendations-api"), {"message": "hello"})
