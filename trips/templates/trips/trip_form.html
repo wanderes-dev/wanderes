@@ -7,7 +7,7 @@
 <form method="post">
     {% csrf_token %}
     {{ form.as_p }}
-    <button type="submit">Save</button>
+    <button type="submit" class="btn">Save</button>
 </form>
 <p><a href="{% url 'trips:trip-list' %}">Back to my trips</a></p>
 {% endblock %}

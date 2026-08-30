@@ -2,17 +2,24 @@
 
 {% block title %}Chat with Lunna - TravelAgent{% endblock %}
 
+{% block content_class %}content-flush{% endblock %}
+
 {% block content %}
 {% csrf_token %}
 
 <style>
+    /* Fills whatever height .content-flush has left after the site
+       header/footer (see static/css/main.css) - not 100vh, since the
+       chat page is no longer the only thing on screen. */
     .chat-page {
         max-width: 640px;
+        width: 100%;
         margin: 0 auto;
         padding: 1rem;
         display: flex;
         flex-direction: column;
-        height: 100vh;
+        flex: 1 1 auto;
+        min-height: 0;
         box-sizing: border-box;
     }
     .chat-header {

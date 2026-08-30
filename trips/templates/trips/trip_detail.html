@@ -4,29 +4,33 @@
 
 {% block content %}
 <h1>{{ trip.name|default:trip.destination.name }}</h1>
-<p>Destination: {{ trip.destination.name }}, {{ trip.destination.country }}</p>
-<p>Status: {{ trip.get_status_display }}</p>
-{% if trip.start_date or trip.end_date %}
-<p>Dates: {{ trip.start_date|default:"?" }} - {{ trip.end_date|default:"?" }}</p>
-{% endif %}
+<div class="card">
+    <p>Destination: {{ trip.destination.name }}, {{ trip.destination.country }}</p>
+    <p>Status: {{ trip.get_status_display }}</p>
+    {% if trip.start_date or trip.end_date %}
+    <p>Dates: {{ trip.start_date|default:"?" }} - {{ trip.end_date|default:"?" }}</p>
+    {% endif %}
+</div>
 
 <h2>Feedback</h2>
-{% if feedback %}
-<p>Rating: {{ feedback.rating }}/10</p>
-{% if feedback_tag_labels %}
-<p>Tags: {{ feedback_tag_labels|join:", " }}</p>
-{% endif %}
-{% if feedback.comment %}
-<p>Comment: {{ feedback.comment }}</p>
-{% endif %}
-<p><a href="{% url 'trips:trip-feedback' trip.pk %}">Edit feedback</a></p>
-{% else %}
-<p><a href="{% url 'trips:trip-feedback' trip.pk %}">Leave feedback</a></p>
-{% endif %}
+<div class="card">
+    {% if feedback %}
+    <p>Rating: {{ feedback.rating }}/10</p>
+    {% if feedback_tag_labels %}
+    <p>Tags: {{ feedback_tag_labels|join:", " }}</p>
+    {% endif %}
+    {% if feedback.comment %}
+    <p>Comment: {{ feedback.comment }}</p>
+    {% endif %}
+    <p><a href="{% url 'trips:trip-feedback' trip.pk %}">Edit feedback</a></p>
+    {% else %}
+    <p><a href="{% url 'trips:trip-feedback' trip.pk %}">Leave feedback</a></p>
+    {% endif %}
+</div>
 
-<p>
-    <a href="{% url 'trips:trip-edit' trip.pk %}">Edit</a>
-    - <a href="{% url 'trips:trip-delete' trip.pk %}">Delete</a>
+<p class="actions">
+    <a href="{% url 'trips:trip-edit' trip.pk %}" class="btn btn-secondary">Edit</a>
+    <a href="{% url 'trips:trip-delete' trip.pk %}" class="btn btn-danger">Delete</a>
 </p>
 <p><a href="{% url 'trips:trip-list' %}">Back to my trips</a></p>
 {% endblock %}

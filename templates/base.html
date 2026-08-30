@@ -1,21 +1,53 @@
-{% load i18n %}<!doctype html>
+{% load i18n static %}<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}TravelAgent{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
 </head>
 <body>
+    <header class="site-header">
+        <div class="site-header-inner">
+            <a class="brand" href="{% url 'ai:chat' %}">TravelAgent</a>
+            <nav class="site-nav" id="site-nav">
+                <a href="{% url 'ai:chat' %}">Chat</a>
+                {% if user.is_authenticated %}
+                <a href="{% url 'trips:trip-list' %}">My trips</a>
+                <a href="{% url 'trips:history-list' %}">My history</a>
+                <a href="{% url 'users:profile' %}">Profile</a>
+                <a href="{% url 'users:account' %}">Account</a>
+                <form method="post" action="{% url 'users:logout' %}" class="nav-logout-form">
+                    {% csrf_token %}
+                    <button type="submit" class="link-button">Log out</button>
+                </form>
+                {% else %}
+                <a href="{% url 'users:login' %}">Log in</a>
+                <a href="{% url 'users:register' %}">Register</a>
+                {% endif %}
+            </nav>
+            <button type="button" class="nav-toggle" id="nav-toggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="site-nav">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+    </header>
+
     {% if messages %}
-    <ul>
+    <ul class="messages">
         {% for message in messages %}
-        <li>{{ message }}</li>
+        <li class="message {{ message.tags }}">{{ message }}</li>
         {% endfor %}
     </ul>
     {% endif %}
-    {% block content %}{% endblock %}
-    <footer>
+
+    <main class="{% block content_class %}site-content{% endblock %}">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">
         <small>{% blocktrans %}We collect anonymized usage data (such as which features are used) to improve our recommendations. We never store your message text or share this data with third parties.{% endblocktrans %}</small>
     </footer>
+
+    <script src="{% static 'js/main.js' %}" defer></script>
 </body>
 </html>

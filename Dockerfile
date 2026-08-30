@@ -53,11 +53,15 @@ ENV PATH=/root/.local/bin:$PATH \
 
 COPY . .
 
-# collectstatic only needs STATIC_ROOT/STATICFILES config (shared by every
-# settings module) - runs under `development` here specifically so it
-# doesn't trip production.py's fail-fast ALLOWED_HOSTS/SECRET_KEY checks at
-# build time, when neither is set yet.
-RUN DJANGO_SETTINGS_MODULE=config.settings.development python manage.py collectstatic --noinput
+# Must run under `production` settings specifically - that's the only
+# settings module using whitenoise's hashed-manifest static storage, and
+# the manifest it generates here is exactly what the real runtime process
+# (also under `production`) needs to find later. Throwaway values satisfy
+# production.py's fail-fast ALLOWED_HOSTS/SECRET_KEY checks at build time
+# only - the real runtime container gets its real values from the
+# platform's env vars, not from this layer.
+RUN DJANGO_ALLOWED_HOSTS=build.invalid DJANGO_SECRET_KEY=build-time-only-unused-at-runtime \
+    python manage.py collectstatic --noinput
 
 EXPOSE 8000
 

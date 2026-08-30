@@ -1,0 +1,423 @@
+:root {
+    --color-primary: #1d6f6a;
+    --color-primary-dark: #14514d;
+    --color-bg: #f7f8fa;
+    --color-surface: #ffffff;
+    --color-text: #1f2933;
+    --color-text-muted: #5a6572;
+    --color-border: #dde2e7;
+    --color-success-bg: #e3f6e8;
+    --color-success-text: #1e6b3a;
+    --color-error-bg: #fdeceb;
+    --color-error-text: #a4302a;
+    --color-warning-bg: #fff5e0;
+    --color-warning-text: #8a5a00;
+    --color-info-bg: #e8f0fe;
+    --color-info-text: #1c4587;
+    --color-danger: #b3392f;
+    --radius: 0.5rem;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+        sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    background: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+h1, h2, h3 {
+    line-height: 1.25;
+    color: var(--color-text);
+}
+
+h1 {
+    font-size: 1.6rem;
+    margin: 0 0 1rem;
+}
+
+h2 {
+    font-size: 1.2rem;
+    margin: 1.5rem 0 0.75rem;
+}
+
+p {
+    line-height: 1.5;
+}
+
+a {
+    color: var(--color-primary);
+}
+
+a:hover {
+    color: var(--color-primary-dark);
+}
+
+/* Header / nav */
+
+.site-header {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+}
+
+.site-header-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0.85rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.brand {
+    font-weight: 700;
+    font-size: 1.15rem;
+    color: var(--color-primary-dark);
+    text-decoration: none;
+    margin-right: auto;
+}
+
+.site-nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.site-nav a {
+    text-decoration: none;
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
+}
+
+.site-nav a:hover {
+    color: var(--color-primary);
+}
+
+.nav-logout-form {
+    margin: 0;
+}
+
+.link-button {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.link-button:hover {
+    color: var(--color-primary);
+}
+
+.nav-toggle {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    cursor: pointer;
+}
+
+.nav-toggle span {
+    display: block;
+    width: 1.1rem;
+    height: 2px;
+    background: var(--color-text);
+    border-radius: 1px;
+}
+
+@media (max-width: 640px) {
+    .nav-toggle {
+        display: flex;
+    }
+
+    .site-nav {
+        display: none;
+        width: 100%;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.6rem;
+        padding-top: 0.75rem;
+    }
+
+    .site-header-inner {
+        flex-wrap: wrap;
+    }
+
+    .site-nav.is-open {
+        display: flex;
+    }
+}
+
+/* Messages */
+
+.messages {
+    list-style: none;
+    margin: 0 auto;
+    padding: 0.75rem 1rem 0;
+    max-width: 760px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.message {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.65rem 0.9rem;
+    border-radius: var(--radius);
+    font-size: 0.95rem;
+    background: var(--color-info-bg);
+    color: var(--color-info-text);
+}
+
+.message.success {
+    background: var(--color-success-bg);
+    color: var(--color-success-text);
+}
+
+.message.error {
+    background: var(--color-error-bg);
+    color: var(--color-error-text);
+}
+
+.message.warning {
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
+}
+
+.message-close {
+    background: none;
+    border: none;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.6;
+}
+
+.message-close:hover {
+    opacity: 1;
+}
+
+/* Page content */
+
+.site-content {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 2.5rem;
+}
+
+/* Used by pages that manage their own full-height layout (e.g. /chat/) -
+   grows to fill the space left by the header/footer like .site-content,
+   but without imposing padding/max-width of its own. */
+.content-flush {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* Forms - targets the default {{ form.as_p }} output, no per-template markup needed */
+
+form p {
+    margin: 0 0 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+form label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+}
+
+input, select, textarea {
+    font: inherit;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+}
+
+input:focus, select:focus, textarea:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+}
+
+textarea {
+    resize: vertical;
+    min-height: 4.5rem;
+}
+
+/* Checkbox/radio option lists (e.g. CheckboxSelectMultiple) render as a
+   plain <ul> inside the wrapping <p> - style them as a clean option list
+   instead of a bulleted list. */
+form ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+form ul label {
+    font-weight: 400;
+    color: var(--color-text);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+form ul input[type="checkbox"], form ul input[type="radio"] {
+    width: auto;
+}
+
+ul.errorlist {
+    list-style: none;
+    margin: 0 0 0.4rem;
+    padding: 0;
+    color: var(--color-error-text);
+    font-size: 0.85rem;
+}
+
+/* Buttons */
+
+button, .btn {
+    display: inline-block;
+    font: inherit;
+    font-weight: 600;
+    padding: 0.55rem 1.1rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--color-primary);
+    background: var(--color-primary);
+    color: #fff;
+    cursor: pointer;
+    text-decoration: none;
+    line-height: 1.2;
+}
+
+button:hover, .btn:hover {
+    background: var(--color-primary-dark);
+    border-color: var(--color-primary-dark);
+    color: #fff;
+}
+
+.btn-secondary {
+    background: var(--color-surface);
+    color: var(--color-text);
+    border-color: var(--color-border);
+}
+
+.btn-secondary:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
+    border-color: var(--color-text-muted);
+}
+
+.btn-danger {
+    background: var(--color-danger);
+    border-color: var(--color-danger);
+}
+
+.btn-danger:hover {
+    background: #8f2d25;
+    border-color: #8f2d25;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin: 1rem 0;
+}
+
+/* Cards / item lists (trips, travel history) */
+
+.card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.item-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.item-list li {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.item-list .item-title {
+    font-weight: 600;
+}
+
+.item-list .item-actions {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.item-list .item-status {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}
+
+.empty-state {
+    color: var(--color-text-muted);
+}
+
+/* Footer */
+
+.site-footer {
+    border-top: 1px solid var(--color-border);
+    padding: 1rem;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.site-footer small {
+    color: var(--color-text-muted);
+    max-width: 760px;
+    display: inline-block;
+}

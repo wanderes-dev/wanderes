@@ -9,6 +9,14 @@ from .base import *  # noqa: F401,F403
 
 DEBUG = False
 
+# Overrides base.py's plain storage - safe here specifically because the
+# production Docker stage always runs collectstatic before the app ever
+# serves a request, so the hashed manifest this storage needs always exists.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
+
 # Render sets this automatically for any service with a public URL - added
 # to ALLOWED_HOSTS so the very first deploy works before a custom domain
 # (or an explicit DJANGO_ALLOWED_HOSTS override) exists. A no-op on any

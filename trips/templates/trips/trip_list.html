@@ -4,21 +4,21 @@
 
 {% block content %}
 <h1>My trips</h1>
-<p><a href="{% url 'trips:trip-create' %}">Create a new trip</a></p>
+<p class="actions"><a href="{% url 'trips:trip-create' %}" class="btn">Create a new trip</a></p>
 
 {% if trips %}
-<ul>
+<ul class="item-list">
     {% for trip in trips %}
     <li>
-        <a href="{% url 'trips:trip-detail' trip.pk %}">
+        <a class="item-title" href="{% url 'trips:trip-detail' trip.pk %}">
             {{ trip.name|default:trip.destination.name }} - {{ trip.destination.name }}, {{ trip.destination.country }}
         </a>
-        ({{ trip.get_status_display }})
+        <span class="item-status">{{ trip.get_status_display }}</span>
     </li>
     {% endfor %}
 </ul>
 {% else %}
-<p>You haven't saved any trips yet.</p>
+<p class="empty-state">You haven't saved any trips yet.</p>
 {% endif %}
 
 <p><a href="{% url 'users:account' %}">Back to my account</a></p>
