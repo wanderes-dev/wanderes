@@ -1,6 +1,7 @@
 # The assistant persona name decided alongside the AI provider (Phase 2,
-# 2026-08-29) - see documentation/DECISIONS_PENDING.md §1.
-ASSISTANT_NAME = "Lunna"
+# 2026-08-29) - see documentation/DECISIONS_PENDING.md §1. Renamed from
+# "Lunna" to "Wander" on 2026-08-30, per direct user request.
+ASSISTANT_NAME = "Wander"
 
 # Encodes two explicit product rules as a default system prompt: stay
 # travel-only (09_AI_ORCHESTRATION.md §10) and never invent travel data

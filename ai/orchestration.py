@@ -14,7 +14,7 @@ from travel.services import find_destination_slugs_by_name
 from trips.models import FEEDBACK_TAG_CHOICES, Feedback, TravelHistoryEntry, Trip
 
 from . import memory
-from .prompts import SYSTEM_PROMPT
+from .prompts import ASSISTANT_NAME, SYSTEM_PROMPT
 from .provider import AIMessage, AIProvider, AIProviderError, get_ai_provider
 
 logger = logging.getLogger(__name__)
@@ -23,8 +23,8 @@ MAX_EXPLAINED_CANDIDATES = 5
 FEEDBACK_TAG_KEYS = {key for key, _label in FEEDBACK_TAG_CHOICES}
 
 OFF_TOPIC_REPLY = (
-    "I'm Lunna, TravelAgent's travel consultant, so I can only help with "
-    "travel planning. What kind of trip are you thinking about?"
+    f"I'm {ASSISTANT_NAME}, TravelAgent's travel consultant, so I can only help "
+    "with travel planning. What kind of trip are you thinking about?"
 )
 FALLBACK_REPLY = (
     "I'm having trouble reaching my reasoning engine right now. Please try again in a moment."
@@ -80,7 +80,7 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "a month - extract the earlier of the two (September in that example) "
     "rather than leaving month null.\n"
     "When you do need to ask for the month, write clarification_question "
-    "the way Lunna (a warm, friendly travel consultant) would actually "
+    f"the way {ASSISTANT_NAME} (a warm, friendly travel consultant) would actually "
     "talk to someone - briefly and genuinely acknowledge whatever the "
     "traveler already told you (budget, temperature, who they're "
     "traveling with, vibe) before asking what month they're thinking of. "

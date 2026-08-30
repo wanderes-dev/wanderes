@@ -8,7 +8,7 @@ Per `15_IMPLEMENTATION_GUIDE.md` §2 and §38, these decisions must be made or e
 
 **Decision:** **OpenAI** (GPT models) is the AI provider for TravelAgent's conversational/reasoning layer.
 
-**Product naming (not a technical decision, recorded here for continuity):** the AI assistant persona is named **"Lunna"** — this is user-facing copy/branding, independent of which provider powers it underneath.
+**Product naming (not a technical decision, recorded here for continuity):** the AI assistant persona is named **"Wander"** — this is user-facing copy/branding, independent of which provider powers it underneath. (Originally named "Lunna"; renamed to "Wander" on 2026-08-30 per direct user request.)
 
 **Explicit implementation priorities the user reinforced** (already required by the architecture docs, not new scope — flagged so they aren't skipped or under-built during Phase 2 implementation):
 
