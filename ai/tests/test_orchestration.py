@@ -399,7 +399,10 @@ class UnhandledRequestLoggingTests(TestCase):
             )
 
         self.assertTrue(
-            any("No differentiating scoring signal extracted" in message for message in logs.output)
+            any(
+                "Not enough signal yet to differentiate destinations" in message
+                for message in logs.output
+            )
         )
 
     def test_logs_when_no_destinations_match(self):
