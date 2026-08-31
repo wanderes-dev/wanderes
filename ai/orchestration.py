@@ -14,7 +14,7 @@ from travel.services import find_destination_slugs_by_name
 from trips.models import FEEDBACK_TAG_CHOICES, Feedback, TravelHistoryEntry, Trip
 
 from . import memory
-from .prompts import ASSISTANT_NAME, SYSTEM_PROMPT
+from .prompts import SYSTEM_PROMPT
 from .provider import AIMessage, AIProvider, AIProviderError, get_ai_provider
 
 logger = logging.getLogger(__name__)
@@ -22,10 +22,6 @@ logger = logging.getLogger(__name__)
 MAX_EXPLAINED_CANDIDATES = 5
 FEEDBACK_TAG_KEYS = {key for key, _label in FEEDBACK_TAG_CHOICES}
 
-OFF_TOPIC_REPLY = (
-    f"I'm {ASSISTANT_NAME}, TravelAgent's travel consultant, so I can only help "
-    "with travel planning. What kind of trip are you thinking about?"
-)
 FALLBACK_REPLY = (
     "I'm having trouble reaching my reasoning engine right now. Please try again in a moment."
 )
@@ -237,8 +233,16 @@ def stream_travel_recommendation(
     message_type = intent["message_type"]
 
     if message_type == "off_topic":
-        _remember(OFF_TOPIC_REPLY)
-        return StreamingOrchestrationResult([], iter([OFF_TOPIC_REPLY]))
+        # Real AI reply (2026-08-30, direct user feedback: this returning
+        # the exact same fixed sentence for every unrelated message - even
+        # "are you an AI?" - was the clearest sign the assistant "doesn't
+        # feel like an AI, just an if/else". SYSTEM_PROMPT already tells it
+        # how to handle this naturally; just hand it the message.
+        off_topic_messages = _build_off_topic_messages(message)
+        off_topic_reply = _stream_ai_reply(
+            off_topic_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult([], off_topic_reply)
 
     if message_type == "feedback":
         reply = _handle_feedback(intent, user=user)
@@ -256,17 +260,48 @@ def stream_travel_recommendation(
     # message, and should never be blocked from a real answer for it -
     # month is defaulted below if missing, and every other field already
     # treats "unspecified" as "not relevant" rather than "missing".
-    no_deterministic_constraints = (
+    has_any_signal = (
+        intent["trip_type"] is not None
+        or intent["min_temp_c"] is not None
+        or intent["max_cost_of_living"] is not None
+        or intent["excluded_place_names"]
+        or not intent["month_was_assumed"]
+    )
+    if not has_any_signal:
+        # A genuinely open-ended opener ("hi, can you help me plan a
+        # trip?") with nothing at all to search on yet - a real travel
+        # consultant naturally asks what the traveler's looking for first
+        # rather than immediately listing destinations (direct user
+        # feedback, 2026-08-30, after an earlier version of this fix
+        # jumped straight to suggestions here). Whether to ask or, if the
+        # message already explicitly invites a guess, suggest anyway is
+        # the AI's own judgment call - not something Python pre-decides.
+        logger.info(
+            "No signal extracted at all - letting the AI decide how to respond. message=%r",
+            message,
+        )
+        open_ended_messages = _build_open_ended_messages(message)
+        open_ended_reply = _stream_ai_reply(
+            open_ended_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult([], open_ended_reply)
+
+    no_scoring_signal = (
         intent["trip_type"] is None
         and intent["min_temp_c"] is None
         and intent["max_cost_of_living"] is None
     )
-    if no_deterministic_constraints:
-        # None of our deterministic dimensions matched - the AI will answer
-        # entirely from its own reasoning over the unfiltered candidate
-        # list. Not an error, but worth knowing about for future review.
+    if no_scoring_signal:
+        # A month (stated or defaulted) is enough to run a real search, but
+        # none of our deterministic scoring dimensions matched (Phase 11
+        # recommendation philosophy - e.g. "a romantic getaway") - the
+        # search below returns the full unfiltered candidate list and the
+        # explanation call reasons over it freely. Not an error, but worth
+        # knowing about for future review of which vibes are common enough
+        # to formalize.
         logger.info(
-            "No deterministic constraints extracted - relying on AI judgment. message=%r month=%s",
+            "No deterministic scoring constraints extracted - relying on AI judgment over the "
+            "full candidate list. message=%r month=%s",
             message,
             intent["month"],
         )
@@ -563,6 +598,55 @@ def _build_explanation_messages(
                 f"{assumed_month_note}\n\n"
                 "Write a short, natural reply recommending the best 1-3 options "
                 "and briefly explain why each fits."
+            ),
+        ),
+    ]
+
+
+def _build_off_topic_messages(message: str) -> list[AIMessage]:
+    """Built when the message isn't about travel at all. SYSTEM_PROMPT
+    already tells the model how to handle this naturally - briefly and
+    honestly engage with a reasonable question about the assistant itself,
+    or warmly redirect (in its own words, never a fixed sentence) when the
+    message is genuinely unrelated to both travel and the assistant. This
+    just hands it the real message rather than returning a canned reply -
+    2026-08-30, direct user feedback: always returning the identical
+    sentence, even for something as mundane as "are you an AI?", was the
+    clearest sign this "doesn't feel like an AI, just an if/else"."""
+    return [
+        AIMessage(role="system", content=SYSTEM_PROMPT),
+        AIMessage(role="user", content=message),
+    ]
+
+
+def _build_open_ended_messages(message: str) -> list[AIMessage]:
+    """Built when a recommendation-type message gives literally nothing to
+    search on yet - no month, climate, budget, trip type, or exclusion
+    (e.g. "hi, can you help me plan a trip?"). 2026-08-30, direct user
+    feedback: jumping straight to specific destination suggestions here
+    felt presumptuous - a real travel consultant naturally asks a genuine
+    follow-up first. But it shouldn't rigidly always ask either - if the
+    message already explicitly invites a guess (e.g. "surprise me", "you
+    decide"), suggesting something is the more natural response. This is
+    the AI's judgment call to make, not a fixed rule to encode in Python."""
+    return [
+        AIMessage(role="system", content=SYSTEM_PROMPT),
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler said: "{message}"\n\n'
+                "You don't have any specifics yet - no month, climate, "
+                "budget, trip type, or destination preference. If this "
+                "reads like the start of a conversation, ask a short, "
+                "genuine follow-up question to understand what they're "
+                "looking for (the way a real travel consultant opens a "
+                "conversation) - do not list destinations yet. If instead "
+                "the message already explicitly invites you to just pick "
+                "something (e.g. 'surprise me', 'you decide', 'anywhere is "
+                "fine'), suggest 2-3 real destinations from your own "
+                "general travel knowledge instead, and say plainly that "
+                "these come from your own knowledge rather than verified "
+                "data."
             ),
         ),
     ]

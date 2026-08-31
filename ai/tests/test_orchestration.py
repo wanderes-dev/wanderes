@@ -4,7 +4,6 @@ from ai import memory
 from ai.orchestration import (
     FALLBACK_REPLY,
     NEEDS_LOGIN_REPLY,
-    OFF_TOPIC_REPLY,
     get_travel_recommendation,
     stream_travel_recommendation,
 )
@@ -110,16 +109,26 @@ class GetTravelRecommendationTests(TestCase):
             {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
         )
 
-    def test_off_topic_message_returns_canned_reply_without_calling_ai_again(self):
-        ai_provider = StubAIProvider(structured_response=_intent(message_type="off_topic"))
+    def test_off_topic_message_gets_a_real_ai_reply(self):
+        # 2026-08-30, direct user feedback: returning the exact same fixed
+        # sentence for every off-topic message (even "are you an AI?")
+        # felt scripted, not like a real assistant. Off-topic now makes a
+        # real AI call instead of returning a canned string.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(message_type="off_topic"),
+            reply_text="Paris is the capital of France! Now, where are you thinking of traveling?",
+        )
 
         result = get_travel_recommendation(
             "what's the capital of France?", ai_provider=ai_provider, climate_provider=self.climate
         )
 
-        self.assertEqual(result.reply, OFF_TOPIC_REPLY)
+        self.assertEqual(
+            result.reply,
+            "Paris is the capital of France! Now, where are you thinking of traveling? ",
+        )
         self.assertEqual(result.recommendations, [])
-        self.assertEqual(ai_provider.stream_reply_calls, [])
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
 
     def test_missing_month_defaults_to_current_month_and_proceeds(self):
         # No clarification gate (removed 2026-08-30, per direct user
@@ -158,6 +167,28 @@ class GetTravelRecommendationTests(TestCase):
         self.assertEqual(result.recommendations[0].destination.slug, "warm-cheap")
         self.assertEqual(len(ai_provider.stream_reply_calls), 1)
 
+    def test_completely_open_ended_message_lets_ai_decide_instead_of_searching(self):
+        # Reported live: "oi, pode me ajudar com uma viagem?" (hi, can you
+        # help me with a trip?) with genuinely nothing else - no month,
+        # climate, budget, trip type - jumped straight to specific
+        # destination suggestions, which felt presumptuous. When there is
+        # truly no signal at all, the app should hand the "ask vs suggest"
+        # judgment to the AI rather than running an unfiltered search.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(),  # everything null - a bare opener
+            reply_text="What kind of trip are you dreaming about?",
+        )
+
+        result = get_travel_recommendation(
+            "hi, can you help me with a trip?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.reply, "What kind of trip are you dreaming about? ")
+        self.assertEqual(result.recommendations, [])
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
     def test_no_matches_asks_ai_to_help_instead_of_a_dead_end_reply(self):
         # Per the Phase 11 recommendation philosophy and direct user
         # feedback: a hard-constraint dead end should not be a canned
@@ -178,11 +209,14 @@ class GetTravelRecommendationTests(TestCase):
 
     def test_invalid_month_from_ai_defaults_to_current_month(self):
         ai_provider = StubAIProvider(
-            structured_response=_intent(month=42), reply_text="Try somewhere nice!"
+            structured_response=_intent(month=42, min_temp_c=20.0),
+            reply_text="Try somewhere nice!",
         )
 
         result = get_travel_recommendation(
-            "somewhere nice sometime", ai_provider=ai_provider, climate_provider=self.climate
+            "somewhere nice and warm sometime",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
         )
 
         self.assertEqual(len(result.recommendations), 1)
@@ -242,15 +276,20 @@ class StreamTravelRecommendationTests(TestCase):
 
         self.assertEqual(chunks, ["Partial reply... ", FALLBACK_REPLY])
 
-    def test_off_topic_yields_single_canned_chunk(self):
-        ai_provider = StubAIProvider(structured_response=_intent(message_type="off_topic"))
+    def test_off_topic_streams_a_real_ai_reply(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(message_type="off_topic"),
+            reply_text="Paris! Now, where are you thinking of traveling?",
+        )
 
         result = stream_travel_recommendation(
             "what's the capital of France?", ai_provider=ai_provider, climate_provider=self.climate
         )
+        chunks = list(result.reply_chunks)
 
-        self.assertEqual(list(result.reply_chunks), [OFF_TOPIC_REPLY])
-        self.assertEqual(ai_provider.stream_reply_calls, [])
+        self.assertGreater(len(chunks), 1)
+        self.assertEqual("".join(chunks), "Paris! Now, where are you thinking of traveling? ")
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
 
 
 class TripTypeAndExclusionTests(TestCase):
