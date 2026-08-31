@@ -44,26 +44,54 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "other detail yet (e.g. 'I want to travel', 'quero viajar', 'I need a "
     "vacation'). These are real, if incomplete, travel requests - almost "
     "never off_topic.\n"
-    "- 'feedback': the user is sharing their opinion or experience about a "
-    "place they have already been to (a rating, likes/dislikes, a comment).\n"
-    "- 'future_intent': the user NAMES an actual place (a city, country, "
-    "or region) they want to visit someday or are planning to, without "
-    "asking for a recommendation right now. This requires a real named "
-    "destination - wanting to travel, changing your mind, or expressing "
-    "eagerness/excitement is not future_intent by itself. A message that "
-    "only states timing (a month, a season, 'someday', 'sometime soon') "
-    "or only expresses wanting or deciding to travel with no destination "
-    "named at all (e.g. 'I want to go', 'quero viajar', 'mudei de ideia, "
-    "quero ir em abril' / 'I changed my mind, I want to go in April') is "
-    "NOT future_intent, even if it uses words like 'someday' or 'quero' - "
-    "it is almost always the user answering or updating what month they "
-    "want to travel for an ongoing recommendation request, so classify it "
-    "as 'recommendation' instead and extract the month from it.\n"
+    "- 'feedback': the user is describing a place THEY THEMSELVES have "
+    "personally already visited - a rating, likes/dislikes, a comment "
+    "about a trip they took. This requires a clear signal that they are "
+    "recounting their own past visit (e.g. past tense - 'fui a', 'visitei', "
+    "'estive em', 'I went to', 'we stayed in', 'when I was there') AND a "
+    "specific place. A request for the assistant to evaluate, rank, rate, "
+    "or list places in general (e.g. 'what are the 5 worst places to visit "
+    "in winter', 'quais os piores destinos') is NEVER feedback, even though "
+    "it uses evaluative words like 'worst' or 'rate' - the user is asking "
+    "FOR information, not GIVING an account of their own trip. That is "
+    "'recommendation' instead (see below - it covers any request for "
+    "travel information or suggestions, not just positive ones).\n"
+    "- 'future_intent': the user, unprompted, brings up an actual place (a "
+    "city, country, or region) as their own standing goal or plan to visit "
+    "someday, without asking for a recommendation right now (e.g. 'I've "
+    "always wanted to see Kyoto', 'planejo ir para o Chile um dia'). This "
+    "requires a real named destination AND the user themselves introducing "
+    "it as a personal intent - wanting to travel, changing your mind, or "
+    "expressing eagerness/excitement is not future_intent by itself, and "
+    "neither is simply naming a place. A message that only states timing "
+    "(a month, a season, 'someday', 'sometime soon') or only expresses "
+    "wanting or deciding to travel with no destination named at all (e.g. "
+    "'I want to go', 'quero viajar', 'mudei de ideia, quero ir em abril' / "
+    "'I changed my mind, I want to go in April') is NOT future_intent, "
+    "even if it uses words like 'someday' or 'quero' - it is almost always "
+    "the user answering or updating what month they want to travel for an "
+    "ongoing recommendation request, so classify it as 'recommendation' "
+    "instead and extract the month from it. Crucially: if your own "
+    "immediately preceding reply just suggested destinations or asked "
+    "which of them interests the traveler, and the current message is "
+    "just naming one of them (or a short reaction to it, e.g. 'Bahia', "
+    "'I like that one', 'tell me more about that one'), that is the "
+    "traveler picking from YOUR suggestions to keep narrowing down an "
+    "ongoing search - classify it as 'recommendation', not future_intent, "
+    "even though a place is named. future_intent is reserved for the "
+    "traveler spontaneously raising a place as their own goal, never for "
+    "selecting from options you just gave them.\n"
     "- 'off_topic': the message itself is not about travel at all (e.g. a "
     "question about something unrelated, small talk with no travel intent "
     "at all like a bare greeting). Only use this when the message truly "
     "has nothing to do with travel - a vague or short travel-related "
     "message is 'recommendation', not this.\n"
+    "When a message is genuinely ambiguous between 'recommendation' and "
+    "any other category, prefer 'recommendation' - it is the safest "
+    "default (never blocks on login, never dead-ends the conversation) "
+    "and keeps things moving toward a real answer; reserve 'feedback' and "
+    "'future_intent' for messages that clearly and unambiguously fit their "
+    "stricter definitions above.\n"
     "Only fill in the fields relevant to the chosen message_type - leave "
     "every other field at its default (null, false, or an empty list). "
     "The traveler may write in any language - understand it and extract "
@@ -270,19 +298,23 @@ def stream_travel_recommendation(
         # "are you an AI?" - was the clearest sign the assistant "doesn't
         # feel like an AI, just an if/else". SYSTEM_PROMPT already tells it
         # how to handle this naturally; just hand it the message.
-        off_topic_messages = _build_off_topic_messages(message)
+        off_topic_messages = _build_off_topic_messages(message, history)
         off_topic_reply = _stream_ai_reply(
             off_topic_messages, message, ai_provider=ai_provider, remember=_remember
         )
         return StreamingOrchestrationResult([], off_topic_reply)
 
     if message_type == "feedback":
-        reply = _handle_feedback(intent, user=user, message=message, ai_provider=ai_provider)
+        reply = _handle_feedback(
+            intent, user=user, message=message, history=history, ai_provider=ai_provider
+        )
         _remember(reply)
         return StreamingOrchestrationResult([], iter([reply]))
 
     if message_type == "future_intent":
-        reply = _handle_future_intent(intent, user=user, message=message, ai_provider=ai_provider)
+        reply = _handle_future_intent(
+            intent, user=user, message=message, history=history, ai_provider=ai_provider
+        )
         _remember(reply)
         return StreamingOrchestrationResult([], iter([reply]))
 
@@ -316,7 +348,7 @@ def stream_travel_recommendation(
             message,
             intent["month"],
         )
-        open_ended_messages = _build_open_ended_messages(message, intent)
+        open_ended_messages = _build_open_ended_messages(message, intent, history)
         open_ended_reply = _stream_ai_reply(
             open_ended_messages, message, ai_provider=ai_provider, remember=_remember
         )
@@ -349,14 +381,18 @@ def stream_travel_recommendation(
         # everything unmatchable as relaxable rather than blocking (direct
         # user feedback, 2026-08-30: never just ask for more when the app
         # can attempt a real answer instead).
-        no_match_messages = _build_no_matches_messages(message, intent)
+        no_match_messages = _build_no_matches_messages(message, intent, history)
         no_match_reply = _stream_ai_reply(
             no_match_messages, message, ai_provider=ai_provider, remember=_remember
         )
         return StreamingOrchestrationResult([], no_match_reply)
 
     messages = _build_explanation_messages(
-        message, results, month_was_assumed=intent["month_was_assumed"], month=intent["month"]
+        message,
+        results,
+        history,
+        month_was_assumed=intent["month_was_assumed"],
+        month=intent["month"],
     )
     return StreamingOrchestrationResult(
         results,
@@ -415,7 +451,9 @@ def get_travel_recommendation(
     return OrchestrationResult(reply, streaming_result.recommendations)
 
 
-def _localize_reply(fact: str, *, message: str, ai_provider: AIProvider) -> str:
+def _localize_reply(
+    fact: str, *, message: str, history: list[dict] | None = None, ai_provider: AIProvider
+) -> str:
     """Phrase a fixed, already-decided confirmation in the traveler's own
     language and tone, via one small non-streaming AI call.
 
@@ -432,8 +470,9 @@ def _localize_reply(fact: str, *, message: str, ai_provider: AIProvider) -> str:
     changed, whether it succeeded) - it is never asked to decide anything
     itself, unlike every other AI call in this module.
     """
-    messages = [
-        AIMessage(role="system", content=SYSTEM_PROMPT),
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
         AIMessage(
             role="user",
             content=(
@@ -441,8 +480,8 @@ def _localize_reply(fact: str, *, message: str, ai_provider: AIProvider) -> str:
                 "Say exactly this, in your own natural words, in the same "
                 f"language the traveler is writing in: {fact}"
             ),
-        ),
-    ]
+        )
+    )
     try:
         return ai_provider.generate_reply(messages).content
     except AIProviderError:
@@ -453,7 +492,14 @@ def _localize_reply(fact: str, *, message: str, ai_provider: AIProvider) -> str:
         return fact
 
 
-def _handle_feedback(intent: dict, *, user, message: str, ai_provider: AIProvider) -> str:
+def _handle_feedback(
+    intent: dict,
+    *,
+    user,
+    message: str,
+    history: list[dict] | None = None,
+    ai_provider: AIProvider,
+) -> str:
     """Persist feedback shared conversationally, and register that the
     trip actually happened - giving feedback implies a visit occurred, per
     the user's explicit request that the AI register travel that occurred."""
@@ -468,11 +514,14 @@ def _handle_feedback(intent: dict, *, user, message: str, ai_provider: AIProvide
         return _localize_reply(
             "I'd love to hear about your trip - which destination are you talking about?",
             message=message,
+            history=history,
             ai_provider=ai_provider,
         )
 
     if user is None or not user.is_authenticated:
-        return _localize_reply(NEEDS_LOGIN_REPLY, message=message, ai_provider=ai_provider)
+        return _localize_reply(
+            NEEDS_LOGIN_REPLY, message=message, history=history, ai_provider=ai_provider
+        )
 
     destination = _resolve_destination(destination_name)
     if destination is None:
@@ -481,6 +530,7 @@ def _handle_feedback(intent: dict, *, user, message: str, ai_provider: AIProvide
             f"I don't have {destination_name} in my catalog yet, but thanks for sharing - "
             "I've made a note of it!",
             message=message,
+            history=history,
             ai_provider=ai_provider,
         )
 
@@ -493,6 +543,7 @@ def _handle_feedback(intent: dict, *, user, message: str, ai_provider: AIProvide
             f"Got it - I've noted that you've visited {destination.name}. Feel free to tell me "
             "how you'd rate it (1-10) if you'd like!",
             message=message,
+            history=history,
             ai_provider=ai_provider,
         )
 
@@ -514,11 +565,19 @@ def _handle_feedback(intent: dict, *, user, message: str, ai_provider: AIProvide
     return _localize_reply(
         f"Thanks! I've recorded your feedback on {destination.name}: {rating}/10.",
         message=message,
+        history=history,
         ai_provider=ai_provider,
     )
 
 
-def _handle_future_intent(intent: dict, *, user, message: str, ai_provider: AIProvider) -> str:
+def _handle_future_intent(
+    intent: dict,
+    *,
+    user,
+    message: str,
+    history: list[dict] | None = None,
+    ai_provider: AIProvider,
+) -> str:
     destination_name = intent["future_destination_name"]
     if not destination_name:
         # Same reasoning as _handle_feedback: don't gate on login before
@@ -527,11 +586,14 @@ def _handle_future_intent(intent: dict, *, user, message: str, ai_provider: AIPr
         return _localize_reply(
             "That sounds exciting - which destination did you have in mind?",
             message=message,
+            history=history,
             ai_provider=ai_provider,
         )
 
     if user is None or not user.is_authenticated:
-        return _localize_reply(NEEDS_LOGIN_REPLY, message=message, ai_provider=ai_provider)
+        return _localize_reply(
+            NEEDS_LOGIN_REPLY, message=message, history=history, ai_provider=ai_provider
+        )
 
     destination = _resolve_destination(destination_name)
     if destination is None:
@@ -542,6 +604,7 @@ def _handle_future_intent(intent: dict, *, user, message: str, ai_provider: AIPr
             f"I don't have {destination_name} in my catalog yet, but I've made a note that "
             "you'd like to go!",
             message=message,
+            history=history,
             ai_provider=ai_provider,
         )
 
@@ -560,11 +623,13 @@ def _handle_future_intent(intent: dict, *, user, message: str, ai_provider: AIPr
         return _localize_reply(
             f"Got it! I've added {destination.name} to your trips to plan for someday.",
             message=message,
+            history=history,
             ai_provider=ai_provider,
         )
     return _localize_reply(
         f"You already have {destination.name} noted as a future trip - I'll keep it there!",
         message=message,
+        history=history,
         ai_provider=ai_provider,
     )
 
@@ -574,13 +639,25 @@ def _resolve_destination(name: str):
     return Destination.objects.filter(slug__in=slugs).first()
 
 
+def _history_messages(history: list[dict] | None) -> list[AIMessage]:
+    """Turn stored conversation-memory turns (ai.memory) into AIMessages.
+
+    Shared by every AI call in this module, not just intent extraction
+    (2026-08-31, found live: a reply-generation call given only the
+    current message - no history - had no way to tell what language the
+    conversation had been in when that message was itself ambiguous, e.g.
+    a bare destination name like "Bahia"; it silently answered in English
+    mid a Portuguese conversation). Every call the traveler can perceive
+    as part of one conversation should actually see that conversation.
+    """
+    return [AIMessage(role=turn["role"], content=turn["content"]) for turn in history or []]
+
+
 def _extract_intent(
     message: str, *, ai_provider: AIProvider, history: list[dict] | None = None
 ) -> dict:
     messages = [AIMessage(role="system", content=INTENT_EXTRACTION_SYSTEM_PROMPT)]
-    messages.extend(
-        AIMessage(role=turn["role"], content=turn["content"]) for turn in history or []
-    )
+    messages.extend(_history_messages(history))
     messages.append(AIMessage(role="user", content=message))
     # temperature=0: this call's output feeds directly into deterministic
     # application logic (which branch runs, what gets queried) - it needs
@@ -646,6 +723,7 @@ def _clean_string_list(value) -> list:
 def _build_explanation_messages(
     message: str,
     results: list[ScoredDestination],
+    history: list[dict] | None = None,
     *,
     month_was_assumed: bool = False,
     month: int | None = None,
@@ -665,8 +743,9 @@ def _build_explanation_messages(
         else ""
     )
 
-    return [
-        AIMessage(role="system", content=SYSTEM_PROMPT),
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
         AIMessage(
             role="user",
             content=(
@@ -679,11 +758,12 @@ def _build_explanation_messages(
                 "Write a short, natural reply recommending the best 1-3 options "
                 "and briefly explain why each fits."
             ),
-        ),
-    ]
+        )
+    )
+    return messages
 
 
-def _build_off_topic_messages(message: str) -> list[AIMessage]:
+def _build_off_topic_messages(message: str, history: list[dict] | None = None) -> list[AIMessage]:
     """Built when the message isn't about travel at all. SYSTEM_PROMPT
     already tells the model how to handle this naturally - briefly and
     honestly engage with a reasonable question about the assistant itself,
@@ -693,13 +773,15 @@ def _build_off_topic_messages(message: str) -> list[AIMessage]:
     2026-08-30, direct user feedback: always returning the identical
     sentence, even for something as mundane as "are you an AI?", was the
     clearest sign this "doesn't feel like an AI, just an if/else"."""
-    return [
-        AIMessage(role="system", content=SYSTEM_PROMPT),
-        AIMessage(role="user", content=message),
-    ]
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(AIMessage(role="user", content=message))
+    return messages
 
 
-def _build_open_ended_messages(message: str, intent: dict) -> list[AIMessage]:
+def _build_open_ended_messages(
+    message: str, intent: dict, history: list[dict] | None = None
+) -> list[AIMessage]:
     """Built when a recommendation-type message gives nothing to actually
     differentiate destinations by - no climate, budget, or trip type (e.g.
     "hi, can you help me plan a trip?", or even just "sometime in April" -
@@ -727,8 +809,9 @@ def _build_open_ended_messages(message: str, intent: dict) -> list[AIMessage]:
         else ""
     )
 
-    return [
-        AIMessage(role="system", content=SYSTEM_PROMPT),
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
         AIMessage(
             role="user",
             content=(
@@ -747,11 +830,14 @@ def _build_open_ended_messages(message: str, intent: dict) -> list[AIMessage]:
                 "plainly that these come from your own knowledge rather "
                 "than verified data."
             ),
-        ),
-    ]
+        )
+    )
+    return messages
 
 
-def _build_no_matches_messages(message: str, intent: dict) -> list[AIMessage]:
+def _build_no_matches_messages(
+    message: str, intent: dict, history: list[dict] | None = None
+) -> list[AIMessage]:
     """Built when hard constraints eliminated every curated destination.
 
     Per the Phase 11 recommendation philosophy and direct user feedback
@@ -772,8 +858,9 @@ def _build_no_matches_messages(message: str, intent: dict) -> list[AIMessage]:
         constraints.append(f"max_cost_of_living={intent['max_cost_of_living']}/5")
     constraints_summary = ", ".join(constraints) if constraints else "no specific constraints"
 
-    return [
-        AIMessage(role="system", content=SYSTEM_PROMPT),
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
         AIMessage(
             role="user",
             content=(
@@ -793,5 +880,6 @@ def _build_no_matches_messages(message: str, intent: dict) -> list[AIMessage]:
                 "go on (not even a vibe, place type, or timing) - this "
                 "should be rare."
             ),
-        ),
-    ]
+        )
+    )
+    return messages

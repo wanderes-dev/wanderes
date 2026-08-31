@@ -723,6 +723,42 @@ class ConversationMemoryTests(TestCase):
         self.assertIn("what do you suggest for a destination?", contents)
         self.assertIn("Here's a warm suggestion for you! ", contents)
 
+    def test_reply_generation_call_also_receives_prior_history_not_just_extraction(self):
+        # 2026-08-31, found live: a short/ambiguous follow-up like a bare
+        # destination name ("Bahia") answered in English mid a Portuguese
+        # conversation, because the reply-generation call (unlike the
+        # intent-extraction call) was never given the conversation history
+        # at all - it only ever saw the current message in isolation, with
+        # nothing to judge language or continuity from. Every builder now
+        # receives and forwards history; this locks that in for the
+        # explanation path specifically (the one that produced the bug).
+        first_provider = StubAIProvider(
+            structured_response=_intent(message_type="recommendation", min_temp_c=22.0),
+            reply_text="Aqui vai uma sugestão calorosa!",
+        )
+        get_travel_recommendation(
+            "quero algo quente",
+            session_key="session-history-reply",
+            ai_provider=first_provider,
+            climate_provider=self.climate,
+        )
+
+        second_provider = StubAIProvider(
+            structured_response=_intent(message_type="recommendation", min_temp_c=22.0),
+            reply_text="Outra sugestão!",
+        )
+        get_travel_recommendation(
+            "e outras opções?",
+            session_key="session-history-reply",
+            ai_provider=second_provider,
+            climate_provider=self.climate,
+        )
+
+        sent_messages = second_provider.stream_reply_calls[0]
+        contents = [m.content for m in sent_messages]
+        self.assertIn("quero algo quente", contents)
+        self.assertIn("Aqui vai uma sugestão calorosa! ", contents)
+
     def test_different_sessions_do_not_share_history(self):
         first_provider = StubAIProvider(structured_response=_intent(message_type="off_topic"))
         get_travel_recommendation(
