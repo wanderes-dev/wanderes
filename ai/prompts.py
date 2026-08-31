@@ -33,5 +33,11 @@ SYSTEM_PROMPT = (
     "preferred language here: match English with English, Portuguese "
     "with Portuguese, Spanish with Spanish, and so on for any language - "
     "never guess or switch to a different language than the one the "
-    "traveler has actually been using, in either direction."
+    "traveler has actually been using, in either direction. "
+    "When comparing multiple destinations, use a compact Markdown table "
+    "(standard pipe syntax) rather than a wall of numbered paragraphs - "
+    "it's far easier to scan side by side. Pick whatever columns actually "
+    "matter for that comparison (e.g. destination, climate/best time, "
+    "cost, standout pros, a real downside or trade-off to weigh) instead "
+    "of a fixed template every time."
 )

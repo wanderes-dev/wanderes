@@ -38,12 +38,49 @@
         padding: 0.6rem 0.9rem;
         border-radius: 0.75rem;
         line-height: 1.4;
-        white-space: pre-wrap;
         word-wrap: break-word;
     }
     .chat-bubble.user {
         align-self: flex-end;
         background: #d6e4ff;
+        white-space: pre-wrap;
+    }
+    /* Assistant replies are rendered from Markdown (see renderMarkdown() below)
+       into real <p>/<table>/<ul> elements, so they don't need white-space:
+       pre-wrap - these reset the browser's default block margins so spacing
+       stays tight and consistent between chunks of a reply instead. */
+    .chat-bubble.assistant p {
+        margin: 0 0 0.6rem;
+    }
+    .chat-bubble.assistant p:last-child {
+        margin-bottom: 0;
+    }
+    .chat-bubble.assistant ul,
+    .chat-bubble.assistant ol {
+        margin: 0 0 0.6rem;
+        padding-left: 1.4rem;
+    }
+    .chat-bubble.assistant li {
+        margin-bottom: 0.2rem;
+    }
+    .chat-bubble.assistant .table-scroll {
+        overflow-x: auto;
+        margin: 0 0 0.6rem;
+    }
+    .chat-bubble.assistant table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.92rem;
+    }
+    .chat-bubble.assistant th,
+    .chat-bubble.assistant td {
+        border: 1px solid var(--color-border, #dde2e7);
+        padding: 0.4rem 0.6rem;
+        text-align: left;
+        vertical-align: top;
+    }
+    .chat-bubble.assistant th {
+        background: rgba(0, 0, 0, 0.04);
     }
     .chat-bubble.assistant {
         align-self: flex-start;
@@ -130,6 +167,90 @@
         return bubble;
     }
 
+    function escapeHtml(text) {
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function inlineFormat(text) {
+        // Only **bold** for now - the AI's own formatting stays simple by
+        // design (09_AI_ORCHESTRATION.md: short, natural replies), and
+        // tables/lists/bold cover everything asked for so far.
+        return text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    }
+
+    function splitTableRow(line) {
+        let cells = line.split("|");
+        if (cells.length && cells[0].trim() === "") cells.shift();
+        if (cells.length && cells[cells.length - 1].trim() === "") cells.pop();
+        return cells.map(function (cell) { return cell.trim(); });
+    }
+
+    function isTableSeparatorLine(line) {
+        return /^[\s|:-]+$/.test(line) && line.indexOf("-") !== -1;
+    }
+
+    // Renders the AI's Markdown-ish replies (bold, tables, numbered/bulleted
+    // lists - the formats requested directly by the user, 2026-08-31, in
+    // place of walls of plain paragraphs) into real HTML. Escapes HTML
+    // first so nothing in the AI's own text - even if it echoed back
+    // something odd from a prior message - can inject markup; the only
+    // tags ever produced come from the specific constructs parsed below.
+    function renderMarkdown(text) {
+        const lines = escapeHtml(text).split("\n");
+        let html = "";
+        let i = 0;
+        while (i < lines.length) {
+            const line = lines[i];
+
+            if (line.indexOf("|") !== -1 && lines[i + 1] !== undefined && isTableSeparatorLine(lines[i + 1])) {
+                const headerCells = splitTableRow(line);
+                html += "<div class=\"table-scroll\"><table><thead><tr>";
+                headerCells.forEach(function (cell) {
+                    html += "<th>" + inlineFormat(cell) + "</th>";
+                });
+                html += "</tr></thead><tbody>";
+                i += 2;
+                while (i < lines.length && lines[i].indexOf("|") !== -1) {
+                    const cells = splitTableRow(lines[i]);
+                    html += "<tr>";
+                    cells.forEach(function (cell) {
+                        html += "<td>" + inlineFormat(cell) + "</td>";
+                    });
+                    html += "</tr>";
+                    i++;
+                }
+                html += "</tbody></table></div>";
+                continue;
+            }
+
+            const orderedMatch = /^\d+\.\s+(.*)$/.exec(line);
+            const bulletMatch = /^[-*]\s+(.*)$/.exec(line);
+            if (orderedMatch || bulletMatch) {
+                const tag = orderedMatch ? "ol" : "ul";
+                html += "<" + tag + ">";
+                while (i < lines.length) {
+                    const om = /^\d+\.\s+(.*)$/.exec(lines[i]);
+                    const bm = /^[-*]\s+(.*)$/.exec(lines[i]);
+                    const itemText = orderedMatch ? (om && om[1]) : (bm && bm[1]);
+                    if (itemText === undefined || itemText === null) break;
+                    html += "<li>" + inlineFormat(itemText) + "</li>";
+                    i++;
+                }
+                html += "</" + tag + ">";
+                continue;
+            }
+
+            if (line.trim() === "") {
+                i++;
+                continue;
+            }
+
+            html += "<p>" + inlineFormat(line) + "</p>";
+            i++;
+        }
+        return html;
+    }
+
     function setLoading(isLoading) {
         input.disabled = isLoading;
         sendButton.disabled = isLoading;
@@ -188,7 +309,8 @@
 
         function render() {
             const delimiterIndex = buffer.indexOf(RECOMMENDATIONS_DELIMITER);
-            replyBubble.textContent = delimiterIndex === -1 ? buffer : buffer.slice(0, delimiterIndex);
+            const visibleText = delimiterIndex === -1 ? buffer : buffer.slice(0, delimiterIndex);
+            replyBubble.innerHTML = renderMarkdown(visibleText);
             messages.scrollTop = messages.scrollHeight;
         }
 
