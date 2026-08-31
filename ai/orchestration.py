@@ -46,14 +46,19 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "never off_topic.\n"
     "- 'feedback': the user is sharing their opinion or experience about a "
     "place they have already been to (a rating, likes/dislikes, a comment).\n"
-    "- 'future_intent': the user names or clearly implies a specific place "
-    "they want to visit someday or are planning to, without asking for a "
-    "recommendation right now. A message that only states timing (a month, "
-    "a season, 'someday', 'sometime soon') with no destination at all is "
-    "NOT future_intent, even if it uses the word 'someday' - it is almost "
-    "always the user answering what month they want to travel for an "
-    "ongoing recommendation request, so classify it as 'recommendation' "
-    "instead and extract the month from it.\n"
+    "- 'future_intent': the user NAMES an actual place (a city, country, "
+    "or region) they want to visit someday or are planning to, without "
+    "asking for a recommendation right now. This requires a real named "
+    "destination - wanting to travel, changing your mind, or expressing "
+    "eagerness/excitement is not future_intent by itself. A message that "
+    "only states timing (a month, a season, 'someday', 'sometime soon') "
+    "or only expresses wanting or deciding to travel with no destination "
+    "named at all (e.g. 'I want to go', 'quero viajar', 'mudei de ideia, "
+    "quero ir em abril' / 'I changed my mind, I want to go in April') is "
+    "NOT future_intent, even if it uses words like 'someday' or 'quero' - "
+    "it is almost always the user answering or updating what month they "
+    "want to travel for an ongoing recommendation request, so classify it "
+    "as 'recommendation' instead and extract the month from it.\n"
     "- 'off_topic': the message itself is not about travel at all (e.g. a "
     "question about something unrelated, small talk with no travel intent "
     "at all like a bare greeting). Only use this when the message truly "
@@ -260,51 +265,35 @@ def stream_travel_recommendation(
     # message, and should never be blocked from a real answer for it -
     # month is defaulted below if missing, and every other field already
     # treats "unspecified" as "not relevant" rather than "missing".
-    has_any_signal = (
+    #
+    # Only trip_type/min_temp_c/max_cost_of_living actually differentiate
+    # one destination from another. A month alone (stated or defaulted) or
+    # an exclusion isn't enough to justify running a real search - direct
+    # user feedback, 2026-08-31: the AI kept "throwing destinations in the
+    # user's face" (e.g. suggesting Rio/Lisbon/Tokyo off a bare "help me
+    # plan a year-end trip"), because the previous version treated a month
+    # alone as enough signal to skip straight to searching the full
+    # candidate list. Route through the same AI-judgment "ask a genuine
+    # follow-up, or suggest if they've explicitly invited a guess" path
+    # used for a fully blank opener, unless at least one of the three
+    # differentiating fields is actually present.
+    has_differentiating_signal = (
         intent["trip_type"] is not None
         or intent["min_temp_c"] is not None
         or intent["max_cost_of_living"] is not None
-        or intent["excluded_place_names"]
-        or not intent["month_was_assumed"]
     )
-    if not has_any_signal:
-        # A genuinely open-ended opener ("hi, can you help me plan a
-        # trip?") with nothing at all to search on yet - a real travel
-        # consultant naturally asks what the traveler's looking for first
-        # rather than immediately listing destinations (direct user
-        # feedback, 2026-08-30, after an earlier version of this fix
-        # jumped straight to suggestions here). Whether to ask or, if the
-        # message already explicitly invites a guess, suggest anyway is
-        # the AI's own judgment call - not something Python pre-decides.
+    if not has_differentiating_signal:
         logger.info(
-            "No signal extracted at all - letting the AI decide how to respond. message=%r",
+            "No differentiating scoring signal extracted - letting the AI decide how to "
+            "respond instead of running an unfiltered search. message=%r month=%s",
             message,
+            intent["month"],
         )
-        open_ended_messages = _build_open_ended_messages(message)
+        open_ended_messages = _build_open_ended_messages(message, intent)
         open_ended_reply = _stream_ai_reply(
             open_ended_messages, message, ai_provider=ai_provider, remember=_remember
         )
         return StreamingOrchestrationResult([], open_ended_reply)
-
-    no_scoring_signal = (
-        intent["trip_type"] is None
-        and intent["min_temp_c"] is None
-        and intent["max_cost_of_living"] is None
-    )
-    if no_scoring_signal:
-        # A month (stated or defaulted) is enough to run a real search, but
-        # none of our deterministic scoring dimensions matched (Phase 11
-        # recommendation philosophy - e.g. "a romantic getaway") - the
-        # search below returns the full unfiltered candidate list and the
-        # explanation call reasons over it freely. Not an error, but worth
-        # knowing about for future review of which vibes are common enough
-        # to formalize.
-        logger.info(
-            "No deterministic scoring constraints extracted - relying on AI judgment over the "
-            "full candidate list. message=%r month=%s",
-            message,
-            intent["month"],
-        )
 
     request = RecommendationRequest(
         month=intent["month"],
@@ -619,34 +608,53 @@ def _build_off_topic_messages(message: str) -> list[AIMessage]:
     ]
 
 
-def _build_open_ended_messages(message: str) -> list[AIMessage]:
-    """Built when a recommendation-type message gives literally nothing to
-    search on yet - no month, climate, budget, trip type, or exclusion
-    (e.g. "hi, can you help me plan a trip?"). 2026-08-30, direct user
-    feedback: jumping straight to specific destination suggestions here
-    felt presumptuous - a real travel consultant naturally asks a genuine
-    follow-up first. But it shouldn't rigidly always ask either - if the
-    message already explicitly invites a guess (e.g. "surprise me", "you
-    decide"), suggesting something is the more natural response. This is
-    the AI's judgment call to make, not a fixed rule to encode in Python."""
+def _build_open_ended_messages(message: str, intent: dict) -> list[AIMessage]:
+    """Built when a recommendation-type message gives nothing to actually
+    differentiate destinations by - no climate, budget, or trip type (e.g.
+    "hi, can you help me plan a trip?", or even just "sometime in April" -
+    a month or an exclusion alone still isn't enough to run a meaningful
+    search). 2026-08-30/31, direct user feedback: jumping straight to
+    specific destination suggestions here felt presumptuous, and kept
+    happening even when only a bare month was known - a real travel
+    consultant naturally asks a genuine follow-up first instead of
+    immediately listing destinations. But it shouldn't rigidly always ask
+    either - if the message already explicitly invites a guess (e.g.
+    "surprise me", "you decide"), suggesting something is the more natural
+    response. This is the AI's judgment call to make, not a fixed rule to
+    encode in Python. `intent` carries whatever weaker signal (month,
+    exclusions) was already extracted, so the model can acknowledge it and
+    ask about what's still missing instead of re-asking about it."""
+    known_bits = []
+    if intent["month"] and not intent["month_was_assumed"]:
+        known_bits.append(f"they mentioned month {intent['month']}")
+    if intent["excluded_place_names"]:
+        known_bits.append(f"they want to avoid: {', '.join(intent['excluded_place_names'])}")
+    known_note = (
+        "\n\nYou already know this much from the conversation - don't ask "
+        f"about it again, just build on it: {'; '.join(known_bits)}."
+        if known_bits
+        else ""
+    )
+
     return [
         AIMessage(role="system", content=SYSTEM_PROMPT),
         AIMessage(
             role="user",
             content=(
                 f'The traveler said: "{message}"\n\n'
-                "You don't have any specifics yet - no month, climate, "
-                "budget, trip type, or destination preference. If this "
-                "reads like the start of a conversation, ask a short, "
-                "genuine follow-up question to understand what they're "
-                "looking for (the way a real travel consultant opens a "
-                "conversation) - do not list destinations yet. If instead "
-                "the message already explicitly invites you to just pick "
-                "something (e.g. 'surprise me', 'you decide', 'anywhere is "
-                "fine'), suggest 2-3 real destinations from your own "
-                "general travel knowledge instead, and say plainly that "
-                "these come from your own knowledge rather than verified "
-                "data."
+                "You don't have enough yet to actually differentiate "
+                "destinations - no climate, budget, or trip type "
+                f"preference.{known_note}\n\n"
+                "If this reads like the start of a conversation, ask a "
+                "short, genuine follow-up question to understand what "
+                "they're looking for (the way a real travel consultant "
+                "opens a conversation) - do not list destinations yet. If "
+                "instead the message already explicitly invites you to "
+                "just pick something (e.g. 'surprise me', 'you decide', "
+                "'anywhere is fine'), suggest 2-3 real destinations from "
+                "your own general travel knowledge instead, and say "
+                "plainly that these come from your own knowledge rather "
+                "than verified data."
             ),
         ),
     ]

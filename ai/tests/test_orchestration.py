@@ -367,7 +367,12 @@ class UnhandledRequestLoggingTests(TestCase):
             {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
         )
 
-    def test_logs_when_no_deterministic_constraints_extracted(self):
+    def test_logs_when_no_differentiating_signal_extracted(self):
+        # Month alone (no trip_type/temperature/budget) isn't enough to
+        # differentiate destinations by - 2026-08-31, direct user feedback:
+        # this used to still run an unfiltered search and suggest whatever
+        # came back. It now routes to the AI-judgment "ask vs suggest" path
+        # instead, same as a fully blank opener.
         ai_provider = StubAIProvider(structured_response=_intent(month=6))
 
         with self.assertLogs("ai.orchestration", level="INFO") as logs:
@@ -375,7 +380,9 @@ class UnhandledRequestLoggingTests(TestCase):
                 "a romantic getaway in June", ai_provider=ai_provider, climate_provider=self.climate
             )
 
-        self.assertTrue(any("relying on AI judgment" in message for message in logs.output))
+        self.assertTrue(
+            any("No differentiating scoring signal extracted" in message for message in logs.output)
+        )
 
     def test_logs_when_no_destinations_match(self):
         ai_provider = StubAIProvider(structured_response=_intent(month=10, min_temp_c=100.0))

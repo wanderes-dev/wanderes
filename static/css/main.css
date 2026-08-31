@@ -31,7 +31,16 @@ body {
     background: var(--color-bg);
     display: flex;
     flex-direction: column;
+    /* A fixed height (not min-height) is required so flex children with
+       min-height:0 (like .content-flush / .chat-messages) get a bounded
+       box to shrink into and scroll internally - min-height alone lets
+       body grow past one viewport instead, which is what let the chat
+       page's input bar drift off-screen below a long conversation.
+       100dvh accounts for mobile browser chrome; a min-height:100vh
+       fallback keeps very short/legacy content pages filling the screen
+       even in browsers without dvh support. */
     min-height: 100vh;
+    height: 100dvh;
 }
 
 h1, h2, h3 {
