@@ -499,7 +499,10 @@ def _localize_reply(
             content=(
                 f'The traveler just wrote: "{message}"\n\n'
                 "Say exactly this, in your own natural words, in the same "
-                f"language the traveler is writing in: {fact}"
+                "language the traveler has been using in this conversation "
+                "(check the history above if this message alone is short "
+                "or ambiguous, e.g. just a name) - this applies just as "
+                f"much to English as to any other language: {fact}"
             ),
         )
     )
@@ -777,7 +780,10 @@ def _build_explanation_messages(
                 f"{candidates_summary}"
                 f"{assumed_month_note}\n\n"
                 "Write a short, natural reply recommending the best 1-3 options "
-                "and briefly explain why each fits."
+                "and briefly explain why each fits. Reply in the same language "
+                "the traveler has been using in this conversation (check the "
+                "history above, not just this message) - this applies just as "
+                "much to English as to any other language."
             ),
         )
     )
@@ -864,9 +870,13 @@ def _build_open_ended_messages(
                 "general travel knowledge instead, confidently - mention "
                 "in passing that these come from your own knowledge rather "
                 "than verified data, without opening with an apology or "
-                "a caveat about not having data. Keep it in the "
-                "traveler's own language, matching the rest of the "
-                "conversation."
+                "a caveat about not having data. Either way, write your "
+                "reply in the same language the traveler has been using "
+                "in this conversation (check the history above for this "
+                "- judge it from the whole conversation, not just their "
+                "latest short message) - this applies just as much to "
+                "English as to any other language; do not default away "
+                "from it."
             ),
         )
     )
@@ -923,7 +933,10 @@ def _build_no_matches_messages(
                 "that opens the reply. Only ask a clarifying question "
                 "instead if the message truly gives you nothing at all to "
                 "go on (not even a vibe, place type, or timing) - this "
-                "should be rare."
+                "should be rare. Reply in the same language the traveler "
+                "has been using in this conversation (check the history "
+                "above, not just this message) - this applies just as "
+                "much to English as to any other language."
             ),
         )
     )

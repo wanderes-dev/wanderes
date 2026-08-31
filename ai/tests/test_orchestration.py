@@ -49,7 +49,7 @@ class StubAIProvider:
         # a live-only concern this stub isn't meant to exercise.
         self.generate_reply_calls.append(messages)
         last_content = messages[-1].content
-        marker = "in the same language the traveler is writing in: "
+        marker = "this applies just as much to English as to any other language: "
         idx = last_content.find(marker)
         content = last_content[idx + len(marker) :] if idx != -1 else last_content
         return AIResponse(content=content, model="stub", prompt_tokens=0, completion_tokens=0)
