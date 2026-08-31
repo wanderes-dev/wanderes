@@ -67,7 +67,16 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "Only fill in the fields relevant to the chosen message_type - leave "
     "every other field at its default (null, false, or an empty list). "
     "The traveler may write in any language - understand it and extract "
-    "from it the same way regardless of language.\n\n"
+    "from it the same way regardless of language.\n"
+    "Conversation history, when present, includes your OWN prior replies - "
+    "these often mention specific numbers (a destination's exact "
+    "temperature, its cost tier) as part of explaining a suggestion. Never "
+    "treat a number YOU stated earlier as something the traveler asked "
+    "for. Every field below is extracted only from what the traveler "
+    "themselves wrote, in this message or earlier ones - if they only "
+    "reacted to a suggestion (e.g. 'sounds good', a bare month, 'yes') "
+    "without restating a preference, do not infer temperature or budget "
+    "thresholds from the destinations you happened to mention.\n\n"
     "--- Fields for message_type = 'recommendation' ---\n"
     "Extract whatever the traveler actually gave you - never ask a "
     "follow-up question and never treat any field as required. A real "
@@ -85,14 +94,32 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "For temperature and budget, the user will often describe them "
     "qualitatively rather than with an exact number - translate that "
     "description into a concrete threshold using these anchors, so the "
-    "application can actually filter on it:\n"
+    "application can actually filter on it, but ONLY when the user's own "
+    "words actually describe that dimension. A trip_type alone never "
+    "implies a temperature or budget, no matter how strongly it's "
+    "stereotypically associated with one - 'praia'/'beach' by itself does "
+    "NOT mean min_temp_c=28; a beach trip can be mild, off-season, or the "
+    "traveler simply may not care about the exact temperature. The same "
+    "goes for budget: naming a destination or trip_type never implies a "
+    "cost tier by itself. A trip_type combined with a month is still not "
+    "a temperature statement - e.g. 'praia em julho'/'beach in July' has "
+    "a trip_type and a month but says nothing about temperature, so "
+    "min_temp_c stays null; do not reason 'they mentioned a month for a "
+    "beach trip, so they probably want to know it'll be warm then' - only "
+    "set min_temp_c when the message itself contains a temperature word "
+    "or number. Set these two fields only from words that are themselves "
+    "about temperature or money:\n"
     "- Temperature (min_temp_c): 'hot' -> 28, 'warm' -> 22, 'mild' -> 18. "
     "If the user wants somewhere cool or cold, or says nothing at all about "
-    "temperature, leave min_temp_c null.\n"
+    "temperature, leave min_temp_c null - this includes messages that only "
+    "name a trip_type, destination, or month with no temperature words at "
+    "all.\n"
     "- Budget (max_cost_of_living, a 1-5 scale where 1 is cheapest): "
     "'very cheap'/'budget'/'affordable' -> 2, 'cheap'/'not too expensive'/"
     "'inexpensive' -> 3, 'moderate'/'mid-range' -> 4. If the user wants "
-    "luxury, or says nothing at all about budget, leave max_cost_of_living null.\n"
+    "luxury, or says nothing at all about budget, leave max_cost_of_living "
+    "null - this includes messages that only name a trip_type, "
+    "destination, or month with no budget words at all.\n"
     "Only leave min_temp_c or max_cost_of_living null when the user gave no "
     "indication at all for that dimension - do not leave it null just "
     "because they used words instead of a number.\n"
@@ -250,12 +277,12 @@ def stream_travel_recommendation(
         return StreamingOrchestrationResult([], off_topic_reply)
 
     if message_type == "feedback":
-        reply = _handle_feedback(intent, user=user)
+        reply = _handle_feedback(intent, user=user, message=message, ai_provider=ai_provider)
         _remember(reply)
         return StreamingOrchestrationResult([], iter([reply]))
 
     if message_type == "future_intent":
-        reply = _handle_future_intent(intent, user=user)
+        reply = _handle_future_intent(intent, user=user, message=message, ai_provider=ai_provider)
         _remember(reply)
         return StreamingOrchestrationResult([], iter([reply]))
 
@@ -388,7 +415,45 @@ def get_travel_recommendation(
     return OrchestrationResult(reply, streaming_result.recommendations)
 
 
-def _handle_feedback(intent: dict, *, user) -> str:
+def _localize_reply(fact: str, *, message: str, ai_provider: AIProvider) -> str:
+    """Phrase a fixed, already-decided confirmation in the traveler's own
+    language and tone, via one small non-streaming AI call.
+
+    Feedback/future-intent acknowledgments (_handle_feedback,
+    _handle_future_intent below) were deliberately templated, non-AI
+    strings (2026-08-29 - "no need for a second AI call for these
+    confirmations"), which meant they stayed hardcoded English even in an
+    otherwise fully Portuguese conversation - a real inconsistency found
+    live during the 2026-08-31 AI-intelligence testing pass. Raised with
+    the user as a product decision (this reopens that 2026-08-29 choice,
+    not a pure bug) rather than fixed unilaterally; the user chose to
+    accept the extra AI call over the language inconsistency. This call
+    only *phrases* a fact the application has already fully decided (what
+    changed, whether it succeeded) - it is never asked to decide anything
+    itself, unlike every other AI call in this module.
+    """
+    messages = [
+        AIMessage(role="system", content=SYSTEM_PROMPT),
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler just wrote: "{message}"\n\n'
+                "Say exactly this, in your own natural words, in the same "
+                f"language the traveler is writing in: {fact}"
+            ),
+        ),
+    ]
+    try:
+        return ai_provider.generate_reply(messages).content
+    except AIProviderError:
+        # Degrade to the correct-but-unlocalized English fact rather than
+        # losing the confirmation entirely - the traveler still learns
+        # what happened, just not in their own language this one time.
+        logger.warning("Could not localize confirmation reply - using it as-is. fact=%r", fact)
+        return fact
+
+
+def _handle_feedback(intent: dict, *, user, message: str, ai_provider: AIProvider) -> str:
     """Persist feedback shared conversationally, and register that the
     trip actually happened - giving feedback implies a visit occurred, per
     the user's explicit request that the AI register travel that occurred."""
@@ -400,17 +465,23 @@ def _handle_feedback(intent: dict, *, user) -> str:
         # timing-only message that isn't really feedback at all) leaving
         # an anonymous user stuck behind a login wall for no reason - the
         # chat should never dead-end just because of that.
-        return "I'd love to hear about your trip - which destination are you talking about?"
+        return _localize_reply(
+            "I'd love to hear about your trip - which destination are you talking about?",
+            message=message,
+            ai_provider=ai_provider,
+        )
 
     if user is None or not user.is_authenticated:
-        return NEEDS_LOGIN_REPLY
+        return _localize_reply(NEEDS_LOGIN_REPLY, message=message, ai_provider=ai_provider)
 
     destination = _resolve_destination(destination_name)
     if destination is None:
         logger.info("Feedback mentioned an unrecognized destination. name=%r", destination_name)
-        return (
+        return _localize_reply(
             f"I don't have {destination_name} in my catalog yet, but thanks for sharing - "
-            "I've made a note of it!"
+            "I've made a note of it!",
+            message=message,
+            ai_provider=ai_provider,
         )
 
     # Register that this travel occurred, regardless of whether a rating was given.
@@ -418,9 +489,11 @@ def _handle_feedback(intent: dict, *, user) -> str:
 
     rating = intent["feedback_rating"]
     if rating is None:
-        return (
+        return _localize_reply(
             f"Got it - I've noted that you've visited {destination.name}. Feel free to tell me "
-            "how you'd rate it (1-10) if you'd like!"
+            "how you'd rate it (1-10) if you'd like!",
+            message=message,
+            ai_provider=ai_provider,
         )
 
     Feedback.objects.update_or_create(
@@ -438,28 +511,38 @@ def _handle_feedback(intent: dict, *, user) -> str:
         user=user,
         metadata={"destination_slug": destination.slug, "rating": rating, "source": "chat"},
     )
-    return f"Thanks! I've recorded your feedback on {destination.name}: {rating}/10."
+    return _localize_reply(
+        f"Thanks! I've recorded your feedback on {destination.name}: {rating}/10.",
+        message=message,
+        ai_provider=ai_provider,
+    )
 
 
-def _handle_future_intent(intent: dict, *, user) -> str:
+def _handle_future_intent(intent: dict, *, user, message: str, ai_provider: AIProvider) -> str:
     destination_name = intent["future_destination_name"]
     if not destination_name:
         # Same reasoning as _handle_feedback: don't gate on login before
         # confirming there's an actual destination to save - keeps the
         # chat going instead of dead-ending on a misclassified message.
-        return "That sounds exciting - which destination did you have in mind?"
+        return _localize_reply(
+            "That sounds exciting - which destination did you have in mind?",
+            message=message,
+            ai_provider=ai_provider,
+        )
 
     if user is None or not user.is_authenticated:
-        return NEEDS_LOGIN_REPLY
+        return _localize_reply(NEEDS_LOGIN_REPLY, message=message, ai_provider=ai_provider)
 
     destination = _resolve_destination(destination_name)
     if destination is None:
         logger.info(
             "Future travel intent mentioned an unrecognized destination. name=%r", destination_name
         )
-        return (
+        return _localize_reply(
             f"I don't have {destination_name} in my catalog yet, but I've made a note that "
-            "you'd like to go!"
+            "you'd like to go!",
+            message=message,
+            ai_provider=ai_provider,
         )
 
     _trip, created = Trip.objects.get_or_create(
@@ -474,8 +557,16 @@ def _handle_future_intent(intent: dict, *, user) -> str:
             user=user,
             metadata={"destination_slug": destination.slug, "status": "planned", "source": "chat"},
         )
-        return f"Got it! I've added {destination.name} to your trips to plan for someday."
-    return f"You already have {destination.name} noted as a future trip - I'll keep it there!"
+        return _localize_reply(
+            f"Got it! I've added {destination.name} to your trips to plan for someday.",
+            message=message,
+            ai_provider=ai_provider,
+        )
+    return _localize_reply(
+        f"You already have {destination.name} noted as a future trip - I'll keep it there!",
+        message=message,
+        ai_provider=ai_provider,
+    )
 
 
 def _resolve_destination(name: str):

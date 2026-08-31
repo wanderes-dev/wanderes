@@ -7,7 +7,7 @@ from ai.orchestration import (
     get_travel_recommendation,
     stream_travel_recommendation,
 )
-from ai.provider.base import AIProviderError
+from ai.provider.base import AIProviderError, AIResponse
 from analytics.models import Event
 from integrations.climate.base import ClimateProviderError, MonthlyClimateSummary
 from travel.models import Destination
@@ -32,12 +32,27 @@ class StubAIProvider:
         self.reply_text = reply_text
         self.stream_reply_calls = []
         self.generate_structured_reply_calls = []
+        self.generate_reply_calls = []
 
     def generate_structured_reply(
         self, messages, *, json_schema, max_tokens=None, temperature=None
     ):
         self.generate_structured_reply_calls.append(messages)
         return self.structured_response
+
+    def generate_reply(self, messages, *, max_tokens=None):
+        # Used by _localize_reply (2026-08-31) to phrase a fixed feedback/
+        # future-intent confirmation in the traveler's language. Echoing
+        # the original English fact back verbatim (stripping the wrapping
+        # localization instruction) keeps every existing assertion against
+        # those exact fact strings valid - actual localization quality is
+        # a live-only concern this stub isn't meant to exercise.
+        self.generate_reply_calls.append(messages)
+        last_content = messages[-1].content
+        marker = "in the same language the traveler is writing in: "
+        idx = last_content.find(marker)
+        content = last_content[idx + len(marker) :] if idx != -1 else last_content
+        return AIResponse(content=content, model="stub", prompt_tokens=0, completion_tokens=0)
 
     def stream_reply(self, messages, *, max_tokens=None):
         self.stream_reply_calls.append(messages)
@@ -49,6 +64,9 @@ class FailingAIProvider:
     def generate_structured_reply(
         self, messages, *, json_schema, max_tokens=None, temperature=None
     ):
+        raise AIProviderError("boom")
+
+    def generate_reply(self, messages, *, max_tokens=None):
         raise AIProviderError("boom")
 
     def stream_reply(self, messages, *, max_tokens=None):
