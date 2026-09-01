@@ -20,6 +20,29 @@ class ChatPageTests(TestCase):
         self.assertContains(response, "message-input")
         self.assertContains(response, "chat-form")
 
+    def test_login_prompt_modal_shown_to_anonymous_users(self):
+        # 2026-09-02, direct request: a soft, dismissible nudge for
+        # signed-out visitors - never a hard gate (chat still works fully
+        # anonymously either way, per the "no account needed" landing
+        # page promise).
+        response = self.client.get(reverse("ai:chat"))
+
+        self.assertContains(response, "<dialog")
+        self.assertContains(response, "Continue without an account")
+
+    def test_login_prompt_modal_not_shown_to_authenticated_users(self):
+        # The #login-prompt-modal CSS rule itself is always present (it's
+        # in the page's unconditional <style> block) - what must actually
+        # be gated behind login state is the <dialog> element and its
+        # content, so assert on the tag/copy, not the bare id string.
+        user = User.objects.create_user(email="traveler@example.com", password="testpass123")
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("ai:chat"))
+
+        self.assertNotContains(response, "<dialog")
+        self.assertNotContains(response, "Continue without an account")
+
 
 class RecommendationsStreamViewTests(TestCase):
     def test_rejects_empty_message(self):

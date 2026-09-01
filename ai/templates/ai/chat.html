@@ -24,6 +24,7 @@
     }
     .chat-header {
         flex-shrink: 0;
+        transition: opacity 0.2s ease;
     }
     .chat-messages {
         flex: 1 1 auto;
@@ -32,6 +33,22 @@
         flex-direction: column;
         gap: 0.75rem;
         padding: 0.5rem 0;
+    }
+    /* Before the first message, the whole page centers as one group
+       (header + empty-state + input) instead of pinning the input to
+       the bottom with a big empty gap above it - the familiar
+       "new conversation" layout, direct request 2026-09-02. Once a
+       message is sent, .chat-empty is removed and the layout reverts to
+       the standard pinned-input/scrolling-messages shape below. */
+    .chat-page.chat-empty {
+        justify-content: center;
+    }
+    .chat-page.chat-empty .chat-messages {
+        flex: 0 1 auto;
+        overflow: visible;
+    }
+    .chat-page.chat-empty .chat-header {
+        text-align: center;
     }
     /* .chat-bubble and .recommendation-card* live in static/css/main.css -
        shared with the landing page's product preview, see 2026-09-01
@@ -99,9 +116,77 @@
     @media (max-width: 480px) {
         .chat-page { padding: 0.5rem; }
     }
+
+    /* Login prompt modal - shown once per browser session to a signed-out
+       visitor entering chat (direct request, 2026-09-02), never a hard
+       gate: dismissing it, however the traveler chooses to, lets the
+       conversation carry on exactly as it already does anonymously. */
+    #login-prompt-modal {
+        border: none;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-lg);
+        padding: 0;
+        max-width: 380px;
+        width: calc(100% - 2rem);
+    }
+    #login-prompt-modal::backdrop {
+        background: rgba(31, 41, 51, 0.45);
+    }
+    .login-prompt-body {
+        padding: 1.75rem;
+        text-align: center;
+    }
+    .login-prompt-body h2 {
+        margin: 0 0 0.5rem;
+        font-size: 1.25rem;
+    }
+    .login-prompt-body p {
+        color: var(--color-text-muted);
+        margin: 0 0 1.5rem;
+    }
+    .login-prompt-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+    }
+    .login-prompt-actions .btn {
+        width: 100%;
+        text-align: center;
+        justify-content: center;
+    }
+    .login-prompt-skip {
+        background: none;
+        border: none;
+        box-shadow: none;
+        color: var(--color-text-muted);
+        text-decoration: underline;
+        font-size: 0.9rem;
+        padding: 0.4rem;
+        cursor: pointer;
+    }
+    .login-prompt-skip:hover {
+        color: var(--color-text);
+        transform: none;
+        box-shadow: none;
+        background: none;
+    }
 </style>
 
-<div class="chat-page">
+{% if not user.is_authenticated %}
+<dialog id="login-prompt-modal">
+    <div class="login-prompt-body">
+        <h2>Save your trips as you go</h2>
+        <p>Log in to keep your recommendations, save trips, and get better suggestions over time.</p>
+        <div class="login-prompt-actions">
+            <a href="{% url 'users:login' %}" class="btn">Log in</a>
+            <a href="{% url 'users:register' %}" class="btn btn-secondary">Create an account</a>
+            <button type="button" id="login-prompt-skip" class="login-prompt-skip">Continue without an account</button>
+        </div>
+    </div>
+</dialog>
+{% endif %}
+
+<div class="chat-page chat-empty" id="chat-page">
     <div class="chat-header">
         <h1>Chat with Wander</h1>
         <p>Tell me what kind of trip you're thinking about - dates, budget, climate, anything.</p>
@@ -109,7 +194,7 @@
 
     <div id="chat-messages" class="chat-messages">
         <div id="chat-empty-state" class="chat-empty-state">
-            <p class="chat-empty-hint">Not sure where to start? Try one of these:</p>
+            <p class="chat-empty-hint">Where should we send you? A few ideas to get going:</p>
             <div class="chat-suggestions">
                 <button type="button" class="chat-suggestion-chip">Somewhere warm in October, not too expensive</button>
                 <button type="button" class="chat-suggestion-chip">A relaxing beach trip with great food</button>
@@ -325,11 +410,13 @@
     }
 
     const emptyState = document.getElementById("chat-empty-state");
+    const chatPage = document.getElementById("chat-page");
 
     async function sendMessage(message) {
         if (emptyState) {
             emptyState.remove();
         }
+        chatPage.classList.remove("chat-empty");
         addBubble(message, "user");
         const loadingBubble = addBubble(randomLoadingMessage(), "loading");
         setLoading(true);
@@ -419,6 +506,50 @@
             input.focus();
         });
     });
+
+    // Login prompt modal (2026-09-02, direct request) - a soft nudge for
+    // signed-out visitors, never a hard gate: chat already works fully
+    // anonymously, so dismissing this (by choice, backdrop click, or Esc)
+    // just lets the conversation continue exactly as before. Shown once
+    // per browser session, not on every visit - sessionStorage rather
+    // than a cookie/DB flag since this is purely a per-tab-session UI
+    // nicety, nothing worth persisting server-side or across devices.
+    const loginModal = document.getElementById("login-prompt-modal");
+    if (loginModal) {
+        const SESSION_KEY = "wanderes:loginPromptSeen";
+        try {
+            if (!sessionStorage.getItem(SESSION_KEY)) {
+                loginModal.showModal();
+            }
+        } catch (storageError) {
+            // Private-browsing/storage-disabled contexts throw - just skip
+            // the modal rather than blocking chat over a UI nicety.
+        }
+
+        // Called directly from every dismissal path below, rather than
+        // relying solely on the dialog's own "close" event - confirmed
+        // live that a script-driven .close() doesn't reliably fire it in
+        // every environment, so this can't be the only place the session
+        // flag gets recorded.
+        function markSeenAndClose() {
+            try {
+                sessionStorage.setItem(SESSION_KEY, "1");
+            } catch (storageError) {
+                // Nothing to do - worst case the modal reappears next visit.
+            }
+            if (loginModal.open) {
+                loginModal.close();
+            }
+        }
+        document.getElementById("login-prompt-skip").addEventListener("click", markSeenAndClose);
+        loginModal.addEventListener("cancel", markSeenAndClose);
+        loginModal.addEventListener("close", markSeenAndClose);
+        loginModal.addEventListener("click", function (event) {
+            if (event.target === loginModal) {
+                markSeenAndClose();
+            }
+        });
+    }
 })();
 </script>
 {% endblock %}
