@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from ai.models import SavedConversation
-from ai.orchestration import StreamingOrchestrationResult
+from ai.orchestration import FALLBACK_REPLY, StreamingOrchestrationResult
 from ai.provider.base import AIResponse
 from ai.views import CONVERSATION_DELIMITER, RECOMMENDATIONS_DELIMITER
 from analytics.models import Event
@@ -352,6 +352,29 @@ class SavedConversationStreamTests(TestCase):
         conversation = SavedConversation.objects.get(pk=status["conversation_id"])
         self.assertEqual(conversation.user, self.user)
         self.assertEqual(len(conversation.messages), 2)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_ai_provider_fallback_reply_is_not_saved(self, mock_stream):
+        # 2026-09-02 review: a degraded FALLBACK_REPLY (the AI provider
+        # was unreachable) used to be saved into SavedConversation exactly
+        # like a real answer - permanently baking a transient outage
+        # message into the traveler's history and counting toward their
+        # char limit. It should be skipped entirely, same as save=false.
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter([FALLBACK_REPLY])
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "somewhere warm", "save": "true"}
+        )
+        content = b"".join(response.streaming_content).decode()
+
+        _, _, json_part = content.partition(CONVERSATION_DELIMITER)
+        status = json.loads(json_part)
+        self.assertFalse(status["saved"])
+        self.assertIsNone(status["reason"])
+        self.assertEqual(SavedConversation.objects.count(), 0)
 
     @patch("ai.views.stream_travel_recommendation")
     def test_save_false_does_not_create_a_conversation(self, mock_stream):

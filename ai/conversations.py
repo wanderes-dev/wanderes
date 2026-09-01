@@ -1,6 +1,9 @@
 import logging
 from dataclasses import dataclass
 
+from django.contrib.auth import get_user_model
+from django.db import transaction
+
 from .models import SavedConversation
 from .provider import AIMessage, AIProvider, AIProviderError, get_ai_provider
 
@@ -107,16 +110,26 @@ def _record_turn(
         )
 
     # No conversation to continue - this turn is starting a new one.
-    existing_count = SavedConversation.objects.filter(user=user).count()
-    if existing_count >= SavedConversation.MAX_CONVERSATIONS_PER_USER:
-        return SaveResult(
-            saved=False,
-            conversation_id=None,
-            subject=None,
-            reason=REASON_CONVERSATION_LIMIT_REACHED,
-        )
+    # Locking the user row serializes concurrent "start a new conversation"
+    # requests for the same account (e.g. two open tabs sending near-
+    # simultaneously) - without it, two requests could both read the same
+    # existing_count before either commits its INSERT, letting the cap be
+    # exceeded (2026-09-02 review). Kept to just the count-check-and-create
+    # (fast, no external I/O) rather than wrapping _append_turn too, since
+    # that can make a real network call (subject generation) that has no
+    # business holding a row lock.
+    with transaction.atomic():
+        get_user_model().objects.select_for_update().get(pk=user.pk)
+        existing_count = SavedConversation.objects.filter(user=user).count()
+        if existing_count >= SavedConversation.MAX_CONVERSATIONS_PER_USER:
+            return SaveResult(
+                saved=False,
+                conversation_id=None,
+                subject=None,
+                reason=REASON_CONVERSATION_LIMIT_REACHED,
+            )
+        new_conversation = SavedConversation.objects.create(user=user)
 
-    new_conversation = SavedConversation.objects.create(user=user)
     return _append_turn(
         new_conversation, user_message, assistant_reply, ai_provider=ai_provider, is_new=True
     )

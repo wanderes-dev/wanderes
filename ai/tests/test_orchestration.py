@@ -94,6 +94,7 @@ def _intent(
     message_type="recommendation",
     month=None,
     min_temp_c=None,
+    max_temp_c=None,
     max_cost_of_living=None,
     trip_type=None,
     excluded_place_names=None,
@@ -107,6 +108,7 @@ def _intent(
         "message_type": message_type,
         "month": month,
         "min_temp_c": min_temp_c,
+        "max_temp_c": max_temp_c,
         "max_cost_of_living": max_cost_of_living,
         "trip_type": trip_type,
         "excluded_place_names": excluded_place_names or [],
@@ -184,6 +186,46 @@ class GetTravelRecommendationTests(TestCase):
         self.assertEqual(len(result.recommendations), 1)
         self.assertEqual(result.recommendations[0].destination.slug, "warm-cheap")
         self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_max_temp_c_is_wired_through_to_recommendation_request(self):
+        # 2026-09-02 review: max_temp_c existed as a hard constraint in
+        # recommendations.scoring.RecommendationRequest since Phase 8, but
+        # nothing in the AI orchestration layer ever extracted or passed
+        # it - "somewhere not too hot" could never actually be honored.
+        # warm-cheap's real avg_high_c for month 10 is 28.0 (see setUp) -
+        # a max_temp_c of 25.0 should filter it out entirely.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, max_temp_c=25.0),
+            reply_text="Here are some cooler options.",
+        )
+
+        result = get_travel_recommendation(
+            "somewhere not too hot in October",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.recommendations, [])
+
+    def test_max_temp_c_alone_is_enough_signal_to_search(self):
+        # Mirrors the existing min_temp_c-alone-is-enough-signal behavior -
+        # a traveler rarely states an explicit temperature bound without
+        # real intent, so max_temp_c alone should also skip the "gather
+        # more first" open-ended path and search immediately. 30.0 is
+        # above warm-cheap's real 28.0 avg_high_c, so it should match.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, max_temp_c=30.0),
+            reply_text="Try this one!",
+        )
+
+        result = get_travel_recommendation(
+            "somewhere not too hot in October",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(len(result.recommendations), 1)
+        self.assertEqual(result.recommendations[0].destination.slug, "warm-cheap")
 
     def test_completely_open_ended_message_lets_ai_decide_instead_of_searching(self):
         # Reported live: "oi, pode me ajudar com uma viagem?" (hi, can you
@@ -675,11 +717,19 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
         self.assertIn("Monaco", result.reply)
         self.assertFalse(Trip.objects.exists())
 
-    def test_unrecognized_destination_in_feedback_does_not_crash(self):
+    def test_unrecognized_destination_in_feedback_uses_ai_knowledge(self):
+        # 2026-09-02 review: previously a canned "I don't have it in my
+        # catalog, but thanks for sharing" reply - the same dead-end
+        # pattern already fixed for future_intent, for the identical
+        # underlying case (destination not in the curated catalog). Now
+        # gets a real AI-generated reply instead, and still persists
+        # nothing - there's no valid Destination row to attach a
+        # TravelHistoryEntry/Feedback to.
         ai_provider = StubAIProvider(
             structured_response=_intent(
                 message_type="feedback", feedback_destination_name="Nowhereland", feedback_rating=7
-            )
+            ),
+            reply_text="Nowhereland sounds like a wonderful trip!",
         )
 
         result = get_travel_recommendation(

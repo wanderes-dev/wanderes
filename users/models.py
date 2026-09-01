@@ -4,21 +4,16 @@ from django.db import models
 
 # Same 1-5 scale used by travel.Destination.cost_of_living, so a traveler's
 # preferred cost of living and a destination's cost of living are directly
-# comparable.
-COST_OF_LIVING_CHOICES = [
-    (1, "Very low"),
-    (2, "Low"),
-    (3, "Medium"),
-    (4, "High"),
-    (5, "Very high"),
-]
-
-TRIP_TYPE_CHOICES = [
-    ("beach", "Beach"),
-    ("city", "City"),
-    ("nature", "Nature"),
-    ("culture", "Culture"),
-]
+# comparable - imported from travel.models (the canonical source, since it
+# owns the destination catalog these choices describe) rather than
+# duplicated here. A 2026-09-02 review found this file had its own
+# byte-for-byte copy of both lists, independent of travel.models' and of
+# ai.orchestration's INTENT_SCHEMA enum - nothing kept the three in sync,
+# so changing a trip type in one place risked silently desyncing the
+# others. Re-exported under these same names so existing imports
+# (users/forms.py's `from .models import TRIP_TYPE_CHOICES`) don't need to
+# change.
+from travel.models import COST_OF_LIVING_CHOICES, TRIP_TYPE_CHOICES  # noqa: F401
 
 
 class UserManager(DjangoUserManager):

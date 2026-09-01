@@ -428,9 +428,15 @@
     // backend reports the 5-saved-conversations cap for this thread, so
     // it doesn't keep re-asking every subsequent message (see
     // handleConversationStatus below) - reset only by starting a new
-    // conversation or loading a different saved one.
+    // conversation or loading a different saved one. currentConversationIsFull
+    // mirrors the backend's per-conversation is_full flag (the 50k-char
+    // cap) - added in a 2026-09-02 review after finding the save-status
+    // indicator had no way to reflect this state at all, so it kept
+    // silently reading "will save" for a conversation that had already
+    // stopped saving.
     let currentConversationId = null;
     let saveBlockedForThread = false;
+    let currentConversationIsFull = false;
 
     function addBubble(text, className) {
         const bubble = document.createElement("div");
@@ -651,10 +657,11 @@
 
     // Reflects whether the *next* message will actually be saved - next
     // to the chat title, in smaller/muted text (2026-09-02, direct
-    // request), not just a one-time modal when a limit is hit. Covers
-    // both reasons a message might not save: the checkbox itself is
-    // unchecked, or the 5-conversation cap silently disabled saving for
-    // this thread (saveBlockedForThread).
+    // request), not just a one-time modal when a limit is hit. Covers all
+    // three reasons a message might not save: the checkbox itself is
+    // unchecked, the 5-conversation cap silently disabled saving for this
+    // thread (saveBlockedForThread), or this specific conversation already
+    // hit its own 50k-char size limit (currentConversationIsFull).
     function updateSaveStatusIndicator() {
         if (!saveStatusIndicator) {
             return;
@@ -665,7 +672,7 @@
             saveStatusIndicator.textContent = "";
             return;
         }
-        const willSave = saveCheckbox.checked && !saveBlockedForThread;
+        const willSave = saveCheckbox.checked && !saveBlockedForThread && !currentConversationIsFull;
         saveStatusIndicator.textContent = willSave ? "" : "(not saving)";
     }
     if (saveCheckbox) {
@@ -781,6 +788,7 @@
             .then(function (data) {
                 currentConversationId = data.id;
                 saveBlockedForThread = false;
+                currentConversationIsFull = !!data.is_full;
                 if (saveCheckbox) {
                     saveCheckbox.checked = true;
                 }
@@ -824,6 +832,7 @@
     function startNewConversation() {
         currentConversationId = null;
         saveBlockedForThread = false;
+        currentConversationIsFull = false;
         if (saveCheckbox) {
             saveCheckbox.checked = true;
         }
@@ -869,6 +878,15 @@
                     }),
                     sidebarList.firstChild
                 );
+            } else if (sidebarList) {
+                // Continuing an already-saved conversation still bumps its
+                // updated_at (and therefore its sort position, per
+                // SavedConversation.Meta.ordering) server-side - refresh
+                // the list so the sidebar reflects that instead of
+                // silently going stale until some unrelated action (new
+                // conversation, delete, loading a different thread)
+                // happens to trigger a refresh (2026-09-02 review).
+                fetchSidebarList();
             }
         }
         if (status.reason === "conversation_limit_reached") {
@@ -878,6 +896,12 @@
                 conversationLimitModal.show();
             }
         } else if (status.reason === "size_limit_exceeded") {
+            // The indicator needs to reflect this too, not just the
+            // one-time modal (2026-09-02 review) - otherwise it silently
+            // keeps reading "will save" for every later message in this
+            // now-full conversation.
+            currentConversationIsFull = true;
+            updateSaveStatusIndicator();
             if (conversationSizeLimitModal) {
                 conversationSizeLimitModal.show();
             }

@@ -9,7 +9,7 @@ from recommendations.scoring import (
     ScoredDestination,
     generate_recommendations,
 )
-from travel.models import Destination
+from travel.models import COST_OF_LIVING_CHOICES, TRIP_TYPE_CHOICES, Destination
 from travel.services import find_destination_slugs_by_name
 from trips.models import FEEDBACK_TAG_CHOICES, Feedback, TravelHistoryEntry, Trip
 
@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 
 MAX_EXPLAINED_CANDIDATES = 5
 FEEDBACK_TAG_KEYS = {key for key, _label in FEEDBACK_TAG_CHOICES}
+# Derived from travel.models rather than hardcoded here a second time -
+# these used to be an independent copy of the choices list, which could
+# silently desync from the actual Destination.trip_type/cost_of_living
+# choices (found in a 2026-09-02 review). travel.models is the canonical
+# source since it owns the destination catalog these fields describe.
+TRIP_TYPE_CODES = [code for code, _label in TRIP_TYPE_CHOICES]
+MAX_COST_OF_LIVING_TIER = len(COST_OF_LIVING_CHOICES)
 
 FALLBACK_REPLY = (
     "I'm having trouble reaching my reasoning engine right now. Please try again in a moment."
@@ -150,6 +157,15 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "temperature, leave min_temp_c null - this includes messages that only "
     "name a trip_type, destination, or month with no temperature words at "
     "all.\n"
+    "- Upper temperature bound (max_temp_c): the mirror image of "
+    "min_temp_c, for when the user wants an upper limit instead of (or as "
+    "well as) a lower one - 'not too hot'/'nothing extreme' -> 30, "
+    "'cool'/'mild, not hot' -> 22, 'cold'/'chilly'/'somewhere cool and "
+    "crisp' -> 15. Only set this from words that are themselves about an "
+    "upper temperature limit or wanting it cool/cold - never infer it from "
+    "a trip_type, destination, or month alone, exactly like min_temp_c "
+    "above. A message can set both min_temp_c and max_temp_c together "
+    "(e.g. 'mild, not too hot and not too cold') or just one.\n"
     "- Budget (max_cost_of_living, a 1-5 scale where 1 is cheapest): "
     "'very cheap'/'budget'/'affordable' -> 2, 'cheap'/'not too expensive'/"
     "'inexpensive' -> 3, 'moderate'/'mid-range' -> 4. If the user wants "
@@ -199,10 +215,11 @@ INTENT_SCHEMA = {
             },
             "month": {"type": ["integer", "null"]},
             "min_temp_c": {"type": ["number", "null"]},
+            "max_temp_c": {"type": ["number", "null"]},
             "max_cost_of_living": {"type": ["integer", "null"]},
             "trip_type": {
                 "type": ["string", "null"],
-                "enum": ["beach", "city", "nature", "culture", None],
+                "enum": [*TRIP_TYPE_CODES, None],
             },
             "excluded_place_names": {"type": "array", "items": {"type": "string"}},
             "feedback_destination_name": {"type": ["string", "null"]},
@@ -215,6 +232,7 @@ INTENT_SCHEMA = {
             "message_type",
             "month",
             "min_temp_c",
+            "max_temp_c",
             "max_cost_of_living",
             "trip_type",
             "excluded_place_names",
@@ -329,11 +347,26 @@ def stream_travel_recommendation(
         return StreamingOrchestrationResult([], off_topic_reply)
 
     if message_type == "feedback":
-        reply = _handle_feedback(
+        # Same pattern as future_intent below - _handle_feedback returns
+        # None specifically for a real destination our curated catalog
+        # doesn't have (2026-09-02 review: this used to be the one
+        # remaining canned "I don't have it, but I've noted it" dead end,
+        # inconsistent with the fix already applied to future_intent for
+        # the identical underlying situation).
+        quick_feedback_reply = _handle_feedback(
             intent, user=user, message=message, history=history, ai_provider=ai_provider
         )
-        _remember(reply)
-        return StreamingOrchestrationResult([], iter([reply]))
+        if quick_feedback_reply is not None:
+            _remember(quick_feedback_reply)
+            return StreamingOrchestrationResult([], iter([quick_feedback_reply]))
+
+        unrecognized_feedback_messages = _build_unrecognized_feedback_destination_messages(
+            message, intent["feedback_destination_name"], history
+        )
+        unrecognized_feedback_reply = _stream_ai_reply(
+            unrecognized_feedback_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult([], unrecognized_feedback_reply)
 
     if message_type == "future_intent":
         # _handle_future_intent returns None specifically when the named
@@ -388,6 +421,7 @@ def stream_travel_recommendation(
     # opener, unless there's actually enough to differentiate on.
     has_enough_signal = (
         intent["min_temp_c"] is not None
+        or intent["max_temp_c"] is not None
         or intent["max_cost_of_living"] is not None
         or (
             intent["trip_type"] is not None
@@ -413,6 +447,7 @@ def stream_travel_recommendation(
     request = RecommendationRequest(
         month=intent["month"],
         min_temp_c=intent["min_temp_c"],
+        max_temp_c=intent["max_temp_c"],
         max_cost_of_living=intent["max_cost_of_living"],
         trip_type=intent["trip_type"],
         excluded_slugs=find_destination_slugs_by_name(intent["excluded_place_names"]),
@@ -423,10 +458,11 @@ def stream_travel_recommendation(
     if not results:
         logger.info(
             "No destinations matched constraints. message=%r month=%s min_temp_c=%s "
-            "max_cost_of_living=%s trip_type=%s",
+            "max_temp_c=%s max_cost_of_living=%s trip_type=%s",
             message,
             intent["month"],
             intent["min_temp_c"],
+            intent["max_temp_c"],
             intent["max_cost_of_living"],
             intent["trip_type"],
         )
@@ -558,10 +594,16 @@ def _handle_feedback(
     message: str,
     history: list[dict] | None = None,
     ai_provider: AIProvider,
-) -> str:
+) -> str | None:
     """Persist feedback shared conversationally, and register that the
     trip actually happened - giving feedback implies a visit occurred, per
-    the user's explicit request that the AI register travel that occurred."""
+    the user's explicit request that the AI register travel that occurred.
+
+    Returns None specifically when the traveler gave feedback about a
+    real destination our curated catalog doesn't have - see
+    _handle_future_intent's docstring for the identical pattern; the
+    caller (stream_travel_recommendation) then builds a real AI reply
+    from general knowledge instead of a canned acknowledgment."""
     destination_name = intent["feedback_destination_name"]
     if not destination_name:
         # Ask before gating on login: we don't yet know there's anything
@@ -584,14 +626,18 @@ def _handle_feedback(
 
     destination = _resolve_destination(destination_name)
     if destination is None:
-        logger.info("Feedback mentioned an unrecognized destination. name=%r", destination_name)
-        return _localize_reply(
-            f"I don't have {destination_name} in my catalog yet, but thanks for sharing - "
-            "I've made a note of it!",
-            message=message,
-            history=history,
-            ai_provider=ai_provider,
+        # 2026-09-02 review: previously a canned "I don't have it in my
+        # catalog, but thanks for sharing" reply here - the same dead-end
+        # pattern already fixed for future_intent, for the identical
+        # reason (no valid Destination row exists to register the visit
+        # against - TravelHistoryEntry.destination is a real FK, and
+        # inventing one would violate 05_AI_DESIGN.md §7).
+        logger.info(
+            "Feedback mentioned an unrecognized destination - answering from general "
+            "knowledge instead of a canned note. name=%r",
+            destination_name,
         )
+        return None
 
     # Register that this travel occurred, regardless of whether a rating was given.
     TravelHistoryEntry.objects.get_or_create(user=user, destination=destination)
@@ -764,10 +810,19 @@ def _validate_intent(data: dict) -> dict:
         data["month_was_assumed"] = True
 
     max_cost_of_living = data.get("max_cost_of_living")
-    if max_cost_of_living is not None and not (1 <= max_cost_of_living <= 5):
+    if max_cost_of_living is not None and not (1 <= max_cost_of_living <= MAX_COST_OF_LIVING_TIER):
         data["max_cost_of_living"] = None
 
-    if data.get("trip_type") not in {"beach", "city", "nature", "culture", None}:
+    min_temp_c = data.get("min_temp_c")
+    max_temp_c = data.get("max_temp_c")
+    if min_temp_c is not None and max_temp_c is not None and min_temp_c > max_temp_c:
+        # A contradictory extraction (e.g. "warm but not too hot" landing
+        # min > max) - drop both rather than pass a range hard_constraints
+        # in scoring.py would filter every destination out on.
+        data["min_temp_c"] = None
+        data["max_temp_c"] = None
+
+    if data.get("trip_type") not in {*TRIP_TYPE_CODES, None}:
         data["trip_type"] = None
 
     data["excluded_place_names"] = _clean_string_list(data.get("excluded_place_names"))
@@ -961,8 +1016,12 @@ def _build_no_matches_messages(
         constraints.append(f"trip_type={intent['trip_type']}")
     if intent["min_temp_c"] is not None:
         constraints.append(f"min_temp_c={intent['min_temp_c']}")
+    if intent["max_temp_c"] is not None:
+        constraints.append(f"max_temp_c={intent['max_temp_c']}")
     if intent["max_cost_of_living"] is not None:
-        constraints.append(f"max_cost_of_living={intent['max_cost_of_living']}/5")
+        constraints.append(f"max_cost_of_living={intent['max_cost_of_living']}/{MAX_COST_OF_LIVING_TIER}")
+    if intent["excluded_place_names"]:
+        constraints.append(f"excluded={', '.join(intent['excluded_place_names'])}")
     constraints_summary = ", ".join(constraints) if constraints else "no specific constraints"
 
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
@@ -1044,6 +1103,43 @@ def _build_unrecognized_future_destination_messages(
                 "been using in this conversation (check the history above, not just this "
                 "message) - this applies just as much to English as to any other "
                 "language."
+            ),
+        )
+    )
+    return messages
+
+
+def _build_unrecognized_feedback_destination_messages(
+    message: str, destination_name: str, history: list[dict] | None = None
+) -> list[AIMessage]:
+    """Built when a feedback message is about a real destination our
+    curated catalog doesn't have (2026-09-02 review - the same "use AI
+    general knowledge instead of a canned dead-end" fix already applied
+    to future_intent, for the identical underlying situation). No
+    TravelHistoryEntry/Feedback row is persisted for this -
+    TravelHistoryEntry.destination is a real FK, and there is no valid
+    Destination row to attach it to (never invent catalog data,
+    05_AI_DESIGN.md §7) - the reply says so honestly in passing, without
+    dwelling on it as an apology."""
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler just said: "{message}" - sharing their own experience of '
+                f"{destination_name}, a place they've visited. This destination isn't in "
+                "our curated dataset, so their visit can't be formally recorded in their "
+                "travel history the way a catalog destination would be. Respond warmly - "
+                "genuinely engage with what they shared (using your own general travel "
+                "knowledge about the place to react to it naturally, the way a real "
+                "travel consultant who knows the destination would), rather than just "
+                "acknowledging the message. Mention in passing, without opening with an "
+                "apology, that you can't formally log it in their travel history yet "
+                "since it's outside your verified catalog - but thank them for sharing. "
+                "Reply in the same language the traveler has been using in this "
+                "conversation (check the history above, not just this message) - this "
+                "applies just as much to English as to any other language."
             ),
         )
     )

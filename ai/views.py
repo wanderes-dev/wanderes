@@ -14,7 +14,7 @@ from analytics.services import record_event
 from . import memory
 from .conversations import record_turn
 from .models import SavedConversation
-from .orchestration import MAX_EXPLAINED_CANDIDATES, stream_travel_recommendation
+from .orchestration import FALLBACK_REPLY, MAX_EXPLAINED_CANDIDATES, stream_travel_recommendation
 
 MAX_MESSAGE_LENGTH = 2000
 
@@ -159,10 +159,19 @@ def recommendations_stream(request):
             yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)
 
         if user is not None:
+            # A degraded reply (the AI provider was unreachable, or failed
+            # mid-stream) shouldn't be permanently written into the
+            # traveler's saved conversation as if it were a real answer -
+            # 2026-09-02 review: previously it was, counting toward the
+            # conversation's char limit and staying visible on reload.
+            # FALLBACK_REPLY appears verbatim (a full failure) or as a
+            # suffix (a partial reply before a mid-stream failure); either
+            # way, skip saving this turn - the conversation itself already
+            # continued normally, this only affects persistence.
             save_result = record_turn(
                 user=user,
                 conversation=conversation,
-                save_requested=save_requested,
+                save_requested=save_requested and FALLBACK_REPLY not in full_reply,
                 user_message=message,
                 assistant_reply=full_reply,
             )

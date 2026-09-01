@@ -1,6 +1,13 @@
 from django.db import models
 
-# Same 1-5 scale used by users.TravelerProfile.preferred_cost_of_living.
+# Canonical source for both choice lists (2026-09-02 - previously
+# duplicated byte-for-byte in users.models, and a third time as a
+# hardcoded enum in ai.orchestration's INTENT_SCHEMA/prompt, with nothing
+# keeping the three in sync). travel owns the destination catalog these
+# describe, so it's the natural single source of truth - users.models
+# imports and re-exports COST_OF_LIVING_CHOICES from here, and
+# ai.orchestration derives its intent-extraction schema's trip_type enum
+# from TRIP_TYPE_CHOICES directly instead of hardcoding its own copy.
 COST_OF_LIVING_CHOICES = [
     (1, "Very low"),
     (2, "Low"),
