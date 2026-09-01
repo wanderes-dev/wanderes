@@ -248,6 +248,7 @@ def stream_travel_recommendation(
     session_key: str | None = None,
     ai_provider: AIProvider | None = None,
     climate_provider=None,
+    history_override: list[dict] | None = None,
 ) -> StreamingOrchestrationResult:
     """Handle one chat message: a recommendation request, feedback about a
     past visit, a stated future travel intention, or an off-topic message.
@@ -283,13 +284,28 @@ def stream_travel_recommendation(
     so real usage can inform which dimensions are worth formalizing later
     - "the profile should grow organically as the product learns" applies
     here too, not just to TravelerProfile.
+
+    `history_override` (2026-09-02, saved-conversations feature): when the
+    caller is continuing a conversation already persisted in
+    ai.models.SavedConversation, it passes that conversation's own stored
+    messages here instead of relying on ai.memory's Redis-backed short-term
+    context - the persisted conversation is a strictly more complete and
+    durable source of truth for it than Redis's 30-minute TTL bucket, so
+    this function skips reading *and writing* ai.memory entirely for that
+    call, leaving Redis memory exclusively for conversations that are not
+    (or not yet) saved.
     """
     ai_provider = ai_provider or get_ai_provider()
-    conv_key = memory.conversation_key(user=user, session_key=session_key)
-    history = memory.get_history(conv_key)
+    if history_override is not None:
+        conv_key = None
+        history = history_override
+    else:
+        conv_key = memory.conversation_key(user=user, session_key=session_key)
+        history = memory.get_history(conv_key)
 
     def _remember(reply: str) -> None:
-        memory.append_turn(conv_key, user_message=message, assistant_reply=reply)
+        if conv_key is not None:
+            memory.append_turn(conv_key, user_message=message, assistant_reply=reply)
 
     try:
         intent = _extract_intent(message, ai_provider=ai_provider, history=history)

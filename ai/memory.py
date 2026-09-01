@@ -45,3 +45,11 @@ def append_turn(key: str, *, user_message: str, assistant_reply: str) -> None:
     history.append({"role": "assistant", "content": assistant_reply})
     history = history[-MAX_HISTORY_MESSAGES:]
     cache.set(key, history, CONVERSATION_TTL_SECONDS)
+
+
+def clear_history(key: str) -> None:
+    """Drop whatever short-term context exists for this key - called when
+    the traveler explicitly starts a new conversation (2026-09-02, saved-
+    conversations feature), so a fresh thread doesn't silently inherit
+    context from whatever was last discussed under the same key."""
+    cache.delete(key)

@@ -11,6 +11,17 @@
     /* Fills whatever height .content-flush has left after the site
        header/footer (see static/css/main.css) - not 100vh, since the
        chat page is no longer the only thing on screen. */
+    /* Sidebar + chat side by side (2026-09-02, saved-conversations
+       feature) - .chat-layout takes over the role .chat-page used to play
+       directly inside .content-flush, so .chat-page's own flex/min-height
+       rules stay meaningful either with or without a sidebar next to it
+       (the sidebar itself only renders for authenticated users). */
+    .chat-layout {
+        display: flex;
+        flex: 1 1 auto;
+        min-height: 0;
+        position: relative;
+    }
     .chat-page {
         max-width: 960px;
         width: 100%;
@@ -19,6 +30,7 @@
         display: flex;
         flex-direction: column;
         flex: 1 1 auto;
+        min-width: 0;
         min-height: 0;
         box-sizing: border-box;
     }
@@ -117,11 +129,137 @@
         .chat-page { padding: 0.5rem; }
     }
 
-    /* Login prompt modal - shown once per browser session to a signed-out
-       visitor entering chat (direct request, 2026-09-02), never a hard
-       gate: dismissing it, however the traveler chooses to, lets the
-       conversation carry on exactly as it already does anonymously. */
-    #login-prompt-modal {
+    /* Saved-conversations sidebar (2026-09-02, direct request - "like
+       ChatGPT's left side") - registered users only, since saving is a
+       registered-only feature; anonymous visitors never render .chat-
+       sidebar at all, not just a disabled version of it. */
+    .chat-sidebar {
+        flex: 0 0 260px;
+        width: 260px;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--color-border);
+        padding: 1rem 0.75rem;
+        overflow-y: auto;
+        background: var(--color-surface);
+    }
+    .chat-sidebar-new-btn {
+        width: 100%;
+        justify-content: center;
+        margin-bottom: 0.6rem;
+    }
+    .chat-sidebar-save-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.85rem;
+        color: var(--color-text-muted);
+        margin-bottom: 1rem;
+        padding: 0 0.2rem;
+    }
+    .chat-sidebar-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    .chat-sidebar-empty {
+        color: var(--color-text-muted);
+        font-size: 0.85rem;
+        padding: 0.5rem 0.2rem;
+    }
+    .chat-sidebar-item {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        border-radius: var(--radius);
+        padding: 0.5rem 0.6rem;
+        cursor: pointer;
+        border: 1px solid transparent;
+    }
+    .chat-sidebar-item:hover {
+        background: var(--color-bg);
+    }
+    .chat-sidebar-item.is-active {
+        border-color: var(--color-primary);
+        background: var(--color-bg);
+    }
+    .chat-sidebar-item-text {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+    }
+    .chat-sidebar-item-subject {
+        font-size: 0.88rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .chat-sidebar-item-date {
+        font-size: 0.72rem;
+        color: var(--color-text-muted);
+    }
+    .chat-sidebar-item-delete {
+        flex-shrink: 0;
+        background: none;
+        border: none;
+        box-shadow: none;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        padding: 0.2rem 0.4rem;
+        font-size: 0.9rem;
+        line-height: 1;
+        border-radius: var(--radius);
+    }
+    .chat-sidebar-item-delete:hover {
+        color: #b3261e;
+        background: rgba(179, 38, 30, 0.08);
+        transform: none;
+        box-shadow: none;
+    }
+    .chat-sidebar-toggle {
+        display: none;
+    }
+    .chat-sidebar-backdrop {
+        display: none;
+    }
+    @media (max-width: 720px) {
+        .chat-sidebar-toggle {
+            display: inline-flex;
+            margin-bottom: 0.75rem;
+        }
+        .chat-sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 40;
+            transform: translateX(-100%);
+            transition: transform 0.2s ease;
+            box-shadow: var(--shadow-lg);
+        }
+        .chat-sidebar.is-open {
+            transform: translateX(0);
+        }
+        .chat-sidebar-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(31, 41, 51, 0.45);
+            z-index: 39;
+        }
+        .chat-sidebar-backdrop.is-open {
+            display: block;
+        }
+    }
+
+    /* Shared small confirmation/notice dialog styling - the login prompt
+       and the two saved-conversation limit notices below all use this
+       same shape (2026-09-02: previously login-prompt-* only, generalized
+       rather than duplicated once a second and third modal needed the
+       identical layout). */
+    dialog.simple-modal {
         border: none;
         border-radius: var(--radius-lg);
         box-shadow: var(--shadow-lg);
@@ -129,32 +267,32 @@
         max-width: 380px;
         width: calc(100% - 2rem);
     }
-    #login-prompt-modal::backdrop {
+    dialog.simple-modal::backdrop {
         background: rgba(31, 41, 51, 0.45);
     }
-    .login-prompt-body {
+    .simple-modal-body {
         padding: 1.75rem;
         text-align: center;
     }
-    .login-prompt-body h2 {
+    .simple-modal-body h2 {
         margin: 0 0 0.5rem;
         font-size: 1.25rem;
     }
-    .login-prompt-body p {
+    .simple-modal-body p {
         color: var(--color-text-muted);
         margin: 0 0 1.5rem;
     }
-    .login-prompt-actions {
+    .simple-modal-actions {
         display: flex;
         flex-direction: column;
         gap: 0.6rem;
     }
-    .login-prompt-actions .btn {
+    .simple-modal-actions .btn {
         width: 100%;
         text-align: center;
         justify-content: center;
     }
-    .login-prompt-skip {
+    .simple-modal-dismiss {
         background: none;
         border: none;
         box-shadow: none;
@@ -164,7 +302,7 @@
         padding: 0.4rem;
         cursor: pointer;
     }
-    .login-prompt-skip:hover {
+    .simple-modal-dismiss:hover {
         color: var(--color-text);
         transform: none;
         box-shadow: none;
@@ -173,47 +311,92 @@
 </style>
 
 {% if not user.is_authenticated %}
-<dialog id="login-prompt-modal">
-    <div class="login-prompt-body">
+<dialog id="login-prompt-modal" class="simple-modal">
+    <div class="simple-modal-body">
         <h2>Save your trips as you go</h2>
         <p>Log in to keep your recommendations, save trips, and get better suggestions over time.</p>
-        <div class="login-prompt-actions">
+        <div class="simple-modal-actions">
             <a href="{% url 'users:login' %}" class="btn">Log in</a>
             <a href="{% url 'users:register' %}" class="btn btn-secondary">Create an account</a>
-            <button type="button" id="login-prompt-skip" class="login-prompt-skip">Continue without an account</button>
+            <button type="button" id="login-prompt-skip" class="simple-modal-dismiss">Continue without an account</button>
         </div>
     </div>
 </dialog>
 {% endif %}
 
-<div class="chat-page chat-empty" id="chat-page">
-    <div class="chat-header">
-        <h1>Chat with Wander</h1>
-        <p>Tell me what kind of trip you're thinking about - dates, budget, climate, anything.</p>
-    </div>
-
-    <div id="chat-messages" class="chat-messages">
-        <div id="chat-empty-state" class="chat-empty-state">
-            <p class="chat-empty-hint">Where should we send you? A few ideas to get going:</p>
-            <div class="chat-suggestions">
-                <button type="button" class="chat-suggestion-chip">Somewhere warm in October, not too expensive</button>
-                <button type="button" class="chat-suggestion-chip">A relaxing beach trip with great food</button>
-                <button type="button" class="chat-suggestion-chip">Somewhere I can hike and explore nature</button>
-            </div>
+{% if user.is_authenticated %}
+<!-- Saved-conversation limit notices (2026-09-02, direct request): both
+     are one-time, informational, and never block the conversation itself
+     - see ai/conversations.py's record_turn() for exactly when each
+     fires. Neither offers a real "upgrade" purchase flow, since Premium
+     pricing/plans don't exist as a purchasable product yet
+     (documentation/DECISIONS_PENDING.md) - naming that honestly here
+     instead of linking to something that doesn't work. -->
+<dialog id="conversation-limit-modal" class="simple-modal">
+    <div class="simple-modal-body">
+        <h2>Saved conversation limit reached</h2>
+        <p>You already have {{ max_saved_conversations }} saved conversations, the Free plan limit. Delete an older one from the sidebar to save this one instead - or just keep chatting, this conversation simply won't be saved. Premium plans with room for more are coming soon.</p>
+        <div class="simple-modal-actions">
+            <button type="button" id="conversation-limit-dismiss" class="btn">Got it, keep chatting</button>
         </div>
     </div>
+</dialog>
+<dialog id="conversation-size-limit-modal" class="simple-modal">
+    <div class="simple-modal-body">
+        <h2>This conversation reached its saved size limit</h2>
+        <p>This conversation hit the Free plan's saved-conversation size limit, so messages from here on won't be added to it - but you can keep chatting normally. Premium plans with higher limits are coming soon.</p>
+        <div class="simple-modal-actions">
+            <button type="button" id="conversation-size-limit-dismiss" class="btn">Got it, keep chatting</button>
+        </div>
+    </div>
+</dialog>
+<button type="button" id="sidebar-toggle" class="btn btn-secondary chat-sidebar-toggle" aria-expanded="false" aria-controls="chat-sidebar">History</button>
+<div id="chat-sidebar-backdrop" class="chat-sidebar-backdrop"></div>
+{% endif %}
 
-    <form id="chat-form" class="chat-form">
-        <input
-            type="text"
-            id="message-input"
-            placeholder="e.g. Somewhere warm in October, not too expensive"
-            autocomplete="off"
-            aria-label="Message"
-            required
-        >
-        <button type="submit" id="send-button">Send</button>
-    </form>
+<div class="chat-layout">
+    {% if user.is_authenticated %}
+    <aside id="chat-sidebar" class="chat-sidebar">
+        <button type="button" id="new-conversation-btn" class="btn chat-sidebar-new-btn">+ New conversation</button>
+        <label class="chat-sidebar-save-toggle">
+            <input type="checkbox" id="save-conversation-checkbox" checked>
+            Save this conversation
+        </label>
+        <div id="chat-sidebar-list" class="chat-sidebar-list">
+            <p class="chat-sidebar-empty">No saved conversations yet.</p>
+        </div>
+    </aside>
+    {% endif %}
+
+    <div class="chat-page chat-empty" id="chat-page">
+        <div class="chat-header">
+            <h1>Chat with Wander</h1>
+            <p>Tell me what kind of trip you're thinking about - dates, budget, climate, anything.</p>
+        </div>
+
+        <div id="chat-messages" class="chat-messages">
+            <div id="chat-empty-state" class="chat-empty-state">
+                <p class="chat-empty-hint">Where should we send you? A few ideas to get going:</p>
+                <div class="chat-suggestions">
+                    <button type="button" class="chat-suggestion-chip">Somewhere warm in October, not too expensive</button>
+                    <button type="button" class="chat-suggestion-chip">A relaxing beach trip with great food</button>
+                    <button type="button" class="chat-suggestion-chip">Somewhere I can hike and explore nature</button>
+                </div>
+            </div>
+        </div>
+
+        <form id="chat-form" class="chat-form">
+            <input
+                type="text"
+                id="message-input"
+                placeholder="e.g. Somewhere warm in October, not too expensive"
+                autocomplete="off"
+                aria-label="Message"
+                required
+            >
+            <button type="submit" id="send-button">Send</button>
+        </form>
+    </div>
 </div>
 
 <script>
@@ -224,6 +407,17 @@
     const messages = document.getElementById("chat-messages");
     const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]").value;
     const RECOMMENDATIONS_DELIMITER = "\n<<<WANDERES_RECOMMENDATIONS>>>\n";
+    const CONVERSATION_DELIMITER = "\n<<<WANDERES_CONVERSATION>>>\n";
+
+    // Saved-conversations state (2026-09-02) - currentConversationId is
+    // null for a conversation not yet (or no longer) tracked in the
+    // database; saveBlockedForThread is a client-only flag set once the
+    // backend reports the 5-saved-conversations cap for this thread, so
+    // it doesn't keep re-asking every subsequent message (see
+    // handleConversationStatus below) - reset only by starting a new
+    // conversation or loading a different saved one.
+    let currentConversationId = null;
+    let saveBlockedForThread = false;
 
     function addBubble(text, className) {
         const bubble = document.createElement("div");
@@ -409,17 +603,319 @@
         messages.scrollTop = messages.scrollHeight;
     }
 
+    // Splits the raw streamed buffer into the visible reply text and the
+    // two optional trailing footers (2026-09-02: a second footer,
+    // conversation-save status, was added alongside the existing
+    // recommendations one - both share the same "delimiter + JSON" shape
+    // so the server can report structured data without a second endpoint
+    // or server-side session state, matching the precedent already
+    // established for RECOMMENDATIONS_DELIMITER). The server always
+    // writes the recommendations footer (if any) before the conversation
+    // one - see ai/views.py - so the conversation JSON is simply
+    // "everything after CONVERSATION_DELIMITER".
+    function splitFooters(buffer) {
+        const recIndex = buffer.indexOf(RECOMMENDATIONS_DELIMITER);
+        const convIndex = buffer.indexOf(CONVERSATION_DELIMITER);
+        const presentIndices = [recIndex, convIndex].filter(function (i) { return i !== -1; });
+        const firstIndex = presentIndices.length ? Math.min.apply(null, presentIndices) : -1;
+
+        return {
+            visibleText: firstIndex === -1 ? buffer : buffer.slice(0, firstIndex),
+            recommendationsJson: recIndex === -1 ? null : buffer.slice(
+                recIndex + RECOMMENDATIONS_DELIMITER.length,
+                convIndex !== -1 && convIndex > recIndex ? convIndex : buffer.length
+            ),
+            conversationJson: convIndex === -1 ? null : buffer.slice(
+                convIndex + CONVERSATION_DELIMITER.length
+            ),
+        };
+    }
+
     const emptyState = document.getElementById("chat-empty-state");
     const chatPage = document.getElementById("chat-page");
+    const saveCheckbox = document.getElementById("save-conversation-checkbox");
+
+    // Saved-conversations sidebar (2026-09-02, direct request - "like
+    // ChatGPT's left side, summarized history, click to load"). Everything
+    // in this section is a no-op when #chat-sidebar-list doesn't exist
+    // (anonymous visitors never render it), so it's safe to leave wired
+    // up unconditionally rather than wrapping the whole block in a
+    // template conditional.
+    const sidebarList = document.getElementById("chat-sidebar-list");
+
+    function formatSidebarDate(isoString) {
+        try {
+            return new Date(isoString).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+            });
+        } catch (dateError) {
+            return "";
+        }
+    }
+
+    function buildSidebarItem(conversation) {
+        const item = document.createElement("div");
+        item.className = "chat-sidebar-item" +
+            (conversation.id === currentConversationId ? " is-active" : "");
+        item.setAttribute("role", "button");
+        item.setAttribute("tabindex", "0");
+
+        const textWrap = document.createElement("div");
+        textWrap.className = "chat-sidebar-item-text";
+
+        const subject = document.createElement("div");
+        subject.className = "chat-sidebar-item-subject";
+        subject.textContent = conversation.subject;
+        textWrap.appendChild(subject);
+
+        const date = document.createElement("div");
+        date.className = "chat-sidebar-item-date";
+        date.textContent = formatSidebarDate(conversation.updated_at);
+        textWrap.appendChild(date);
+
+        item.appendChild(textWrap);
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "chat-sidebar-item-delete";
+        deleteBtn.setAttribute("aria-label", "Delete conversation");
+        deleteBtn.textContent = "✕";
+        deleteBtn.addEventListener("click", function (event) {
+            event.stopPropagation();
+            deleteConversation(conversation.id);
+        });
+        item.appendChild(deleteBtn);
+
+        function activate() {
+            loadConversation(conversation.id);
+        }
+        item.addEventListener("click", activate);
+        item.addEventListener("keydown", function (event) {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                activate();
+            }
+        });
+
+        return item;
+    }
+
+    function renderSidebarList(conversations) {
+        if (!sidebarList) {
+            return;
+        }
+        sidebarList.innerHTML = "";
+        if (!conversations.length) {
+            const empty = document.createElement("p");
+            empty.className = "chat-sidebar-empty";
+            empty.textContent = "No saved conversations yet.";
+            sidebarList.appendChild(empty);
+            return;
+        }
+        conversations.forEach(function (conversation) {
+            sidebarList.appendChild(buildSidebarItem(conversation));
+        });
+    }
+
+    function fetchSidebarList() {
+        if (!sidebarList) {
+            return;
+        }
+        fetch("/api/v1/conversations/", { headers: { "X-CSRFToken": csrfToken } })
+            .then(function (response) { return response.ok ? response.json() : null; })
+            .then(function (data) {
+                if (data) {
+                    renderSidebarList(data.conversations);
+                }
+            })
+            .catch(function () {
+                // Sidebar list is a nicety, not core chat functionality -
+                // fail silently rather than showing an error bubble.
+            });
+    }
+
+    function loadConversation(id) {
+        fetch("/api/v1/conversations/" + id + "/", { headers: { "X-CSRFToken": csrfToken } })
+            .then(function (response) {
+                return response.ok ? response.json() : Promise.reject(new Error("not found"));
+            })
+            .then(function (data) {
+                currentConversationId = data.id;
+                saveBlockedForThread = false;
+                if (saveCheckbox) {
+                    saveCheckbox.checked = true;
+                }
+                messages.innerHTML = "";
+                chatPage.classList.remove("chat-empty");
+                data.messages.forEach(function (turn) {
+                    if (turn.role === "user") {
+                        addBubble(turn.content, "user");
+                    } else {
+                        const bubble = addBubble("", "assistant");
+                        bubble.innerHTML = renderMarkdown(turn.content);
+                    }
+                });
+                fetchSidebarList();
+                closeSidebar();
+            })
+            .catch(function () {
+                addBubble("Couldn't load that conversation.", "error");
+            });
+    }
+
+    function deleteConversation(id) {
+        fetch("/api/v1/conversations/" + id + "/delete/", {
+            method: "POST",
+            headers: { "X-CSRFToken": csrfToken },
+        })
+            .then(function () {
+                if (id === currentConversationId) {
+                    startNewConversation();
+                } else {
+                    fetchSidebarList();
+                }
+            })
+            .catch(function () {
+                // Best-effort - the sidebar just keeps showing the entry
+                // if the delete didn't actually go through.
+            });
+    }
+
+    function startNewConversation() {
+        currentConversationId = null;
+        saveBlockedForThread = false;
+        if (saveCheckbox) {
+            saveCheckbox.checked = true;
+        }
+        messages.innerHTML = "";
+        if (emptyState) {
+            // .remove() only detaches emptyState from the DOM - the
+            // reference (and its suggestion-chip listeners, attached once
+            // at page load) stays valid, so re-appending it is enough to
+            // bring the empty state back rather than rebuilding it.
+            messages.appendChild(emptyState);
+        }
+        chatPage.classList.add("chat-empty");
+        fetchSidebarList();
+        fetch("/api/v1/conversations/reset/", {
+            method: "POST",
+            headers: { "X-CSRFToken": csrfToken },
+        }).catch(function () {});
+        closeSidebar();
+    }
+
+    // A conversation just created by sendMessage() only needs the sidebar
+    // refreshed, not rebuilt by hand - fetchSidebarList() already knows
+    // how to highlight currentConversationId as active.
+    function handleConversationStatus(status) {
+        if (status.saved && status.conversation_id) {
+            const isNewlySaved = currentConversationId === null;
+            currentConversationId = status.conversation_id;
+            if (isNewlySaved) {
+                fetchSidebarList();
+            }
+        }
+        if (status.reason === "conversation_limit_reached") {
+            saveBlockedForThread = true;
+            if (conversationLimitModal) {
+                conversationLimitModal.show();
+            }
+        } else if (status.reason === "size_limit_exceeded") {
+            if (conversationSizeLimitModal) {
+                conversationSizeLimitModal.show();
+            }
+        }
+    }
+
+    // Mobile sidebar toggle - same is-open/aria-expanded pattern already
+    // used by static/js/main.js's site nav toggle, scoped to this
+    // component instead of reusing that exact code (different element
+    // ids, and this only exists on the chat page).
+    const sidebar = document.getElementById("chat-sidebar");
+    const sidebarToggle = document.getElementById("sidebar-toggle");
+    const sidebarBackdrop = document.getElementById("chat-sidebar-backdrop");
+
+    function openSidebar() {
+        if (sidebar) sidebar.classList.add("is-open");
+        if (sidebarBackdrop) sidebarBackdrop.classList.add("is-open");
+        if (sidebarToggle) sidebarToggle.setAttribute("aria-expanded", "true");
+    }
+    function closeSidebar() {
+        if (sidebar) sidebar.classList.remove("is-open");
+        if (sidebarBackdrop) sidebarBackdrop.classList.remove("is-open");
+        if (sidebarToggle) sidebarToggle.setAttribute("aria-expanded", "false");
+    }
+    if (sidebarToggle) {
+        sidebarToggle.addEventListener("click", function () {
+            if (sidebar && sidebar.classList.contains("is-open")) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        });
+    }
+    if (sidebarBackdrop) {
+        sidebarBackdrop.addEventListener("click", closeSidebar);
+    }
+
+    const newConversationBtn = document.getElementById("new-conversation-btn");
+    if (newConversationBtn) {
+        newConversationBtn.addEventListener("click", startNewConversation);
+    }
+
+    // Small shared helper for the two saved-conversation notice dialogs -
+    // same "call close() directly from the dismiss path, don't rely
+    // solely on the dialog's own close event" pattern already established
+    // for the login prompt modal below (a script-driven .close() doesn't
+    // reliably fire "close" in every environment).
+    function setupSimpleModal(modal, dismissButtonId) {
+        if (!modal) {
+            return null;
+        }
+        const dismissBtn = document.getElementById(dismissButtonId);
+        function close() {
+            if (modal.open) {
+                modal.close();
+            }
+        }
+        if (dismissBtn) {
+            dismissBtn.addEventListener("click", close);
+        }
+        modal.addEventListener("click", function (event) {
+            if (event.target === modal) {
+                close();
+            }
+        });
+        return {
+            show: function () {
+                if (!modal.open) {
+                    modal.showModal();
+                }
+            },
+            close: close,
+        };
+    }
+
+    const conversationLimitModal = setupSimpleModal(
+        document.getElementById("conversation-limit-modal"), "conversation-limit-dismiss"
+    );
+    const conversationSizeLimitModal = setupSimpleModal(
+        document.getElementById("conversation-size-limit-modal"), "conversation-size-limit-dismiss"
+    );
+
+    fetchSidebarList();
 
     async function sendMessage(message) {
-        if (emptyState) {
+        if (emptyState && emptyState.parentNode) {
             emptyState.remove();
         }
         chatPage.classList.remove("chat-empty");
         addBubble(message, "user");
         const loadingBubble = addBubble(randomLoadingMessage(), "loading");
         setLoading(true);
+
+        const shouldSave = !!(saveCheckbox && saveCheckbox.checked && !saveBlockedForThread);
 
         let response;
         try {
@@ -429,7 +925,9 @@
                     "Content-Type": "application/x-www-form-urlencoded",
                     "X-CSRFToken": csrfToken,
                 },
-                body: "message=" + encodeURIComponent(message),
+                body: "message=" + encodeURIComponent(message) +
+                    "&save=" + (shouldSave ? "true" : "false") +
+                    "&conversation_id=" + (currentConversationId || ""),
             });
         } catch (networkError) {
             loadingBubble.remove();
@@ -452,9 +950,7 @@
         let buffer = "";
 
         function render() {
-            const delimiterIndex = buffer.indexOf(RECOMMENDATIONS_DELIMITER);
-            const visibleText = delimiterIndex === -1 ? buffer : buffer.slice(0, delimiterIndex);
-            replyBubble.innerHTML = renderMarkdown(visibleText);
+            replyBubble.innerHTML = renderMarkdown(splitFooters(buffer).visibleText);
             messages.scrollTop = messages.scrollHeight;
         }
 
@@ -472,13 +968,19 @@
             render();
         }
 
-        const delimiterIndex = buffer.indexOf(RECOMMENDATIONS_DELIMITER);
-        if (delimiterIndex !== -1) {
-            const jsonText = buffer.slice(delimiterIndex + RECOMMENDATIONS_DELIMITER.length);
+        const footers = splitFooters(buffer);
+        if (footers.recommendationsJson) {
             try {
-                addRecommendationCards(JSON.parse(jsonText));
+                addRecommendationCards(JSON.parse(footers.recommendationsJson));
             } catch (parseError) {
                 // No usable recommendations footer - not an error the user needs to see.
+            }
+        }
+        if (footers.conversationJson) {
+            try {
+                handleConversationStatus(JSON.parse(footers.conversationJson));
+            } catch (parseError) {
+                // No usable conversation-status footer - not an error the user needs to see.
             }
         }
 

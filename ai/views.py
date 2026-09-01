@@ -1,11 +1,19 @@
 import json
 
-from django.http import HttpResponseBadRequest, StreamingHttpResponse
-from django.shortcuts import render
-from django.views.decorators.http import require_POST
+from django.http import (
+    HttpResponseBadRequest,
+    HttpResponseForbidden,
+    JsonResponse,
+    StreamingHttpResponse,
+)
+from django.shortcuts import get_object_or_404, render
+from django.views.decorators.http import require_GET, require_POST
 
 from analytics.services import record_event
 
+from . import memory
+from .conversations import record_turn
+from .models import SavedConversation
 from .orchestration import MAX_EXPLAINED_CANDIDATES, stream_travel_recommendation
 
 MAX_MESSAGE_LENGTH = 2000
@@ -17,9 +25,36 @@ MAX_MESSAGE_LENGTH = 2000
 # very unlikely to contain it by coincidence.
 RECOMMENDATIONS_DELIMITER = "\n<<<WANDERES_RECOMMENDATIONS>>>\n"
 
+# Same approach, same reasoning, for saved-conversation status (2026-09-02):
+# whether this turn got persisted, and why not when it didn't - lets the
+# chat page show a one-time explanatory modal without a second endpoint or
+# server-side session state either. Only ever appended for authenticated
+# users - anonymous visitors can't save conversations at all.
+CONVERSATION_DELIMITER = "\n<<<WANDERES_CONVERSATION>>>\n"
+
 
 def chat_page(request):
-    return render(request, "ai/chat.html")
+    return render(
+        request,
+        "ai/chat.html",
+        {"max_saved_conversations": SavedConversation.MAX_CONVERSATIONS_PER_USER},
+    )
+
+
+def _require_authenticated_json(request):
+    """Shared guard for the small JSON conversation-management endpoints
+    below - a plain 403 rather than login_required's HTML redirect, since
+    these are only ever called by the chat page's own JS, which already
+    knows (from the template) whether the visitor is signed in."""
+    if not request.user.is_authenticated:
+        return HttpResponseForbidden("Login required.")
+    return None
+
+
+def _parse_conversation_id(raw: str | None) -> int | None:
+    if raw and raw.isdigit():
+        return int(raw)
+    return None
 
 
 def _recommendation_card_data(scored_destination):
@@ -74,8 +109,32 @@ def recommendations_stream(request):
     if not request.session.session_key:
         request.session.save()
 
+    # Saved conversations (2026-09-02, direct request) - registered users
+    # only; the checkbox itself isn't even rendered for anonymous visitors,
+    # but this is enforced server-side too, not just hidden in the UI.
+    save_requested = user is not None and request.POST.get("save") == "true"
+    conversation_id = _parse_conversation_id(request.POST.get("conversation_id"))
+    conversation = None
+    history_override = None
+    if conversation_id is not None and user is not None:
+        conversation = SavedConversation.objects.filter(pk=conversation_id, user=user).first()
+        if conversation is None:
+            # Stale/foreign id (e.g. deleted from another tab) - fall back
+            # to treating this exactly like a fresh, not-yet-saved thread.
+            conversation_id = None
+        else:
+            history_override = conversation.messages[-memory.MAX_HISTORY_MESSAGES :]
+
+    # No explicit ai_provider passed - stream_travel_recommendation resolves
+    # its own default lazily, same as before this feature (2026-09-02:
+    # record_turn below does the same, for the same reason - constructing
+    # a real AIProvider isn't free and isn't always needed, e.g. whenever
+    # save_requested is False).
     result = stream_travel_recommendation(
-        message, user=user, session_key=request.session.session_key
+        message,
+        user=user,
+        session_key=request.session.session_key,
+        history_override=history_override,
     )
     if result.recommendations:
         record_event(
@@ -85,8 +144,13 @@ def recommendations_stream(request):
             metadata={"result_count": len(result.recommendations)},
         )
 
-    def _chunks_with_recommendations_footer():
-        yield from result.reply_chunks
+    def _chunks_with_footers():
+        collected = []
+        for chunk in result.reply_chunks:
+            collected.append(chunk)
+            yield chunk
+        full_reply = "".join(collected)
+
         if result.recommendations:
             payload = [
                 _recommendation_card_data(r)
@@ -94,6 +158,86 @@ def recommendations_stream(request):
             ]
             yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)
 
-    return StreamingHttpResponse(
-        _chunks_with_recommendations_footer(), content_type="text/plain; charset=utf-8"
+        if user is not None:
+            save_result = record_turn(
+                user=user,
+                conversation=conversation,
+                save_requested=save_requested,
+                user_message=message,
+                assistant_reply=full_reply,
+            )
+            yield CONVERSATION_DELIMITER + json.dumps(
+                {
+                    "saved": save_result.saved,
+                    "conversation_id": save_result.conversation_id,
+                    "subject": save_result.subject,
+                    "reason": save_result.reason,
+                }
+            )
+
+    return StreamingHttpResponse(_chunks_with_footers(), content_type="text/plain; charset=utf-8")
+
+
+@require_POST
+def conversation_reset(request):
+    """Clear whatever short-term AI context (ai.memory, Redis-backed)
+    exists under this visitor's key - called when they click "New
+    conversation" so a genuinely fresh thread doesn't silently inherit
+    context from whatever was last discussed under the same key. Works for
+    anonymous visitors too (keyed by session), not just registered users -
+    conversation *saving* is registered-only, but starting fresh isn't."""
+    user = request.user if request.user.is_authenticated else None
+    if not request.session.session_key:
+        request.session.save()
+    key = memory.conversation_key(user=user, session_key=request.session.session_key)
+    memory.clear_history(key)
+    return JsonResponse({"reset": True})
+
+
+@require_GET
+def conversation_list(request):
+    forbidden = _require_authenticated_json(request)
+    if forbidden:
+        return forbidden
+    conversations = SavedConversation.objects.filter(user=request.user)
+    return JsonResponse(
+        {
+            "conversations": [
+                {
+                    "id": c.pk,
+                    "subject": c.subject or "New conversation",
+                    "updated_at": c.updated_at.isoformat(),
+                }
+                for c in conversations
+            ],
+            "max_conversations": SavedConversation.MAX_CONVERSATIONS_PER_USER,
+        }
     )
+
+
+@require_GET
+def conversation_detail(request, pk):
+    forbidden = _require_authenticated_json(request)
+    if forbidden:
+        return forbidden
+    # Structural authorization, same pattern as every trips/users view:
+    # only ever fetches the caller's own conversation.
+    conversation = get_object_or_404(SavedConversation, pk=pk, user=request.user)
+    return JsonResponse(
+        {
+            "id": conversation.pk,
+            "subject": conversation.subject,
+            "messages": conversation.messages,
+            "is_full": conversation.is_full,
+        }
+    )
+
+
+@require_POST
+def conversation_delete(request, pk):
+    forbidden = _require_authenticated_json(request)
+    if forbidden:
+        return forbidden
+    conversation = get_object_or_404(SavedConversation, pk=pk, user=request.user)
+    conversation.delete()
+    return JsonResponse({"deleted": True})

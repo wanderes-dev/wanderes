@@ -4,12 +4,28 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.urls import reverse
 
+from ai.models import SavedConversation
 from ai.orchestration import StreamingOrchestrationResult
-from ai.views import RECOMMENDATIONS_DELIMITER
+from ai.provider.base import AIResponse
+from ai.views import CONVERSATION_DELIMITER, RECOMMENDATIONS_DELIMITER
 from analytics.models import Event
 from recommendations.scoring import ScoredDestination
 from travel.models import Destination
 from users.models import User
+
+
+class StubSubjectProvider:
+    """Minimal AIProvider stub for tests that exercise a NEW saved
+    conversation being created (the only path that actually needs an AI
+    call, for the conversation's subject/title) - see ai/conversations.py's
+    record_turn docstring for why this needs to be stubbed explicitly
+    rather than letting the view construct a real OpenAIProvider."""
+
+    def __init__(self, subject="A trip idea"):
+        self.subject = subject
+
+    def generate_reply(self, messages, *, max_tokens=None):
+        return AIResponse(content=self.subject, model="stub", prompt_tokens=0, completion_tokens=0)
 
 
 class ChatPageTests(TestCase):
@@ -31,17 +47,45 @@ class ChatPageTests(TestCase):
         self.assertContains(response, "Continue without an account")
 
     def test_login_prompt_modal_not_shown_to_authenticated_users(self):
-        # The #login-prompt-modal CSS rule itself is always present (it's
-        # in the page's unconditional <style> block) - what must actually
-        # be gated behind login state is the <dialog> element and its
-        # content, so assert on the tag/copy, not the bare id string.
+        # The #login-prompt-modal CSS *rule* itself is always present (it's
+        # in the page's unconditional <style> block), and - since 2026-09-02
+        # - authenticated users now render other <dialog> elements of their
+        # own (the saved-conversation limit notices) too, so a bare "no
+        # <dialog> tag at all" assertion is no longer meaningful here.
+        # Assert on the login dialog's own opening tag (its quoted id
+        # attribute, not the CSS selector spelling) and its content instead.
         user = User.objects.create_user(email="traveler@example.com", password="testpass123")
         self.client.force_login(user)
 
         response = self.client.get(reverse("ai:chat"))
 
-        self.assertNotContains(response, "<dialog")
+        self.assertNotContains(response, 'id="login-prompt-modal"')
         self.assertNotContains(response, "Continue without an account")
+
+    def test_saved_conversation_ui_shown_to_authenticated_users(self):
+        # 2026-09-02, direct request: a ChatGPT-style sidebar (new
+        # conversation, save checkbox, saved-conversation list) - saving is
+        # a registered-users-only feature, so none of this UI exists for
+        # anonymous visitors at all.
+        user = User.objects.create_user(email="traveler@example.com", password="testpass123")
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("ai:chat"))
+
+        self.assertContains(response, 'id="chat-sidebar"')
+        self.assertContains(response, 'id="new-conversation-btn"')
+        self.assertContains(response, 'id="save-conversation-checkbox"')
+        self.assertContains(response, 'id="conversation-limit-modal"')
+        self.assertContains(response, 'id="conversation-size-limit-modal"')
+
+    def test_saved_conversation_ui_not_shown_to_anonymous_users(self):
+        response = self.client.get(reverse("ai:chat"))
+
+        self.assertNotContains(response, 'id="chat-sidebar"')
+        self.assertNotContains(response, 'id="new-conversation-btn"')
+        self.assertNotContains(response, 'id="save-conversation-checkbox"')
+        self.assertNotContains(response, 'id="conversation-limit-modal"')
+        self.assertNotContains(response, 'id="conversation-size-limit-modal"')
 
 
 class RecommendationsStreamViewTests(TestCase):
@@ -280,3 +324,214 @@ class RecommendationsStreamAnalyticsTests(TestCase):
         self.assertFalse(
             Event.objects.filter(event_type="recommendation_generated").exists()
         )
+
+
+class SavedConversationStreamTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email="traveler@example.com", password="testpass123")
+
+    @patch("ai.conversations.get_ai_provider")
+    @patch("ai.views.stream_travel_recommendation")
+    def test_save_true_creates_a_new_conversation(self, mock_stream, mock_get_provider):
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter(["Here's an idea."])
+        )
+        mock_get_provider.return_value = StubSubjectProvider(subject="Warm getaway ideas")
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "somewhere warm", "save": "true"}
+        )
+        content = b"".join(response.streaming_content).decode()
+
+        _, _, json_part = content.partition(CONVERSATION_DELIMITER)
+        status = json.loads(json_part)
+        self.assertTrue(status["saved"])
+        self.assertEqual(status["subject"], "Warm getaway ideas")
+        self.assertIsNone(status["reason"])
+        conversation = SavedConversation.objects.get(pk=status["conversation_id"])
+        self.assertEqual(conversation.user, self.user)
+        self.assertEqual(len(conversation.messages), 2)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_save_false_does_not_create_a_conversation(self, mock_stream):
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter(["Here's an idea."])
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "somewhere warm", "save": "false"}
+        )
+        content = b"".join(response.streaming_content).decode()
+
+        _, _, json_part = content.partition(CONVERSATION_DELIMITER)
+        status = json.loads(json_part)
+        self.assertFalse(status["saved"])
+        self.assertIsNone(status["reason"])
+        self.assertEqual(SavedConversation.objects.count(), 0)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_anonymous_user_never_gets_a_conversation_footer(self, mock_stream):
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter(["Here's an idea."])
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "somewhere warm", "save": "true"}
+        )
+        content = b"".join(response.streaming_content).decode()
+
+        self.assertNotIn(CONVERSATION_DELIMITER, content)
+        self.assertEqual(SavedConversation.objects.count(), 0)
+
+    @patch("ai.conversations.get_ai_provider")
+    @patch("ai.views.stream_travel_recommendation")
+    def test_conversation_limit_reached_reports_reason_without_saving(
+        self, mock_stream, mock_get_provider
+    ):
+        for _ in range(SavedConversation.MAX_CONVERSATIONS_PER_USER):
+            SavedConversation.objects.create(user=self.user)
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter(["Here's an idea."])
+        )
+        mock_get_provider.return_value = StubSubjectProvider()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "somewhere warm", "save": "true"}
+        )
+        content = b"".join(response.streaming_content).decode()
+
+        _, _, json_part = content.partition(CONVERSATION_DELIMITER)
+        status = json.loads(json_part)
+        self.assertFalse(status["saved"])
+        self.assertEqual(status["reason"], "conversation_limit_reached")
+        self.assertEqual(
+            SavedConversation.objects.count(), SavedConversation.MAX_CONVERSATIONS_PER_USER
+        )
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_continues_an_existing_conversation_using_its_history(self, mock_stream):
+        conversation = SavedConversation.objects.create(user=self.user, subject="Trip talk")
+        conversation.messages = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+        ]
+        conversation.save()
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter(["Sure thing."])
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"),
+            {
+                "message": "tell me more",
+                "save": "true",
+                "conversation_id": str(conversation.pk),
+            },
+        )
+        content = b"".join(response.streaming_content).decode()
+
+        _, kwargs = mock_stream.call_args
+        self.assertEqual(
+            kwargs["history_override"],
+            [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}],
+        )
+        _, _, json_part = content.partition(CONVERSATION_DELIMITER)
+        status = json.loads(json_part)
+        self.assertTrue(status["saved"])
+        self.assertEqual(status["conversation_id"], conversation.pk)
+        # An already-titled conversation doesn't get its subject
+        # regenerated on every later turn.
+        self.assertIsNone(status["subject"])
+        conversation.refresh_from_db()
+        self.assertEqual(len(conversation.messages), 4)
+
+
+class ConversationEndpointsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email="traveler@example.com", password="testpass123")
+        self.other_user = User.objects.create_user(
+            email="other@example.com", password="testpass123"
+        )
+
+    def test_list_requires_login(self):
+        response = self.client.get(reverse("ai:conversation-list"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_list_returns_only_the_callers_own_conversations(self):
+        SavedConversation.objects.create(user=self.user, subject="Mine")
+        SavedConversation.objects.create(user=self.other_user, subject="Not mine")
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("ai:conversation-list"))
+        data = response.json()
+
+        self.assertEqual(len(data["conversations"]), 1)
+        self.assertEqual(data["conversations"][0]["subject"], "Mine")
+        self.assertEqual(data["max_conversations"], SavedConversation.MAX_CONVERSATIONS_PER_USER)
+
+    def test_detail_requires_login(self):
+        conversation = SavedConversation.objects.create(user=self.user)
+
+        response = self.client.get(reverse("ai:conversation-detail", args=[conversation.pk]))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_detail_returns_the_stored_messages(self):
+        conversation = SavedConversation.objects.create(user=self.user, subject="Trip talk")
+        conversation.messages = [{"role": "user", "content": "hi"}]
+        conversation.save()
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("ai:conversation-detail", args=[conversation.pk]))
+        data = response.json()
+
+        self.assertEqual(data["subject"], "Trip talk")
+        self.assertEqual(data["messages"], [{"role": "user", "content": "hi"}])
+
+    def test_detail_404s_for_another_users_conversation(self):
+        conversation = SavedConversation.objects.create(user=self.other_user)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("ai:conversation-detail", args=[conversation.pk]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_delete_removes_the_conversation(self):
+        conversation = SavedConversation.objects.create(user=self.user)
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse("ai:conversation-delete", args=[conversation.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(SavedConversation.objects.filter(pk=conversation.pk).exists())
+
+    def test_delete_404s_for_another_users_conversation(self):
+        conversation = SavedConversation.objects.create(user=self.other_user)
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse("ai:conversation-delete", args=[conversation.pk]))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(SavedConversation.objects.filter(pk=conversation.pk).exists())
+
+    def test_reset_clears_memory_for_authenticated_user(self):
+        from ai import memory
+
+        key = memory.conversation_key(user=self.user, session_key=None)
+        memory.append_turn(key, user_message="hi", assistant_reply="hello")
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse("ai:conversation-reset"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(memory.get_history(key), [])
+
+    def test_reset_works_for_anonymous_users_too(self):
+        response = self.client.post(reverse("ai:conversation-reset"))
+
+        self.assertEqual(response.status_code, 200)
