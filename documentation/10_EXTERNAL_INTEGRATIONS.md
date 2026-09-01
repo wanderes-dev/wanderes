@@ -263,6 +263,17 @@ Extends the existing `analytics` app (`Event` model, Phase 17) rather than intro
 
 Per §7's general principle (highly dynamic data should not be treated as permanently cached): flight/hotel prices and availability are exactly the kind of data that principle warns about - a cached price shown to a user that's no longer available at booking time is a real trust problem for a travel consultant product. Any caching here should be short-lived (Redis, likely single-digit minutes at most) and scoped to reducing duplicate identical searches in a short window, not to avoiding repeat API calls generally. Do not introduce caching prematurely - only once real usage patterns justify it.
 
+### 13.6 Flight interface scaffolded ahead of KAYAK access (2026-09-02)
+
+Per direct request ("leave it ready to receive a flight source from KAYAK, so implementing it later is all that's left") - the §13.1/§13.2 interface shape above is now real code, not just documentation, implemented exactly as described there:
+
+- `integrations/flights/base.py` - `FlightProvider` (ABC: `search_flights()`, `get_flight_details()`, `build_affiliate_link()`) and `FlightOption` (the normalized dataclass), matching this section's already-documented shape field-for-field. `FlightOption` deliberately carries no commission/payout field - a structural guard keeping §13.3's "never score by commission" principle out of reach of accidental violation, not just a prompt-level rule.
+- `integrations/flights/__init__.py` - `get_flight_provider()` factory reading `settings.FLIGHT_PROVIDER`, same pattern as `integrations.climate.get_climate_provider()`/`ai.provider.get_ai_provider()`.
+- `integrations/flights/kayak.py` - registered as the `"kayak"` provider, but a **deliberate skeleton, not a working adapter**: every method raises `NotImplementedError` with a message pointing back to `DECISIONS_PENDING.md` §4. KAYAK's real request/response shapes aren't publicly documented pre-approval, so guessing at them and shipping code that looks done but silently wouldn't work was rejected in favor of failing loudly and honestly. Once real API access/docs exist, filling in these three methods is the only code change needed anywhere in the app - nothing else will ever depend on this class directly, only on the `FlightProvider` interface.
+- `HotelProvider`/`HotelOption` (§13.1/§13.2) were **not** scaffolded - the request was specifically about a flight source; hotels remain fully undecided (`DECISIONS_PENDING.md` §4) and un-scaffolded until asked for.
+- Not wired into the AI orchestration pipeline, `recommendations/scoring.py`, or any UI - the request was to "receive a source," not to consume one yet. Wiring real flight results into recommendations/chat is separate work for once `kayak.py` actually works, matching the existing "no placeholder flight/hotel UI with nothing real behind it" principle from the 2026-09-01 UX passes.
+- 6 new tests (`integrations/tests/test_flights.py`): the factory's unset/unknown/valid-provider paths, and that all three `KayakFlightProvider` methods raise `NotImplementedError` rather than silently succeeding.
+
 ## 14. Principle
 
 > **External providers provide capabilities and data; Wanderes controls the business logic and user experience. Providers should be replaceable, monitored, and isolated so that external failures or provider changes do not unnecessarily disrupt the platform.**

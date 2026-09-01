@@ -161,6 +161,15 @@ AI_PROVIDER = env("AI_PROVIDER", default="openai")
 AI_MODEL = env("AI_MODEL", default="gpt-4o-mini")
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 
+# Which flight provider adapter backs integrations.flights.get_flight_provider().
+# 2026-09-02: interface scaffolded ahead of a concrete adapter (see
+# DECISIONS_PENDING.md §4) - default blank on purpose, since
+# integrations/flights/kayak.py is a deliberate skeleton, not a working
+# adapter yet (KAYAK's API needs manual business approval Wanderes doesn't
+# have). get_flight_provider() raises a clear, friendly error if something
+# tries to use this before it's set.
+FLIGHT_PROVIDER = env("FLIGHT_PROVIDER", default="")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

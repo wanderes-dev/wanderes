@@ -105,7 +105,9 @@ Implemented the `analytics` app (`Event` model, `services.record_event()`, `metr
 
 ---
 
-## 4. Flight & Hotel Affiliate Provider Selection (blocks Phase 24) — 🔵 RESEARCH DONE, decision pending
+## 4. Flight & Hotel Affiliate Provider Selection (blocks Phase 24) — 🔵 RESEARCH DONE, decision pending (flights: KAYAK named as intended provider, not yet accessible)
+
+**Update 2026-09-02**: the user has indicated **KAYAK** specifically as the intended flight provider - not a full "implement it now" decision (the access barrier documented below is unchanged: KAYAK's affiliate program needs ~1M+ monthly visitors and its API requires manual business approval with no public docs until then), but "prepare the internal interface now, so wiring in the real adapter is all that's left once access is granted." Distinct from the earlier Duffel decision (made, then explicitly reverted the same day) - that was a live "use this provider now" commitment; this is deliberately just the swappable-interface scaffolding, with no working KAYAK adapter behind it yet. See `10_EXTERNAL_INTEGRATIONS.md` §13.6 for what was actually built. Hotels remain fully undecided.
 
 **Requested out of sequence 2026-09-01** — Phase 19-22 (Premium Strategy/Entitlements, Payment Provider/Integration) haven't started; this jumps ahead to Phase 23/24 material at the user's explicit direction. Noted here for an honest record, not a reason to refuse: this is research and documentation only, nothing was implemented, and `15_IMPLEMENTATION_GUIDE.md` itself lists Phase 23's owner as "Human Decision + Research" - exactly what this is.
 
