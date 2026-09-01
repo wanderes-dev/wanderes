@@ -10,8 +10,13 @@ from recommendations.scoring import (
     generate_recommendations,
 )
 from travel.models import COST_OF_LIVING_CHOICES, TRIP_TYPE_CHOICES, Destination
-from travel.services import find_destination_slugs_by_name
+from travel.services import (
+    ENTRY_REQUIREMENT_DISCLAIMER,
+    find_destination_slugs_by_name,
+    get_entry_requirements,
+)
 from trips.models import FEEDBACK_TAG_CHOICES, Feedback, TravelHistoryEntry, Trip
+from users.models import TravelerProfile
 
 from . import memory
 from .prompts import SYSTEM_PROMPT
@@ -314,6 +319,7 @@ def stream_travel_recommendation(
     (or not yet) saved.
     """
     ai_provider = ai_provider or get_ai_provider()
+    profile = _traveler_profile(user)
     if history_override is not None:
         conv_key = None
         history = history_override
@@ -438,7 +444,7 @@ def stream_travel_recommendation(
             intent["month"],
             intent["trip_type"],
         )
-        open_ended_messages = _build_open_ended_messages(message, intent, history)
+        open_ended_messages = _build_open_ended_messages(message, intent, history, profile)
         open_ended_reply = _stream_ai_reply(
             open_ended_messages, message, ai_provider=ai_provider, remember=_remember
         )
@@ -473,7 +479,7 @@ def stream_travel_recommendation(
         # everything unmatchable as relaxable rather than blocking (direct
         # user feedback, 2026-08-30: never just ask for more when the app
         # can attempt a real answer instead).
-        no_match_messages = _build_no_matches_messages(message, intent, history)
+        no_match_messages = _build_no_matches_messages(message, intent, history, profile)
         no_match_reply = _stream_ai_reply(
             no_match_messages, message, ai_provider=ai_provider, remember=_remember
         )
@@ -485,6 +491,7 @@ def stream_travel_recommendation(
         history,
         month_was_assumed=intent["month_was_assumed"],
         month=intent["month"],
+        profile=profile,
     )
     return StreamingOrchestrationResult(
         results,
@@ -767,6 +774,108 @@ def _history_messages(history: list[dict] | None) -> list[AIMessage]:
     return [AIMessage(role=turn["role"], content=turn["content"]) for turn in history or []]
 
 
+def _traveler_profile(user) -> TravelerProfile | None:
+    """The signed-in traveler's profile, or None (anonymous, no profile
+    row yet, or no relevant fields set) - a cheap lookup shared by every
+    prompt builder that wants to factor in home_country/travelers_count/
+    budget (2026-09-02, direct user request to actually use this data,
+    not just collect it). Does not raise on a missing profile - the same
+    "not filled in yet" treatment every other optional field here gets."""
+    if user is None or not user.is_authenticated:
+        return None
+    return TravelerProfile.objects.filter(user=user).first()
+
+
+def _traveler_context_note(profile: TravelerProfile | None) -> str:
+    """A short free-text note the AI can factor into its reasoning when
+    relevant - never a hard constraint (recommendations.scoring's hard
+    filters stay message-only, per RecommendationRequest). budget_amount
+    has no stored currency, so it's handed over explicitly labeled as a
+    rough, self-reported figure rather than silently assumed to be in any
+    particular currency - the same "let the AI reason from what's
+    actually known, don't invent precision" philosophy already applied to
+    every other dimension in this module."""
+    if profile is None:
+        return ""
+    bits = []
+    if profile.home_country:
+        bits.append(f"traveling from {profile.home_country}")
+    if profile.travelers_count:
+        bits.append(
+            f"usually travels with {profile.travelers_count} "
+            "people total (including themselves)"
+        )
+    if profile.budget_amount and profile.budget_period:
+        # Deliberately a separate, lowercase, mid-sentence phrasing rather
+        # than reusing BUDGET_PERIOD_CHOICES's form-label text ("Per day")
+        # directly - that capitalization only reads naturally as a select
+        # option, not inline in a sentence ("... per Per day" was the bug
+        # this local map exists to avoid).
+        period_phrase = {"day": "day", "week": "week", "month": "month"}.get(
+            profile.budget_period, profile.budget_period
+        )
+        bits.append(
+            f"has a self-reported typical budget around {profile.budget_amount} per "
+            f"{period_phrase} (currency wasn't specified - treat this as a rough personal "
+            "reference point, not a precise constraint, and don't assume a currency)"
+        )
+    if not bits:
+        return ""
+    return (
+        "\n\nTraveler profile context (use only when relevant to this reply, don't force it "
+        "in every time): " + "; ".join(bits) + "."
+    )
+
+
+def _entry_requirements_note(
+    profile: TravelerProfile | None, destinations: list[Destination]
+) -> str:
+    """Real, verified visa-requirement facts for the traveler's own
+    nationality against each candidate destination's country - built from
+    travel.CountryEntryRequirement (2026-09-02, wiring in the table added
+    earlier the same day but deliberately left unconnected until
+    home_country existed anywhere to compare against). Deterministic
+    lookup, not AI general knowledge, per 05_AI_DESIGN.md §7 - we only
+    ever hand the model data our own dataset actually has, exactly like
+    candidates_summary below. Only meaningful for real ScoredDestination
+    candidates (a known .country); the no-matches/open-ended paths
+    suggest destinations from the AI's own knowledge instead, so there's
+    no reliable Destination row to look this up against there."""
+    if profile is None or not profile.home_country:
+        return ""
+    lines = []
+    seen_countries = set()
+    for destination in destinations:
+        country = destination.country
+        if country in seen_countries:
+            continue
+        seen_countries.add(country)
+        requirement = get_entry_requirements(country)
+        if requirement is None:
+            continue
+        needs_visa = any(
+            profile.home_country.strip().lower() == nationality.strip().lower()
+            for nationality in requirement.visa_required_nationalities
+        )
+        visa_bit = (
+            "a visa IS required"
+            if needs_visa
+            else "a visa is generally NOT required (see notes for exceptions/programs)"
+        )
+        lines.append(
+            f"- {destination.name} ({country}): for a traveler from {profile.home_country}, "
+            f"{visa_bit}. Notes: {requirement.visa_notes or 'none on file'}."
+        )
+    if not lines:
+        return ""
+    return (
+        "\n\nEntry-requirement data on file for the traveler's own nationality (from our "
+        "verified dataset, not general knowledge) - mention briefly ONLY if genuinely "
+        "relevant to this reply, and if you do, always include this disclaimer: "
+        f'"{ENTRY_REQUIREMENT_DISCLAIMER}"\n' + "\n".join(lines)
+    )
+
+
 def _extract_intent(
     message: str, *, ai_provider: AIProvider, history: list[dict] | None = None
 ) -> dict:
@@ -850,6 +959,7 @@ def _build_explanation_messages(
     *,
     month_was_assumed: bool = False,
     month: int | None = None,
+    profile: TravelerProfile | None = None,
 ) -> list[AIMessage]:
     top_results = results[:MAX_EXPLAINED_CANDIDATES]
     candidates_summary = "\n".join(
@@ -865,6 +975,10 @@ def _build_explanation_messages(
         if month_was_assumed
         else ""
     )
+    traveler_note = _traveler_context_note(profile)
+    entry_requirements_note = _entry_requirements_note(
+        profile, [r.destination for r in top_results]
+    )
 
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
@@ -877,7 +991,9 @@ def _build_explanation_messages(
                 "ranked by the application. Do not invent any other destinations "
                 "or facts beyond what is listed here:\n"
                 f"{candidates_summary}"
-                f"{assumed_month_note}\n\n"
+                f"{assumed_month_note}"
+                f"{traveler_note}"
+                f"{entry_requirements_note}\n\n"
                 "Present the best 1-3 options as a compact Markdown table "
                 "(standard pipe syntax) comparing them side by side - pick "
                 "columns that actually matter here (e.g. destination, "
@@ -918,7 +1034,10 @@ def _build_off_topic_messages(message: str, history: list[dict] | None = None) -
 
 
 def _build_open_ended_messages(
-    message: str, intent: dict, history: list[dict] | None = None
+    message: str,
+    intent: dict,
+    history: list[dict] | None = None,
+    profile: TravelerProfile | None = None,
 ) -> list[AIMessage]:
     """Built when a recommendation-type message doesn't yet give enough to
     actually differentiate destinations by (see has_enough_signal in
@@ -953,6 +1072,7 @@ def _build_open_ended_messages(
         if known_bits
         else ""
     )
+    traveler_note = _traveler_context_note(profile)
 
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
@@ -963,7 +1083,7 @@ def _build_open_ended_messages(
                 f'The traveler said: "{message}"\n\n'
                 "You don't have enough yet to actually differentiate "
                 "destinations - at minimum you're still missing climate/"
-                f"temperature or budget preference.{known_note}\n\n"
+                f"temperature or budget preference.{known_note}{traveler_note}\n\n"
                 "If this reads like an early point in the conversation "
                 "(check the history - don't do this again if you already "
                 "asked something like it recently), gather more with a "
@@ -998,7 +1118,10 @@ def _build_open_ended_messages(
 
 
 def _build_no_matches_messages(
-    message: str, intent: dict, history: list[dict] | None = None
+    message: str,
+    intent: dict,
+    history: list[dict] | None = None,
+    profile: TravelerProfile | None = None,
 ) -> list[AIMessage]:
     """Built when hard constraints eliminated every curated destination.
 
@@ -1023,6 +1146,7 @@ def _build_no_matches_messages(
     if intent["excluded_place_names"]:
         constraints.append(f"excluded={', '.join(intent['excluded_place_names'])}")
     constraints_summary = ", ".join(constraints) if constraints else "no specific constraints"
+    traveler_note = _traveler_context_note(profile)
 
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
@@ -1033,7 +1157,8 @@ def _build_no_matches_messages(
                 f'The traveler asked: "{message}"\n\n'
                 "Our own curated destination data has no match for this "
                 f"({constraints_summary}) - taken together, these "
-                "constraints are too narrow for what we have on file. "
+                "constraints are too narrow for what we have on file."
+                f"{traveler_note}\n\n"
                 "Suggest 1-3 real destinations from your own general "
                 "travel knowledge that fit the traveler's request as well "
                 "as possible, relaxing whichever constraint seems least "

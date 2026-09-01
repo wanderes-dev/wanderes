@@ -10,9 +10,10 @@ from ai.orchestration import (
 from ai.provider.base import AIProviderError, AIResponse
 from analytics.models import Event
 from integrations.climate.base import ClimateProviderError, MonthlyClimateSummary
-from travel.models import Destination
+from travel.models import CountryEntryRequirement, Destination
+from travel.services import ENTRY_REQUIREMENT_DISCLAIMER
 from trips.models import Feedback, TravelHistoryEntry, Trip
-from users.models import User
+from users.models import TravelerProfile, User
 
 
 class StubClimateProvider:
@@ -290,6 +291,117 @@ class GetTravelRecommendationTests(TestCase):
 
         self.assertEqual(result.reply, FALLBACK_REPLY)
         self.assertEqual(result.recommendations, [])
+
+
+class TravelerProfileContextTests(TestCase):
+    """Tests that TravelerProfile's home_country/travelers_count/budget
+    (2026-09-02) reach the AI's reasoning prompts as context, and that
+    CountryEntryRequirement data is looked up (not invented) when a home
+    country is known."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+        self.user = User.objects.create_user(email="traveler@example.com", password="testpass123")
+
+    def test_profile_budget_and_travelers_reach_the_explanation_prompt(self):
+        TravelerProfile.objects.create(
+            user=self.user,
+            home_country="Brazil",
+            travelers_count=3,
+            budget_amount=150,
+            budget_period="day",
+        )
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
+        )
+
+        get_travel_recommendation(
+            "somewhere warm in October",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("traveling from Brazil", explanation_prompt)
+        self.assertIn("3 people", explanation_prompt)
+        self.assertIn("150", explanation_prompt)
+        self.assertIn("per day", explanation_prompt)
+
+    def test_anonymous_user_gets_no_traveler_context(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
+        )
+
+        get_travel_recommendation(
+            "somewhere warm in October", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertNotIn("Traveler profile context", explanation_prompt)
+
+    def test_budget_without_a_period_is_not_included(self):
+        # The profile form itself requires both together, but the
+        # orchestration layer shouldn't trust that - a directly-created
+        # row with only one of the pair set must not surface a
+        # meaningless "amount with no unit" note.
+        TravelerProfile.objects.create(user=self.user, budget_amount=150)
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
+        )
+
+        get_travel_recommendation(
+            "somewhere warm in October",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertNotIn("budget", explanation_prompt.lower())
+
+    def test_entry_requirements_included_when_home_country_and_data_exist(self):
+        TravelerProfile.objects.create(user=self.user, home_country="Brazil")
+        CountryEntryRequirement.objects.create(
+            country="Testland",
+            visa_required_nationalities=["Brazil"],
+            visa_notes="Apply online at least 30 days in advance.",
+        )
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
+        )
+
+        get_travel_recommendation(
+            "somewhere warm in October",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("a visa IS required", explanation_prompt)
+        self.assertIn(ENTRY_REQUIREMENT_DISCLAIMER, explanation_prompt)
+
+    def test_entry_requirements_omitted_without_home_country(self):
+        CountryEntryRequirement.objects.create(
+            country="Testland", visa_required_nationalities=["Brazil"]
+        )
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
+        )
+
+        get_travel_recommendation(
+            "somewhere warm in October",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertNotIn("Entry-requirement data", explanation_prompt)
 
 
 class StreamTravelRecommendationTests(TestCase):
