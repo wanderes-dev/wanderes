@@ -30,5 +30,6 @@ class TravelerProfileAdmin(admin.ModelAdmin):
         "home_country",
         "travelers_count",
         "budget_amount",
+        "budget_currency",
         "budget_period",
     ]

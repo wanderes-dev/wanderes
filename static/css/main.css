@@ -926,8 +926,13 @@ button:focus-visible, .btn:focus-visible {
     gap: 1rem;
 }
 
+.field-row-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
 @media (max-width: 480px) {
-    .field-row {
+    .field-row,
+    .field-row-3 {
         grid-template-columns: 1fr;
     }
 

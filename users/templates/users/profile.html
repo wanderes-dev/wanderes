@@ -44,11 +44,16 @@
             {{ form.travelers_count }}
             {{ form.travelers_count.errors }}
         </div>
-        <div class="field-row">
+        <div class="field-row field-row-3">
             <div class="field-block">
                 {{ form.budget_amount.label_tag }}
                 {{ form.budget_amount }}
                 {{ form.budget_amount.errors }}
+            </div>
+            <div class="field-block">
+                {{ form.budget_currency.label_tag }}
+                {{ form.budget_currency }}
+                {{ form.budget_currency.errors }}
             </div>
             <div class="field-block">
                 {{ form.budget_period.label_tag }}

@@ -73,6 +73,7 @@ class TravelerProfileViewTests(TestCase):
                 "home_country": "Brazil",
                 "travelers_count": 2,
                 "budget_amount": "150.00",
+                "budget_currency": "BRL",
                 "budget_period": "day",
             },
         )
@@ -82,9 +83,10 @@ class TravelerProfileViewTests(TestCase):
         self.assertEqual(profile.home_country, "Brazil")
         self.assertEqual(profile.travelers_count, 2)
         self.assertEqual(str(profile.budget_amount), "150.00")
+        self.assertEqual(profile.budget_currency, "BRL")
         self.assertEqual(profile.budget_period, "day")
 
-    def test_budget_amount_without_period_is_rejected(self):
+    def test_budget_amount_without_period_or_currency_is_rejected(self):
         self.client.force_login(self.user)
 
         response = self.client.post(
@@ -95,7 +97,7 @@ class TravelerProfileViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(TravelerProfile.objects.get(user=self.user).budget_amount)
 
-    def test_budget_period_without_amount_is_rejected(self):
+    def test_budget_period_without_amount_or_currency_is_rejected(self):
         self.client.force_login(self.user)
 
         response = self.client.post(
@@ -105,6 +107,17 @@ class TravelerProfileViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(TravelerProfile.objects.get(user=self.user).budget_period)
+
+    def test_budget_amount_and_period_without_currency_is_rejected(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("users:profile"),
+            {"preferred_trip_types": [], "budget_amount": "100.00", "budget_period": "week"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(TravelerProfile.objects.get(user=self.user).budget_amount)
 
     def test_home_country_alone_records_profile_completed(self):
         self.client.force_login(self.user)

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.test import TestCase
 
 from ai import memory
@@ -13,6 +15,7 @@ from integrations.climate.base import ClimateProviderError, MonthlyClimateSummar
 from travel.models import CountryEntryRequirement, Destination
 from travel.services import ENTRY_REQUIREMENT_DISCLAIMER
 from trips.models import Feedback, TravelHistoryEntry, Trip
+from users.currency import convert_to_usd
 from users.models import TravelerProfile, User
 
 
@@ -312,6 +315,7 @@ class TravelerProfileContextTests(TestCase):
             home_country="Brazil",
             travelers_count=3,
             budget_amount=150,
+            budget_currency="BRL",
             budget_period="day",
         )
         ai_provider = StubAIProvider(
@@ -328,7 +332,15 @@ class TravelerProfileContextTests(TestCase):
         explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertIn("traveling from Brazil", explanation_prompt)
         self.assertIn("3 people", explanation_prompt)
-        self.assertIn("150", explanation_prompt)
+        # Always converted to an approximate USD figure (2026-09-02 direct
+        # follow-up: "budget must be always on dolar") - never the raw
+        # currency-ambiguous number handed to the AI directly. Computed
+        # from the same conversion table rather than hardcoding the
+        # expected figure, so this test doesn't break if the static rates
+        # in users/currency.py are ever updated.
+        expected_usd = convert_to_usd(Decimal("150"), "BRL")
+        self.assertIn(f"${expected_usd:.0f} USD", explanation_prompt)
+        self.assertIn("150.00 BRL", explanation_prompt)
         self.assertIn("per day", explanation_prompt)
 
     def test_anonymous_user_gets_no_traveler_context(self):
@@ -344,11 +356,31 @@ class TravelerProfileContextTests(TestCase):
         self.assertNotIn("Traveler profile context", explanation_prompt)
 
     def test_budget_without_a_period_is_not_included(self):
-        # The profile form itself requires both together, but the
+        # The profile form itself requires all three together, but the
         # orchestration layer shouldn't trust that - a directly-created
-        # row with only one of the pair set must not surface a
-        # meaningless "amount with no unit" note.
+        # row with only one of the trio set must not surface a
+        # meaningless "amount with no unit/currency" note.
         TravelerProfile.objects.create(user=self.user, budget_amount=150)
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
+        )
+
+        get_travel_recommendation(
+            "somewhere warm in October",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertNotIn("budget", explanation_prompt.lower())
+
+    def test_budget_without_a_currency_is_not_included(self):
+        # A pre-migration or directly-created row could have amount+period
+        # but no currency - without a currency there's nothing real to
+        # convert, so this must degrade to no budget note at all rather
+        # than guessing a currency.
+        TravelerProfile.objects.create(user=self.user, budget_amount=150, budget_period="day")
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
         )

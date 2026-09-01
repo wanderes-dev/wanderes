@@ -24,6 +24,7 @@ class TravelerProfileForm(forms.ModelForm):
             "home_country",
             "travelers_count",
             "budget_amount",
+            "budget_currency",
             "budget_period",
         ]
         widgets = {
@@ -35,6 +36,7 @@ class TravelerProfileForm(forms.ModelForm):
             "home_country": _("Country of origin"),
             "travelers_count": _("Number of travelers"),
             "budget_amount": _("Budget amount"),
+            "budget_currency": _("Currency"),
             "budget_period": _("Budget period"),
         }
 
@@ -42,8 +44,13 @@ class TravelerProfileForm(forms.ModelForm):
         cleaned_data = super().clean()
         budget_amount = cleaned_data.get("budget_amount")
         budget_period = cleaned_data.get("budget_period")
-        if bool(budget_amount) != bool(budget_period):
+        budget_currency = cleaned_data.get("budget_currency")
+        filled = [bool(budget_amount), bool(budget_period), bool(budget_currency)]
+        if any(filled) and not all(filled):
             raise forms.ValidationError(
-                _("Please provide both a budget amount and a budget period, or leave both blank.")
+                _(
+                    "Please provide a budget amount, currency, and period together, "
+                    "or leave all three blank."
+                )
             )
         return cleaned_data

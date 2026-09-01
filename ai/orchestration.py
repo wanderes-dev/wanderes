@@ -16,6 +16,7 @@ from travel.services import (
     get_entry_requirements,
 )
 from trips.models import FEEDBACK_TAG_CHOICES, Feedback, TravelHistoryEntry, Trip
+from users.currency import convert_to_usd
 from users.models import TravelerProfile
 
 from . import memory
@@ -790,11 +791,14 @@ def _traveler_context_note(profile: TravelerProfile | None) -> str:
     """A short free-text note the AI can factor into its reasoning when
     relevant - never a hard constraint (recommendations.scoring's hard
     filters stay message-only, per RecommendationRequest). budget_amount
-    has no stored currency, so it's handed over explicitly labeled as a
-    rough, self-reported figure rather than silently assumed to be in any
-    particular currency - the same "let the AI reason from what's
-    actually known, don't invent precision" philosophy already applied to
-    every other dimension in this module."""
+    is only ever handed over converted to an approximate USD figure
+    (2026-09-02, direct follow-up request: "budget must be always on
+    dolar... the agent must also check for this currency in dolar and
+    convert to estimate") via users.currency.convert_to_usd - never the
+    raw currency-ambiguous number, and always explicitly labeled as a
+    rough estimate rather than a precise constraint, the same "let the AI
+    reason from what's actually known, don't invent precision"
+    philosophy already applied to every other dimension in this module."""
     if profile is None:
         return ""
     bits = []
@@ -805,7 +809,7 @@ def _traveler_context_note(profile: TravelerProfile | None) -> str:
             f"usually travels with {profile.travelers_count} "
             "people total (including themselves)"
         )
-    if profile.budget_amount and profile.budget_period:
+    if profile.budget_amount and profile.budget_period and profile.budget_currency:
         # Deliberately a separate, lowercase, mid-sentence phrasing rather
         # than reusing BUDGET_PERIOD_CHOICES's form-label text ("Per day")
         # directly - that capitalization only reads naturally as a select
@@ -814,11 +818,24 @@ def _traveler_context_note(profile: TravelerProfile | None) -> str:
         period_phrase = {"day": "day", "week": "week", "month": "month"}.get(
             profile.budget_period, profile.budget_period
         )
-        bits.append(
-            f"has a self-reported typical budget around {profile.budget_amount} per "
-            f"{period_phrase} (currency wasn't specified - treat this as a rough personal "
-            "reference point, not a precise constraint, and don't assume a currency)"
-        )
+        usd_estimate = convert_to_usd(profile.budget_amount, profile.budget_currency)
+        if usd_estimate is not None:
+            bits.append(
+                f"has a self-reported typical budget of about ${usd_estimate:.0f} USD per "
+                f"{period_phrase} (converted from {profile.budget_amount} "
+                f"{profile.budget_currency} using an approximate exchange rate - treat this as "
+                "a rough estimate, not a precise constraint)"
+            )
+        else:
+            # Defensive fallback only - budget_currency is a fixed choices
+            # list that always matches users.currency's rate table, so
+            # this shouldn't happen in practice, but degrade gracefully
+            # rather than silently dropping the traveler's budget context.
+            bits.append(
+                f"has a self-reported typical budget around {profile.budget_amount} "
+                f"{profile.budget_currency} per {period_phrase} (couldn't convert this "
+                "currency to a common figure - treat as a rough personal reference point)"
+            )
     if not bits:
         return ""
     return (

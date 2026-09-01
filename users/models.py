@@ -16,6 +16,8 @@ from django.utils.translation import gettext_lazy as _
 # change.
 from travel.models import COST_OF_LIVING_CHOICES, TRIP_TYPE_CHOICES  # noqa: F401
 
+from .currency import CURRENCY_CHOICES
+
 
 class UserManager(DjangoUserManager):
     """Creates users by email instead of Django's default username field."""
@@ -78,14 +80,17 @@ class TravelerProfile(models.Model):
     Originally deliberately thin per 14_MVP_IMPLEMENTATION_PLAN.md
     Milestone 2 ("do not build the complete traveler profile yet").
     Extended 2026-09-02 (direct user request) with home_country,
-    travelers_count, and a budget amount/period pair - concrete trip-context
-    fields, distinct from preferred_cost_of_living's abstract 1-5 tier.
-    These new fields are stored but NOT YET wired into
-    recommendations.scoring or ai.orchestration - surfacing them there
-    (e.g. converting a budget + period into a currency-aware constraint)
-    is a separate follow-up decision, not implied by "collect this data."
-    Preference history, inferred preferences, and feedback-driven learning
-    belong to later milestones.
+    travelers_count, and a budget amount/period/currency triple - concrete
+    trip-context fields, distinct from preferred_cost_of_living's abstract
+    1-5 tier. budget_amount/budget_period/budget_currency are validated
+    (TravelerProfileForm.clean()) to always be filled in together or not
+    at all - a bare number with no currency or time unit is meaningless.
+    budget_currency exists specifically so ai.orchestration can convert a
+    self-reported budget to an approximate USD figure (users.currency,
+    same-day follow-up request: "budget must be always on dolar") instead
+    of comparing raw numbers in incomparable currencies. Preference
+    history, inferred preferences, and feedback-driven learning belong to
+    later milestones.
     """
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="traveler_profile")
@@ -116,6 +121,12 @@ class TravelerProfile(models.Model):
     )
     budget_period = models.CharField(
         max_length=10, choices=BUDGET_PERIOD_CHOICES, blank=True
+    )
+    budget_currency = models.CharField(
+        max_length=3,
+        choices=CURRENCY_CHOICES,
+        blank=True,
+        help_text="The currency budget_amount is stated in - required alongside it.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
