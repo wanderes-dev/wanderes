@@ -105,9 +105,13 @@ Implemented the `analytics` app (`Event` model, `services.record_event()`, `metr
 
 ---
 
-## 4. Flight & Hotel Affiliate Provider Selection (blocks Phase 24) — 🔵 RESEARCH DONE, decision pending
+## 4. Flight & Hotel Affiliate Provider Selection (blocks Phase 24) — ✅ FLIGHTS RESOLVED 2026-09-01 (Duffel); hotels still open
 
-**Requested out of sequence 2026-09-01** — Phase 19-22 (Premium Strategy/Entitlements, Payment Provider/Integration) haven't started; this jumps ahead to Phase 23/24 material at the user's explicit direction. Noted here for an honest record, not a reason to refuse: this is research and documentation only, nothing was implemented, and `15_IMPLEMENTATION_GUIDE.md` itself lists Phase 23's owner as "Human Decision + Research" - exactly what this is.
+**Decision (flights): Duffel is the MVP flight provider.** Chosen specifically because it's the only researched option accessible right now without a traffic/MAU minimum TravelAgent doesn't have pre-launch - see the comparison below. Explicitly **not** a permanent commitment: the `FlightProvider` interface (`10_EXTERNAL_INTEGRATIONS.md` §13) is designed so Skyscanner, KAYAK, Amadeus Enterprise, or direct airline/NDC connections can replace or supplement Duffel later without touching the recommendation engine, traveler profile, trips, AI orchestration, or chat UI - only a new adapter behind the same interface.
+
+**Still open, and needs your input before implementation proceeds (see "Human Review" below)**: the exact booking-flow shape (Duffel's core Flights API + Duffel's Payments API vs. the lower-code "Duffel Links" hosted checkout - these appear to have *different* markup mechanics per Duffel's own docs, not fully reconcilable from public pages alone) and the markup/commission economics. Hotels (Booking.com Affiliate Partner Program was the front-runner from the original research) are **not part of this decision** - this request was flights-only; hotels remain pending.
+
+**Requested out of sequence 2026-09-01** — Phase 19-22 (Premium Strategy/Entitlements, Payment Provider/Integration) haven't started; this jumps ahead to Phase 23/24 material at the user's explicit direction. Noted here for an honest record, not a reason to refuse: this is research and documentation only for now (implementation is Phase 24, "Claude Code + Human Review" per `15_IMPLEMENTATION_GUIDE.md`), and Phase 23 is explicitly "Human Decision + Research."
 
 **The headline finding, upfront**: every genuine real-time flight/hotel *search* API researched (not just a banner link) gates access behind a traffic/volume threshold TravelAgent doesn't have yet as a pre-launch MVP - commonly 50,000-100,000+ monthly users, sometimes phrased as "established business," sometimes as an explicit MAU minimum. This isn't a TravelAgent-specific problem; it's the standard shape of this industry's provider ecosystem. Two real options exist anyway (see recommendation below), but both come with trade-offs the guide's "no assumptions" instruction means should go to you, not get decided quietly.
 
@@ -154,6 +158,28 @@ If staying strictly "pure affiliate, no hosted-checkout revenue-share" is a hard
 - Commission/revenue-share expectations and how that interacts with the already-established "recommendations must never be influenced by commission" principle (`10_EXTERNAL_INTEGRATIONS.md` §9, reaffirmed in the brief for this task).
 - Geographic coverage requirements (not deeply researched here - would need clarifying what markets TravelAgent targets first).
 - Timing: pursue this now (accepting Duffel's different model for flights) or defer until real traffic exists (delaying flight search, hotels-only via Booking.com in the meantime)?
+
+### Duffel commercial model - verified, with explicit "confirm directly" flags
+
+Per the instruction not to hard-code assumed commercial terms, here's what's publicly documented on [duffel.com/pricing](https://duffel.com/pricing) and [duffel.com/docs/guides/margin-and-markups](https://duffel.com/docs/guides/margin-and-markups), and what still needs direct confirmation with Duffel:
+
+- **Pay As You Go plan** (the one relevant to an MVP): zero up-front cost, no subscription.
+- **Fees**: $3.00 per confirmed flight order (monthly billing), 1% of order value for "Managed Content," $2.00 per paid ancillary (e.g. extra baggage), $0.005 per search once search-to-book ratio exceeds 1,500:1, 2% on currency conversions.
+- **Markup**: possible, but the mechanics genuinely differ by integration path per Duffel's own docs, and public pages weren't fully consistent on this - **requires confirmation with Duffel directly**:
+  - Full Flights API + Duffel Payments API: Duffel passes through its net cost; TravelAgent would build its own markup logic and use Duffel as merchant of record to actually charge the customer. More integration work, full control over pricing/margin.
+  - "Duffel Links" (low-code hosted checkout, "no development resources needed" per Duffel's own marketing): appears to support markup directly via Duffel's own dashboard - much less integration work, less control.
+- **Stays (hotels)**: a separate profit-share model on completed bookings; the percentage is not publicly disclosed - **requires confirmation with Duffel directly**. Not part of this flights decision regardless.
+- **IATA accreditation**: handled by Duffel (shared across 5 global IATAs it holds) - included in the Managed Content fee, not a separate cost or a barrier for TravelAgent.
+
+### Human Review — before any implementation code is written (per the brief's own Step 5)
+
+These are the specific items that need your explicit sign-off before Claude Code proceeds past design/documentation into actual `DuffelFlightProvider` code:
+
+1. **Booking-flow shape**: Duffel Links (fast to integrate, markup via Duffel's dashboard, less TravelAgent control) vs. the full Flights + Payments API (more integration work, full markup control, TravelAgent closer to merchant-of-record territory). This is as much a business-model choice as a technical one.
+2. **Markup vs. flat revenue-share economics** - and how either interacts with the standing "recommendations must never be influenced by commission" rule (`10_EXTERNAL_INTEGRATIONS.md` §9 and §13.3) - scoring must stay blind to which option earns more.
+3. **Whether the MVP exposes actual booking/checkout at all in this first pass**, or stops at "search, recommend, explain, hand off to Duffel's flow" without wiring up markup/payments logic yet - a materially smaller first slice.
+4. **Fee absorption**: whether the $3/order + ancillary fees are absorbed by TravelAgent, passed to the traveler via markup, or left unaddressed until real bookings happen.
+5. Confirmation that pursuing this now (pre-traffic) is worth the Duffel-specific commercial relationship, versus waiting - i.e. re-affirming the timing decision above now that the concrete fee schedule is known.
 
 ### What Claude Code does once you decide
 

@@ -199,19 +199,25 @@ The Integration Layer should make provider replacement possible without requirin
 
 Changing a provider should primarily involve implementing or configuring a new adapter behind the existing internal interface.
 
-## 13. Flight & Hotel Affiliate Integration (research, 2026-09-01 — not yet implemented)
+## 13. Flight & Hotel Integration
 
-Requested out of sequence, ahead of Phases 19-22, at the user's explicit direction - research and documentation only, per Phase 23's "Human Decision + Research" ownership in `15_IMPLEMENTATION_GUIDE.md`. **See `DECISIONS_PENDING.md` §4 for the full provider comparison, eligibility findings, and the pending human decision** - this section covers the technical shape the eventual implementation should take, decided in advance so the decision in §4 can move straight to implementation once made.
+### 13.0 Status (2026-09-01)
+
+**Flight provider decision: ✅ made.** `DECISIONS_PENDING.md` §4 - **Duffel is the MVP flight provider**, chosen because it's the only researched option accessible without a traffic/MAU minimum TravelAgent doesn't have pre-launch (Skyscanner, KAYAK, Kiwi, and Amadeus's now-decommissioned self-serve tier all require established traffic - see §4 for the full comparison). **Not a permanent commitment** - Skyscanner, KAYAK, Amadeus Enterprise, or direct airline/NDC connections remain future options once TravelAgent has the traffic or business maturity they require; the interface below exists specifically so adding or switching to one of them later is a new adapter, not a rewrite.
+
+**Hotels: still unresolved**, not part of this decision (Booking.com's Affiliate Partner Program was the front-runner from the original research in §4).
+
+**Implementation status: design only, per the brief's own instructions.** The `FlightProvider` interface, `DuffelFlightProvider` adapter, normalization, recommendation-engine integration, UI, and booking flow are **not yet built** - a set of Human Review items (`DECISIONS_PENDING.md` §4, "Human Review" - the booking-flow shape, markup vs. revenue-share economics, and how much of booking/checkout the first pass actually covers) need sign-off first.
 
 ### 13.1 Internal interfaces
 
-Following this document's §3 pattern exactly - the recommendation engine and the rest of the application depend on these interfaces, never on Skyscanner/KAYAK/Duffel/Booking.com directly:
+Following this document's §3 pattern exactly - the recommendation engine and the rest of the application depend on these interfaces, never on Duffel (or any future flight/hotel provider) directly:
 
 ```text
 FlightProvider (ABC)
-    search_flights(origin, destination, depart_date, return_date=None, ...) -> list[FlightOption]
+    search_flights(origin, destination, depart_date, return_date=None, cabin=None, passengers=1) -> list[FlightOption]
     get_flight_details(provider_reference) -> FlightOption
-    build_affiliate_link(FlightOption) -> str
+    build_booking_link(FlightOption) -> str   # Duffel Links checkout URL, or a future provider's affiliate/deep link
 
 HotelProvider (ABC)
     search_hotels(destination, check_in, check_out, guests, ...) -> list[HotelOption]
@@ -219,11 +225,32 @@ HotelProvider (ABC)
     build_affiliate_link(HotelOption) -> str
 ```
 
-Provider-specific adapters (`SkyscannerFlightProvider`, `DuffelFlightProvider`, `BookingComHotelProvider`, etc.) implement these behind a `get_flight_provider()`/`get_hotel_provider()` factory reading a settings key - the same pattern already used for `ClimateProvider` (`integrations/climate/`) and `AIProvider` (`ai/provider/`). Provider-specific request/response shapes, auth, and error handling stay inside the adapter; nothing above the interface should ever see a raw Skyscanner or Duffel response.
+`build_booking_link` (renamed from the earlier draft's `build_affiliate_link` for flights specifically) reflects that Duffel isn't a pure affiliate redirect - see 13.6. `DuffelFlightProvider` implements `FlightProvider`; a future `SkyscannerFlightProvider`/`KayakFlightProvider` would implement the exact same interface. Selected via a `get_flight_provider()`/`get_hotel_provider()` factory reading a settings key (`FLIGHT_PROVIDER`, `HOTEL_PROVIDER`) - the same pattern already used for `ClimateProvider` (`integrations/climate/`) and `AIProvider` (`ai/provider/`): a provider swap becomes a settings change plus a new adapter, not a change anywhere else in the application (traveler profile, recommendation engine, trips, AI orchestration, chat UI all stay untouched). Provider-specific request/response shapes, auth, and error handling stay inside the adapter; nothing above the interface should ever see a raw Duffel response.
+
+```text
+                    TravelAgent
+                       ↓
+                FlightProvider
+                       ↓
+        ┌──────────────┼──────────────┐
+        ↓              ↓              ↓
+     Duffel       Skyscanner       KAYAK
+    (MVP, now)    (future)         (future)
+        ↓              ↓              ↓
+        └──────────────┼──────────────┘
+                       ↓
+              Normalized FlightOption
+                       ↓
+            Recommendation Engine (deterministic scoring)
+                       ↓
+                  AI Explanation
+                       ↓
+                    User
+```
 
 ### 13.2 Normalized internal representations
 
-External providers return different shapes; the application should only ever work with its own normalized dataclasses:
+External providers return different shapes; the application should only ever work with its own normalized dataclasses - plain dataclasses (like `integrations.climate.MonthlyClimateSummary` and `recommendations.scoring.ScoredDestination`), not Django models. A `FlightOption` is ephemeral search-result data for one request, not persisted business data - `trips.TripFlight` already exists for a *different* concept (a flight the user has committed to as part of a saved `Trip`, manually logged with its own `rating`/`price_rate`) and should not be confused with or repurposed for live search results:
 
 ```text
 FlightOption
@@ -231,8 +258,9 @@ FlightOption
     origin, destination
     departure, arrival, duration, stops
     cabin, price, currency
+    airlines
     baggage_information
-    booking_url                    # the affiliate/deep link, or Duffel Links checkout URL
+    booking_url                    # Duffel Links checkout URL for the MVP
 
 HotelOption
     provider, provider_reference
@@ -244,24 +272,80 @@ HotelOption
     booking_url
 ```
 
-Raw provider responses should not be exposed to the rest of the application unless there is a justified reason (§4 above).
+Raw provider responses should not be exposed to the rest of the application unless there is a justified reason (§4).
 
-### 13.3 Recommendation independence from commission (reaffirmed)
+### 13.3 Flight search parameters: extracted, never invented
 
-§9 above already establishes this; restated here because it's specifically load-bearing for this feature: **flight/hotel options must be scored on genuine fit for the traveler (price, convenience, stops, timing) - never boosted because a provider pays a higher commission.** A concrete example from the request that prompted this research: a traveler who values convenience should see the direct flight recommended over a cheaper one with a 9-hour layover, regardless of which of the two pays TravelAgent more. This must live in `recommendations/scoring.py`'s existing scoring logic, structurally separated from any per-provider commission data - the same separation already enforced between the AI reasoning layer and deterministic scoring elsewhere in the app.
+Origin, destination, dates, and passenger count are booking-critical - the AI extracts them from the conversation the same way `ai.orchestration._extract_intent()` already extracts `month`/`trip_type`/`min_temp_c` for destination recommendations (temperature=0, structured JSON schema output, never guessed - the exact pattern this session's temperature-inference bug fix reinforced), but **must never invent an airport, date, or passenger count that wasn't actually stated or clearly implied**. If any booking-critical field is missing, the application asks the traveler rather than defaulting - unlike `month` for destination recommendations (which defaults to the current month with a transparency note, since "somewhat wrong" is an acceptable degrade for a destination *suggestion*), a wrong origin airport or date is a hard failure for an actual flight search, not a soft one. This is a genuine behavioral difference from the existing destination-recommendation intent extraction and should be a separate schema/extraction path, not a naive extension of the existing one.
 
-### 13.4 Affiliate tracking
+### 13.4 Recommendation independence from commission (reaffirmed)
+
+§9 already establishes this; restated here because it's specifically load-bearing for this feature: **flight options must be scored on genuine fit for the traveler (price, duration, stops, departure/arrival times, traveler preferences, budget) - never boosted because Duffel's markup/commission is higher for one option than another.** The brief's own example: a traveler who values convenience should see a direct flight recommended over a cheaper one with a 9-hour layover, purely because it fits them better - regardless of which option is more profitable for TravelAgent. Scoring rules must remain deterministic and explainable, following `recommendations/scoring.py`'s existing shape exactly (hard constraints, then a scored/ranked list, with each score broken into the individual factors that produced it - see `ScoredDestination`) - a parallel `score_flights()`/`ScoredFlight` rather than folding flight logic into the destination scorer. Any markup/commission data must live structurally separate from this scoring path, the same separation already enforced between the AI reasoning layer and deterministic scoring elsewhere in the app.
+
+### 13.5 AI responsibility boundary
+
+The AI does not call Duffel, or any provider, itself:
+
+```text
+Django / application
+       ↓
+FlightProvider
+       ↓
+Duffel
+       ↓
+Normalized FlightOption results
+       ↓
+Recommendation engine (deterministic scoring)
+       ↓
+AI (explanation only)
+       ↓
+Traveler
+```
+
+Matches `03_SYSTEM_ARCHITETURE.md` §2.7/§3.4 exactly (AI orchestration controls what the model sees and does, but "the AI model should not directly access the database" - by extension, not external providers either) and this project's own established pattern: every AI call in `ai/orchestration.py` works over data the application already fetched and validated, never fetches anything itself. The AI's role here is understanding intent, identifying what's still missing (13.3), and explaining results - never search, ranking, or booking decisions.
+
+### 13.6 Booking / checkout (research done, approach not yet chosen)
+
+Duffel offers two genuinely different integration paths, not just two settings - **the choice between them is a Human Review item** (`DECISIONS_PENDING.md` §4), not something to default on:
+
+- **Duffel Links** (low-code hosted checkout): TravelAgent generates a link via API; the traveler completes checkout on a Duffel-hosted, TravelAgent-branded page. Duffel's own marketing describes markup as configurable directly in Duffel's dashboard for this path. Minimal integration work - "no development resources needed" per Duffel.
+- **Full Flights API + Duffel Payments API**: TravelAgent builds its own checkout/markup logic; Duffel acts as merchant of record so TravelAgent can charge customers without its own IATA/ARC accreditation. More integration work, full control over pricing and the purchase experience.
+
+Either way: TravelAgent is **not** building its own payment processor, ticket issuance, or airline reservation system - both paths use Duffel's existing booking infrastructure, matching the brief's explicit boundary. The **first implementation slice may reasonably stop before booking entirely** - search, recommend, explain, and hand off to whichever Duffel flow is chosen - deferring markup/payments wiring to a later pass; this is itself one of the Human Review items.
+
+### 13.7 Commercial model (verified where public, flagged where not)
+
+Full detail and sourcing in `DECISIONS_PENDING.md` §4. Summary: Pay-As-You-Go plan, $3.00 per confirmed order, 1% of order value for Managed Content, $2.00 per paid ancillary, a search-to-book ratio limit ($0.005/search beyond 1,500:1), 2% on currency conversion, IATA accreditation included (Duffel's own, shared across partners). Markup mechanics differ by integration path (13.6) and were not fully reconcilable from public documentation alone - **requires confirmation with Duffel directly** before committing to a specific booking-flow implementation. Do not hard-code any commission/markup percentage that isn't confirmed.
+
+### 13.8 Error handling
+
+Beyond §8's general provider-failure guidance, flight search specifically needs to handle: timeouts, network failures, invalid/malformed responses, authentication failures, rate limiting, zero results, provider unavailability, and (specific to flight offers) **expired or stale offers** - a priced flight offer is only valid for a limited window and may need revalidation before booking, per Duffel's own documentation on offer expiry. The traveler should always get a useful, natural message ("We couldn't find available flights for those dates right now - try changing your dates or destination") rather than a raw exception or provider error string, consistent with `05_AI_DESIGN.md`/`ai/orchestration.py`'s existing `AIProviderError`/`ClimateProviderError` → graceful-degradation pattern.
+
+### 13.9 Testing
+
+Sandbox-first, per Duffel's own test/production environment split: automated tests use fixtures/mocks of Duffel responses (never live sandbox calls in the normal test suite - fast, deterministic, reproducible, independent of Duffel's actual availability), mirroring `integrations/tests/test_open_meteo.py`'s existing pattern of testing the adapter's normalization/error-handling logic against controlled inputs rather than the live API. A `DUFFEL_API_KEY` pointed at Duffel's sandbox is for manual/exploratory verification during development, not for the automated suite.
+
+### 13.10 Affiliate & booking-flow tracking
 
 Extends the existing `analytics` app (`Event` model, Phase 17) rather than introducing new infrastructure - candidate event types, mirroring what's already instrumented (`recommendation_generated`, `trip_created`, etc.):
 
-- `flight_search_performed` / `hotel_search_performed` - provider used, whether results were returned (not raw results).
-- `affiliate_link_generated` - already anticipated and deliberately deferred in `DECISIONS_PENDING.md` §3 ("monetization/premium and an affiliate provider don't exist in the app yet") - this research is the trigger to revisit that deferral once a provider is actually selected.
-- `affiliate_link_clicked` - same.
-- Provider-side conversion tracking (an actual booking happening) depends entirely on what each provider's attribution mechanism supports - Duffel can report this directly (it processes the booking); pure affiliate providers (Skyscanner, KAYAK, Booking.com) rely on their own postback/pixel mechanisms, which vary per provider and would need per-adapter research once one is selected. Only small structured metadata should ever be stored (provider, a reference ID, a price) - never full search queries or personal booking details, consistent with the privacy principles already applied to the existing `analytics` app.
+- `flight_search_performed` - provider used, whether results were returned (not raw results or the traveler's actual query).
+- `flight_recommendation_shown`, `flight_selected` - which normalized option, not raw provider data.
+- `booking_flow_initiated` - the traveler reached Duffel's checkout (Links or the app's own, depending on 13.6).
+- Actual booking/conversion tracking depends on which path 13.6 resolves to - Duffel can report confirmed orders directly for its own flow; a future pure-affiliate provider (Skyscanner, KAYAK) would rely on that provider's own postback/pixel mechanism instead, researched per-adapter when added.
+- Only small structured metadata should ever be stored (provider, a reference ID, a price) - never full search queries, passenger names, or payment details, consistent with the privacy principles already applied to the existing `analytics` app. No API keys, payment information, or unnecessary personal information in logs (§10, §7.1).
 
-### 13.5 Caching
+### 13.11 Caching
 
-Per §7's general principle (highly dynamic data should not be treated as permanently cached): flight/hotel prices and availability are exactly the kind of data that principle warns about - a cached price shown to a user that's no longer available at booking time is a real trust problem for a travel consultant product. Any caching here should be short-lived (Redis, likely single-digit minutes at most) and scoped to reducing duplicate identical searches in a short window, not to avoiding repeat API calls generally. Do not introduce caching prematurely - only once real usage patterns justify it.
+Per §7's general principle (highly dynamic data should not be treated as permanently cached): flight prices, availability, and offer validity are exactly what that principle warns about - a cached price shown to a traveler that's no longer valid at booking time is a real trust problem for a travel consultant product, and Duffel's own offer-expiry model (13.8) makes this concrete, not hypothetical. Any caching here should be short-lived (Redis, single-digit minutes at most) and scoped to reducing duplicate identical searches in a short window, not to avoiding repeat API calls generally. PostgreSQL remains the source of truth for anything that must persist (e.g. a `Trip` the traveler actually saves) - a `FlightOption` search result itself is not persisted business data. Do not introduce caching prematurely - only once real usage patterns justify it.
+
+### 13.12 Credentials
+
+`DUFFEL_API_KEY` follows the exact existing pattern (`OPENAI_API_KEY` in `config/settings/base.py`/`.env.example`) - `env("DUFFEL_API_KEY", default="")`, `.env.example` documents the variable name with no real value, the real key exists only in the local `.env` (gitignored) or the deployment's secret manager (Render's `sync: false` environment variables, matching `OPENAI_API_KEY`'s existing setup). Never hard-coded, never exposed to the browser, never logged.
+
+### 13.13 Hotels
+
+Unresolved (13.0) - this section's detail is flights-specific per the brief that prompted it. `HotelProvider`/`HotelOption` above are sketched for interface-shape consistency with `10_EXTERNAL_INTEGRATIONS.md` §3's general pattern, not yet a concrete implementation plan the way 13.1-13.12 are for flights.
 
 ## 14. Principle
 
