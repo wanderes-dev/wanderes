@@ -651,6 +651,30 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
         self.assertNotEqual(result.reply, NEEDS_LOGIN_REPLY)
         self.assertIn("which destination", result.reply)
 
+    def test_unrecognized_destination_in_future_intent_uses_ai_knowledge(self):
+        # 2026-09-02, direct user feedback: "Quero ir pra monaco" previously
+        # got a canned "I don't have it in my catalog, but I've noted it"
+        # reply - it should now get a real AI-generated reply from general
+        # knowledge instead (matching the same philosophy already used for
+        # an unmatched recommendation request), and no Trip is persisted -
+        # there's no valid Destination row to attach one to.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="future_intent", future_destination_name="Monaco"
+            ),
+            reply_text="Monaco is known for its glamorous Grand Prix and casinos.",
+        )
+
+        result = get_travel_recommendation(
+            "Quero ir pra monaco",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertIn("Monaco", result.reply)
+        self.assertFalse(Trip.objects.exists())
+
     def test_unrecognized_destination_in_feedback_does_not_crash(self):
         ai_provider = StubAIProvider(
             structured_response=_intent(

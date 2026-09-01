@@ -336,11 +336,30 @@ def stream_travel_recommendation(
         return StreamingOrchestrationResult([], iter([reply]))
 
     if message_type == "future_intent":
-        reply = _handle_future_intent(
+        # _handle_future_intent returns None specifically when the named
+        # destination is real but not in our curated catalog - there's no
+        # Destination row to attach a Trip to (never invent catalog data,
+        # 05_AI_DESIGN.md §7), but per direct user feedback 2026-09-02 ("se
+        # nao estiver no catalogo ele deve usar o conhecimento da IA" - a
+        # bare "I don't have it in my catalog, but I've noted it" reply
+        # was unhelpful and contradicted the Phase 11 recommendation
+        # philosophy) that case now gets a real AI reply from general
+        # knowledge instead of a canned acknowledgment, same as an
+        # unmatched recommendation request already does.
+        quick_reply = _handle_future_intent(
             intent, user=user, message=message, history=history, ai_provider=ai_provider
         )
-        _remember(reply)
-        return StreamingOrchestrationResult([], iter([reply]))
+        if quick_reply is not None:
+            _remember(quick_reply)
+            return StreamingOrchestrationResult([], iter([quick_reply]))
+
+        unrecognized_messages = _build_unrecognized_future_destination_messages(
+            message, intent["future_destination_name"], history
+        )
+        unrecognized_reply = _stream_ai_reply(
+            unrecognized_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult([], unrecognized_reply)
 
     # message_type == "recommendation" (also the safe default/fallback).
     # No clarification gate here on purpose (removed 2026-08-30, per direct
@@ -617,7 +636,12 @@ def _handle_future_intent(
     message: str,
     history: list[dict] | None = None,
     ai_provider: AIProvider,
-) -> str:
+) -> str | None:
+    """Returns None specifically when the traveler named a real, valid
+    destination that just isn't in our curated catalog - the caller
+    (stream_travel_recommendation) then builds a real AI reply from
+    general knowledge instead of the quick templated acknowledgments
+    every other case here returns directly."""
     destination_name = intent["future_destination_name"]
     if not destination_name:
         # Same reasoning as _handle_feedback: don't gate on login before
@@ -637,16 +661,20 @@ def _handle_future_intent(
 
     destination = _resolve_destination(destination_name)
     if destination is None:
+        # 2026-09-02, direct user feedback: a canned "I don't have it in
+        # my catalog, but I've noted it" reply here was unhelpful and
+        # contradicted the Phase 11 recommendation philosophy (reason from
+        # general knowledge when the curated data doesn't cover
+        # something) - the caller now handles this with a real AI reply
+        # instead. No Trip can be persisted either way (Trip.destination
+        # is a real FK; there's no valid Destination row for it - never
+        # invent catalog data, 05_AI_DESIGN.md §7).
         logger.info(
-            "Future travel intent mentioned an unrecognized destination. name=%r", destination_name
+            "Future travel intent mentioned an unrecognized destination - answering from "
+            "general knowledge instead of a canned note. name=%r",
+            destination_name,
         )
-        return _localize_reply(
-            f"I don't have {destination_name} in my catalog yet, but I've made a note that "
-            "you'd like to go!",
-            message=message,
-            history=history,
-            ai_provider=ai_provider,
-        )
+        return None
 
     _trip, created = Trip.objects.get_or_create(
         user=user,
@@ -977,6 +1005,45 @@ def _build_no_matches_messages(
                 "conversation (check the history above, not just this "
                 "message) - this applies just as much to English as to "
                 "any other language."
+            ),
+        )
+    )
+    return messages
+
+
+def _build_unrecognized_future_destination_messages(
+    message: str, destination_name: str, history: list[dict] | None = None
+) -> list[AIMessage]:
+    """Built when a future_intent message names a real destination our
+    curated catalog doesn't have (2026-09-02, direct user feedback: a
+    canned "I don't have it, but I've noted it" reply was unhelpful and
+    contradicted the Phase 11 recommendation philosophy - the AI should
+    reason from its own general knowledge here too, the same way an
+    unmatched recommendation request already does). No Trip is persisted
+    for this - Trip.destination is a real FK, and there is no valid
+    Destination row to attach it to (never invent catalog data,
+    05_AI_DESIGN.md §7) - the reply says so honestly in passing, without
+    dwelling on it as an apology."""
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler just said: "{message}" - naming {destination_name} as '
+                "somewhere they'd like to go someday. This destination isn't in our "
+                "curated dataset, so it can't be formally tracked as a saved future trip "
+                "the way a catalog destination would be. Respond warmly and helpfully "
+                "using your own general travel knowledge about it - share a genuine, "
+                "useful detail or two (what it's known for, a good time to visit, "
+                "something practical) the way a knowledgeable travel consultant would, "
+                "rather than just acknowledging the message. Mention in passing, without "
+                "opening with an apology, that you can't formally save it as a tracked "
+                "trip yet since it's outside your verified catalog - but you're glad to "
+                "help them think it through. Reply in the same language the traveler has "
+                "been using in this conversation (check the history above, not just this "
+                "message) - this applies just as much to English as to any other "
+                "language."
             ),
         )
     )

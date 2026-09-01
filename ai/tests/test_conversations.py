@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import TestCase
 
 from ai.conversations import (
@@ -181,3 +183,24 @@ class RecordTurnTests(TestCase):
         self.assertIsNone(result.reason)
         conversation.refresh_from_db()
         self.assertEqual(conversation.messages, original_messages)
+
+    @patch("ai.conversations.SavedConversation.objects.create")
+    def test_unexpected_error_degrades_to_not_saved_instead_of_raising(self, mock_create):
+        # Saving must never break the chat reply itself that's already
+        # been generated and shown by the time this runs (e.g. a fresh
+        # deploy where this app's migration hasn't been applied yet would
+        # otherwise turn a missing-table error into a broken response) -
+        # same "never raises" contract as analytics.services.record_event.
+        mock_create.side_effect = Exception("relation does not exist")
+
+        result = record_turn(
+            user=self.user,
+            conversation=None,
+            save_requested=True,
+            user_message="somewhere warm",
+            assistant_reply="reply",
+            ai_provider=StubAIProvider(),
+        )
+
+        self.assertFalse(result.saved)
+        self.assertIsNone(result.reason)

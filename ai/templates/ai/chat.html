@@ -805,15 +805,30 @@
         closeSidebar();
     }
 
-    // A conversation just created by sendMessage() only needs the sidebar
-    // refreshed, not rebuilt by hand - fetchSidebarList() already knows
-    // how to highlight currentConversationId as active.
+    // A brand new conversation is inserted into the sidebar immediately
+    // from the data already in this footer (no extra round-trip) - a real
+    // conversation genuinely did save correctly the first time this was
+    // tested live, but a fetchSidebarList()-only refresh has a visible
+    // network round-trip before the sidebar reflects it, which read as
+    // "not saving" in that live check. This makes the very first save of
+    // a conversation appear in the sidebar the instant the reply finishes,
+    // matching every subsequent turn's already-populated sidebar exactly.
     function handleConversationStatus(status) {
         if (status.saved && status.conversation_id) {
             const isNewlySaved = currentConversationId === null;
             currentConversationId = status.conversation_id;
-            if (isNewlySaved) {
-                fetchSidebarList();
+            if (isNewlySaved && sidebarList) {
+                if (sidebarList.querySelector(".chat-sidebar-empty")) {
+                    sidebarList.innerHTML = "";
+                }
+                sidebarList.insertBefore(
+                    buildSidebarItem({
+                        id: status.conversation_id,
+                        subject: status.subject || "New conversation",
+                        updated_at: new Date().toISOString(),
+                    }),
+                    sidebarList.firstChild
+                );
             }
         }
         if (status.reason === "conversation_limit_reached") {

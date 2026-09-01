@@ -58,11 +58,43 @@ def record_turn(
     checkbox - always unchecked here for anonymous users, since this whole
     feature is registered-users-only) and never blocks the conversation
     itself - every branch below still lets the chat continue; it only ever
-    decides whether *this* turn gets written to Postgres.
+    decides whether *this* turn gets written to Postgres. Per that same
+    "never blocks the conversation" principle, this also never raises -
+    same pattern as analytics.services.record_event(): an unexpected
+    failure (e.g. a migration not yet applied on a freshly deployed
+    environment) degrades to "not saved" rather than breaking the
+    in-progress chat reply, which has already been generated and shown to
+    the traveler by the time this runs.
     """
     if not save_requested or user is None or not getattr(user, "is_authenticated", False):
         return SaveResult(saved=False, conversation_id=None, subject=None, reason=None)
 
+    try:
+        return _record_turn(
+            user=user,
+            conversation=conversation,
+            user_message=user_message,
+            assistant_reply=assistant_reply,
+            ai_provider=ai_provider,
+        )
+    except Exception:
+        logger.warning("Failed to save a chat turn to a SavedConversation.", exc_info=True)
+        return SaveResult(
+            saved=False,
+            conversation_id=conversation.pk if conversation is not None else None,
+            subject=None,
+            reason=None,
+        )
+
+
+def _record_turn(
+    *,
+    user,
+    conversation: SavedConversation | None,
+    user_message: str,
+    assistant_reply: str,
+    ai_provider: AIProvider | None,
+) -> SaveResult:
     if conversation is not None:
         if conversation.is_full:
             # Already warned once, the turn this crossed MAX_CHARS on -
