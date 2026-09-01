@@ -1,8 +1,20 @@
+/* Fraunces (warm editorial serif for headings/brand moments - 2026-09-01
+   visual refresh, chosen to read as "premium travel" rather than "generic
+   SaaS dashboard") + Inter (UI text/body copy) are loaded via <link> tags
+   in templates/base.html's <head>, not @import here - a <link> lets the
+   browser discover and fetch the font in parallel with this stylesheet
+   instead of blocking on it. */
+
 :root {
     --color-primary: #1d6f6a;
     --color-primary-dark: #14514d;
+    --color-primary-light: #e4f0ee;
+    --color-accent: #c96f3e;
+    --color-accent-dark: #a8582e;
+    --color-accent-light: #fbeee5;
     --color-bg: #f7f8fa;
     --color-surface: #ffffff;
+    --color-sand: #fbf8f3;
     --color-text: #1f2933;
     --color-text-muted: #5a6572;
     --color-border: #dde2e7;
@@ -15,9 +27,16 @@
     --color-info-bg: #e8f0fe;
     --color-info-text: #1c4587;
     --color-danger: #b3392f;
-    --radius: 0.5rem;
-    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    --radius: 0.65rem;
+    --radius-lg: 1.15rem;
+    --radius-pill: 999px;
+    --shadow-sm: 0 1px 2px rgba(31, 41, 51, 0.06), 0 1px 1px rgba(31, 41, 51, 0.04);
+    --shadow-md: 0 8px 24px rgba(31, 41, 51, 0.08), 0 2px 6px rgba(31, 41, 51, 0.05);
+    --shadow-lg: 0 20px 48px rgba(31, 41, 51, 0.12), 0 6px 16px rgba(31, 41, 51, 0.06);
+    --font-sans:
+        "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
         sans-serif;
+    --font-display: "Fraunces", Georgia, "Times New Roman", serif;
 }
 
 * {
@@ -44,22 +63,25 @@ body {
 }
 
 h1, h2, h3 {
-    line-height: 1.25;
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1.2;
     color: var(--color-text);
+    letter-spacing: -0.01em;
 }
 
 h1 {
-    font-size: 1.6rem;
-    margin: 0 0 1rem;
+    font-size: 1.9rem;
+    margin: 0 0 0.6rem;
 }
 
 h2 {
-    font-size: 1.2rem;
-    margin: 1.5rem 0 0.75rem;
+    font-size: 1.35rem;
+    margin: 1.75rem 0 0.75rem;
 }
 
 p {
-    line-height: 1.5;
+    line-height: 1.6;
 }
 
 a {
@@ -88,11 +110,13 @@ a:hover {
 }
 
 .brand {
-    font-weight: 700;
-    font-size: 1.15rem;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.3rem;
     color: var(--color-primary-dark);
     text-decoration: none;
     margin-right: auto;
+    letter-spacing: -0.01em;
 }
 
 .site-nav {
@@ -321,20 +345,35 @@ button, .btn {
     display: inline-block;
     font: inherit;
     font-weight: 600;
-    padding: 0.55rem 1.1rem;
-    border-radius: var(--radius);
+    padding: 0.6rem 1.2rem;
+    border-radius: var(--radius-pill);
     border: 1px solid var(--color-primary);
     background: var(--color-primary);
     color: #fff;
     cursor: pointer;
     text-decoration: none;
     line-height: 1.2;
+    box-shadow: var(--shadow-sm);
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease,
+        box-shadow 0.15s ease;
 }
 
 button:hover, .btn:hover {
     background: var(--color-primary-dark);
     border-color: var(--color-primary-dark);
     color: #fff;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+button:active, .btn:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-sm);
+}
+
+button:focus-visible, .btn:focus-visible {
+    outline: 2px solid var(--color-primary-dark);
+    outline-offset: 2px;
 }
 
 .btn-secondary {
@@ -349,6 +388,16 @@ button:hover, .btn:hover {
     border-color: var(--color-text-muted);
 }
 
+.btn-accent {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+}
+
+.btn-accent:hover {
+    background: var(--color-accent-dark);
+    border-color: var(--color-accent-dark);
+}
+
 .btn-danger {
     background: var(--color-danger);
     border-color: var(--color-danger);
@@ -357,6 +406,11 @@ button:hover, .btn:hover {
 .btn-danger:hover {
     background: #8f2d25;
     border-color: #8f2d25;
+}
+
+.btn-lg {
+    padding: 0.85rem 1.75rem;
+    font-size: 1.05rem;
 }
 
 .actions {
@@ -371,9 +425,10 @@ button:hover, .btn:hover {
 .card {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     padding: 1.1rem 1.25rem;
     margin-bottom: 1rem;
+    box-shadow: var(--shadow-sm);
 }
 
 .item-list {
@@ -395,6 +450,11 @@ button:hover, .btn:hover {
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
+    transition: box-shadow 0.15s ease;
+}
+
+.item-list li:hover {
+    box-shadow: var(--shadow-sm);
 }
 
 .item-list .item-title {
@@ -429,4 +489,230 @@ button:hover, .btn:hover {
     color: var(--color-text-muted);
     max-width: 760px;
     display: inline-block;
+}
+
+/* Tags / badges - used by destination recommendation cards and the
+   landing page (trip type, cost tier, climate, "why this fits you"). */
+
+.tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: var(--color-primary-light);
+    color: var(--color-primary-dark);
+    border-radius: var(--radius-pill);
+    padding: 0.25rem 0.7rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.tag-accent {
+    background: var(--color-accent-light);
+    color: var(--color-accent-dark);
+}
+
+.tag-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+/* Auth pages (login/register) - a centered card instead of a bare
+   {{ form.as_p }} dropped into the generic content column. */
+
+.auth-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    padding: 2rem 1rem;
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 400px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 2rem 1.75rem;
+}
+
+.auth-card h1 {
+    text-align: center;
+    margin-bottom: 0.35rem;
+}
+
+.auth-card .auth-subtitle {
+    text-align: center;
+    color: var(--color-text-muted);
+    margin: 0 0 1.5rem;
+    font-size: 0.95rem;
+}
+
+.auth-card button, .auth-card .btn {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+    margin-top: 0.25rem;
+}
+
+.auth-card .auth-footer {
+    text-align: center;
+    margin: 1.25rem 0 0;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+}
+
+/* Landing page */
+
+.landing-hero {
+    background: linear-gradient(180deg, var(--color-sand) 0%, var(--color-bg) 100%);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.landing-hero-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 4.5rem 1.25rem 3.5rem;
+    text-align: center;
+}
+
+.landing-eyebrow {
+    display: inline-block;
+    color: var(--color-accent-dark);
+    font-weight: 600;
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+}
+
+.landing-hero h1 {
+    font-size: 2.6rem;
+    line-height: 1.15;
+    margin: 0 auto 1rem;
+    max-width: 640px;
+}
+
+.landing-hero-lede {
+    font-size: 1.15rem;
+    color: var(--color-text-muted);
+    max-width: 540px;
+    margin: 0 auto 2rem;
+}
+
+.landing-hero-cta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.landing-hero-hint {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+
+.landing-section {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 3.5rem 1.25rem;
+}
+
+.landing-section h2 {
+    text-align: center;
+    margin-top: 0;
+}
+
+.landing-steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    margin-top: 2.25rem;
+}
+
+.landing-step {
+    text-align: center;
+}
+
+.landing-step-icon {
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-primary-light);
+    color: var(--color-primary-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    margin: 0 auto 1rem;
+}
+
+.landing-step h3 {
+    font-size: 1.05rem;
+    margin: 0 0 0.4rem;
+}
+
+.landing-step p {
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+.landing-destinations {
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.landing-destination-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.25rem;
+    margin-top: 2.25rem;
+}
+
+.landing-destination-card {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.landing-destination-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.landing-destination-card .destination-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.15rem;
+    margin-bottom: 0.1rem;
+}
+
+.landing-destination-card .destination-country {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+}
+
+.landing-final-cta {
+    text-align: center;
+    padding: 4rem 1.25rem;
+}
+
+.landing-final-cta h2 {
+    margin-top: 0;
+}
+
+@media (max-width: 720px) {
+    .landing-hero h1 {
+        font-size: 2rem;
+    }
+
+    .landing-steps {
+        grid-template-columns: 1fr;
+    }
 }

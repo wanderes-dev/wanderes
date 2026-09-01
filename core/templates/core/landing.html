@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}Wanderes - Your personal travel advisor{% endblock %}
+
+{% block content_class %}content-flush{% endblock %}
+
+{% block content %}
+<section class="landing-hero">
+    <div class="landing-hero-inner">
+        <span class="landing-eyebrow">{% trans "Your travel advisor" %}</span>
+        <h1>{% trans "Tell us what you're looking for. We'll tell you where to go." %}</h1>
+        <p class="landing-hero-lede">
+            {% trans "Wanderes gets to know what you actually want from a trip - budget, climate, pace, vibe - then recommends destinations that genuinely fit, and explains exactly why." %}
+        </p>
+        <div class="landing-hero-cta">
+            <a href="{% url 'ai:chat' %}" class="btn btn-lg">{% trans "Start planning your trip" %}</a>
+            <span class="landing-hero-hint">{% trans "No account needed to get started" %}</span>
+        </div>
+    </div>
+</section>
+
+<section class="landing-section">
+    <h2>{% trans "How it works" %}</h2>
+    <div class="landing-steps">
+        <div class="landing-step">
+            <div class="landing-step-icon" aria-hidden="true">💬</div>
+            <h3>{% trans "Tell Wanderes what you want" %}</h3>
+            <p>{% trans "Describe your ideal trip in your own words - budget, climate, pace, who's coming. No forms, no filters to configure." %}</p>
+        </div>
+        <div class="landing-step">
+            <div class="landing-step-icon" aria-hidden="true">📍</div>
+            <h3>{% trans "Get destinations that fit" %}</h3>
+            <p>{% trans "Real recommendations grounded in real climate and cost data - not a generic list of trending places." %}</p>
+        </div>
+        <div class="landing-step">
+            <div class="landing-step-icon" aria-hidden="true">✓</div>
+            <h3>{% trans "See exactly why" %}</h3>
+            <p>{% trans "Every suggestion comes with a clear, honest explanation of why it matches what you asked for." %}</p>
+        </div>
+    </div>
+</section>
+
+{% if featured_destinations %}
+<section class="landing-destinations">
+    <div class="landing-section">
+        <h2>{% trans "A few places Wanderes already knows well" %}</h2>
+        <div class="landing-destination-grid">
+            {% for destination in featured_destinations %}
+            <div class="landing-destination-card">
+                <div class="destination-name">{{ destination.name }}</div>
+                <div class="destination-country">{{ destination.country }}</div>
+                <div class="tag-group">
+                    <span class="tag">{{ destination.get_trip_type_display }}</span>
+                    <span class="tag tag-accent">{{ destination.get_cost_of_living_display }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<section class="landing-final-cta">
+    <h2>{% trans "Ready to find your next trip?" %}</h2>
+    <a href="{% url 'ai:chat' %}" class="btn btn-lg">{% trans "Start planning" %}</a>
+</section>
+{% endblock %}

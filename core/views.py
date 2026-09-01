@@ -3,8 +3,27 @@ import logging
 from django.db import connections
 from django.db.utils import OperationalError
 from django.http import JsonResponse
+from django.shortcuts import render
+
+from travel.models import Destination
 
 logger = logging.getLogger(__name__)
+
+
+def landing(request):
+    """Marketing/entry page at the bare domain root.
+
+    2026-09-01, direct user request: "nao caia direto no chat" - a
+    first-time visitor should land somewhere that explains the product
+    before being dropped into the chat, not be redirected straight to
+    /chat/ (the previous behavior, added right after the first Phase 18
+    deploy just to avoid a 404 - see DEVELOPMENT_LOG.md). The destination
+    teaser below uses real curated Destination rows, never invented
+    copy - `05_AI_DESIGN.md` §7's "never invent travel data" principle
+    applies to product marketing surfaces too, not just AI replies.
+    """
+    featured_destinations = Destination.objects.order_by("id")[:3]
+    return render(request, "core/landing.html", {"featured_destinations": featured_destinations})
 
 
 def health_check(request):

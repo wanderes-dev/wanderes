@@ -95,7 +95,66 @@ class RecommendationsStreamViewTests(TestCase):
         text_part, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
         self.assertEqual(text_part, "Try Lisbon!")
         parsed = json.loads(json_part)
-        self.assertEqual(parsed, [{"slug": "lisbon-pt", "name": "Lisbon", "country": "Portugal"}])
+        self.assertEqual(
+            parsed,
+            [
+                {
+                    "slug": "lisbon-pt",
+                    "name": "Lisbon",
+                    "country": "Portugal",
+                    "trip_type": "City",
+                    "cost_of_living": "Medium",
+                    "avg_high_c": 24.0,
+                    "fit_reasons": [],
+                }
+            ],
+        )
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_recommendation_footer_translates_scoring_factors_into_fit_reasons(self, mock_stream):
+        # 2026-09-01 UI/UX pass: the chat page's recommendation cards show
+        # "why this fits you" - only ever derived from real scoring
+        # factors already computed by recommendations.scoring, never
+        # invented or exposing the AI's own reasoning.
+        destination = Destination.objects.create(
+            slug="bali-id",
+            name="Bali",
+            country="Indonesia",
+            latitude="-8.34000",
+            longitude="115.09000",
+            trip_type="beach",
+            cost_of_living=1,
+            best_season="Apr-Oct",
+            worst_season="Dec-Mar",
+            short_description="A tropical island.",
+            points_of_interest=[],
+        )
+        scored = ScoredDestination(
+            destination=destination,
+            avg_high_c=30.0,
+            avg_low_c=24.0,
+            preference_fit=2.0,
+            budget_fit=1.5,
+            temperature_fit=0.8,
+            repetition_penalty=0.0,
+            score=4.3,
+        )
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[scored],
+            reply_chunks=iter(["Try Bali!"]),
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "somewhere warm and cheap"}
+        )
+
+        content = b"".join(response.streaming_content).decode()
+        _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
+        parsed = json.loads(json_part)
+        self.assertEqual(
+            parsed[0]["fit_reasons"],
+            ["Matches your travel style", "Within your budget", "Great climate match"],
+        )
 
     @patch("ai.views.stream_travel_recommendation")
     def test_passes_authenticated_user_through(self, mock_stream):

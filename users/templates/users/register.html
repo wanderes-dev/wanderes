@@ -1,13 +1,24 @@
 {% extends "base.html" %}
+{% load i18n %}
 
-{% block title %}Register - TravelAgent{% endblock %}
+{% block title %}{% trans "Register" %} - Wanderes{% endblock %}
+
+{% block content_class %}content-flush{% endblock %}
 
 {% block content %}
-<h1>Create your account</h1>
-<form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit" class="btn">Register</button>
-</form>
-<p><a href="{% url 'users:login' %}">Already have an account? Log in</a></p>
+<div class="auth-page">
+    <div class="auth-card">
+        <h1>{% trans "Create your account" %}</h1>
+        <p class="auth-subtitle">{% trans "Save trips, track feedback, and get recommendations that improve over time." %}</p>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">{% trans "Register" %}</button>
+        </form>
+        <p class="auth-footer">
+            {% trans "Already have an account?" %}
+            <a href="{% url 'users:login' %}">{% trans "Log in" %}</a>
+        </p>
+    </div>
+</div>
 {% endblock %}

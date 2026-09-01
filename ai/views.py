@@ -22,6 +22,35 @@ def chat_page(request):
     return render(request, "ai/chat.html")
 
 
+def _recommendation_card_data(scored_destination):
+    """Shape one ScoredDestination into what the chat page's recommendation
+    cards need (2026-09-01 UI/UX pass - `05_AI_DESIGN.md` §7 "never invent
+    travel data" applies to the frontend too, so this only ever exposes
+    real fields already computed by recommendations.scoring, never new
+    facts). `fit_reasons` translates the scoring factors that are already
+    used to rank destinations into safe, user-facing explanations - never
+    exposes the AI's own reasoning or raw scores, matching the existing
+    "no internal chain-of-thought in the UI" boundary."""
+    destination = scored_destination.destination
+    fit_reasons = []
+    if scored_destination.preference_fit > 0:
+        fit_reasons.append("Matches your travel style")
+    if scored_destination.budget_fit > 0:
+        fit_reasons.append("Within your budget")
+    if scored_destination.temperature_fit > 0:
+        fit_reasons.append("Great climate match")
+
+    return {
+        "slug": destination.slug,
+        "name": destination.name,
+        "country": destination.country,
+        "trip_type": destination.get_trip_type_display(),
+        "cost_of_living": destination.get_cost_of_living_display(),
+        "avg_high_c": scored_destination.avg_high_c,
+        "fit_reasons": fit_reasons,
+    }
+
+
 @require_POST
 def recommendations_stream(request):
     # Request Validation (09_AI_ORCHESTRATION.md §3, step 1): reject empty
@@ -60,11 +89,7 @@ def recommendations_stream(request):
         yield from result.reply_chunks
         if result.recommendations:
             payload = [
-                {
-                    "slug": r.destination.slug,
-                    "name": r.destination.name,
-                    "country": r.destination.country,
-                }
+                _recommendation_card_data(r)
                 for r in result.recommendations[:MAX_EXPLAINED_CANDIDATES]
             ]
             yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)

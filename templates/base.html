@@ -3,13 +3,16 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}TravelAgent{% endblock %}</title>
+    <title>{% block title %}Wanderes{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
 </head>
 <body>
     <header class="site-header">
         <div class="site-header-inner">
-            <a class="brand" href="{% url 'ai:chat' %}">Wanderes</a>
+            <a class="brand" href="{% url 'core:landing' %}">Wanderes</a>
             <nav class="site-nav" id="site-nav">
                 <a href="{% url 'ai:chat' %}">Chat</a>
                 {% if user.is_authenticated %}

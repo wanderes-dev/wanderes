@@ -1,14 +1,24 @@
 {% extends "base.html" %}
 {% load i18n %}
 
-{% block title %}Log in - TravelAgent{% endblock %}
+{% block title %}{% trans "Log in" %} - Wanderes{% endblock %}
+
+{% block content_class %}content-flush{% endblock %}
 
 {% block content %}
-<h1>Log in</h1>
-<form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit" class="btn">Log in</button>
-</form>
-<p><a href="{% url 'users:register' %}">Create an account</a></p>
+<div class="auth-page">
+    <div class="auth-card">
+        <h1>{% trans "Welcome back" %}</h1>
+        <p class="auth-subtitle">{% trans "Log in to pick up your trip planning where you left off." %}</p>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">{% trans "Log in" %}</button>
+        </form>
+        <p class="auth-footer">
+            {% trans "New to Wanderes?" %}
+            <a href="{% url 'users:register' %}">{% trans "Create an account" %}</a>
+        </p>
+    </div>
+</div>
 {% endblock %}
