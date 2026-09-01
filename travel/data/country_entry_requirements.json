@@ -1,0 +1,365 @@
+{
+  "$schema_note": "Visa/vaccine/insurance entry-requirement guidance, requested by the user 2026-09-02 ('tabela de country regulation'). IMPORTANT, read before trusting or extending this file: this is compiled from general knowledge, not verified against each country's official government/embassy source, and is NOT exhaustive - it covers the 18 curated Destination countries plus roughly 25 other major destinations, not all ~195 UN member states. Some entries (flagged inline via 'confidence': 'low' where present) cover genuinely volatile situations (e.g. Brazil's reciprocal visa policy toward US/Canada/Australia has changed direction multiple times in recent years; Russia's visa relationships with Western countries are actively shifting; China has been expanding unilateral visa-free entry for various countries) where the general pattern described may already be stale. travel.services.ENTRY_REQUIREMENT_DISCLAIMER must accompany this data wherever it is shown - see travel/models.py's CountryEntryRequirement docstring for why. visa_required_nationalities lists are deliberately representative (major/commonly-relevant nationalities), not exhaustive enumerations of all countries - see each entry's visa_notes for the general exemption structure instead, which is the more reliable and more compact way to describe most countries' policies.",
+  "countries": [
+    {
+      "country": "Portugal",
+      "visa_required_nationalities": ["Brasil", "China", "Índia", "Vietnã", "Nigéria", "Filipinas", "Indonésia", "Marrocos", "Egito"],
+      "visa_notes": "Como país Schengen, segue a política comum do bloco: cidadãos da UE/EEE entram livremente; dezenas de nacionalidades (EUA, Canadá, Reino Unido, Austrália, Japão, Coreia do Sul, e a maior parte da América Latina, incluindo Brasil e Argentina) podem entrar sem visto por até 90 dias em qualquer período de 180 dias. A partir de 2025, viajantes isentos de visto também precisam de autorização ETIAS antes de embarcar. A maioria da África e parte da Ásia precisa de visto Schengen.",
+      "vaccine_requirements": [],
+      "insurance_required": true,
+      "insurance_notes": "Quem precisa de visto Schengen deve comprovar seguro viagem com cobertura mínima de €30.000 para emergências médicas.",
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+    },
+    {
+      "country": "Indonésia",
+      "visa_required_nationalities": ["China", "Índia", "Egito", "Nigéria"],
+      "visa_notes": "Visto na chegada (Visa on Arrival), pago, disponível para cerca de 90 nacionalidades incluindo Brasil, EUA, Reino Unido, países da UE, Austrália e Argentina - válido por 30 dias, prorrogável uma vez. Algumas nacionalidades precisam solicitar visto antes da viagem.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "Não exigido para entrada, mas fortemente recomendado.",
+      "other_requirements": ["Passaporte válido por pelo menos 6 meses", "Comprovante de saída do país (passagem de volta ou continuação)"]
+    },
+    {
+      "country": "Islândia",
+      "visa_required_nationalities": ["Brasil", "China", "Índia", "Vietnã", "Nigéria", "Filipinas", "Indonésia", "Marrocos", "Egito"],
+      "visa_notes": "País Schengen - mesma política do bloco descrita em Portugal.",
+      "vaccine_requirements": [],
+      "insurance_required": true,
+      "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+    },
+    {
+      "country": "África do Sul",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria", "Rússia"],
+      "visa_notes": "Isenção de visto para até 90 dias para cidadãos da UE, Reino Unido, EUA, Canadá, Austrália, Brasil e Argentina, entre outros. Diversos países africanos e asiáticos precisam de visto antecipado.",
+      "vaccine_requirements": ["Febre Amarela - certificado obrigatório para viajantes vindos de (ou em trânsito por) país com risco de transmissão"],
+      "insurance_required": false,
+      "insurance_notes": "Não exigido para entrada, mas recomendado.",
+      "other_requirements": ["Ao menos 2 páginas em branco no passaporte"]
+    },
+    {
+      "country": "Japão",
+      "visa_required_nationalities": ["China", "Índia", "Vietnã", "Filipinas", "Rússia"],
+      "visa_notes": "Isenção de visto por até 90 dias para cerca de 70 países, incluindo a maior parte da UE, Reino Unido, EUA, Canadá, Austrália, Coreia do Sul e boa parte da América Latina (Brasil, Argentina, México). A maioria da África e parte da Ásia precisa de visto.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "Não exigido para entrada, mas recomendado dado o alto custo de saúde local.",
+      "other_requirements": []
+    },
+    {
+      "country": "Peru",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria"],
+      "visa_notes": "Isenção de visto por até 90-183 dias (varia por acordo bilateral) para a maior parte das Américas, UE, Reino Unido, Austrália e Japão.",
+      "vaccine_requirements": ["Febre Amarela - recomendada para quem for visitar regiões amazônicas"],
+      "insurance_required": false,
+      "insurance_notes": "Não exigido para entrada, mas recomendado, especialmente para trilhas de altitude.",
+      "other_requirements": []
+    },
+    {
+      "country": "Marrocos",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria", "Paquistão"],
+      "visa_notes": "Isenção de visto por até 90 dias para UE, Reino Unido, EUA, Canadá e a maior parte da América Latina, incluindo Brasil e Argentina.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Nova Zelândia",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria", "Filipinas"],
+      "visa_notes": "A maioria dos países ocidentais (UE, Reino Unido, EUA, Canadá, Austrália, Japão) precisa apenas de uma autorização eletrônica NZeTA antes de embarcar, não de um visto tradicional, para estadias de até 90 dias. Brasil e Argentina também estão na lista de isenção de visto tradicional, mas precisam do NZeTA. Diversos países da África e Ásia precisam de visto convencional.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "Não exigido, mas fortemente recomendado dado o custo de resgates/emergências em áreas remotas.",
+      "other_requirements": ["NZeTA (autorização eletrônica) obrigatória mesmo para nacionalidades isentas de visto tradicional", "Taxa de conservação turística (IVL) paga junto com o NZeTA"]
+    },
+    {
+      "country": "Tailândia",
+      "visa_required_nationalities": ["Nigéria", "Paquistão"],
+      "visa_notes": "Isenção de visto (30-60 dias, varia por nacionalidade) para a maioria da UE, Reino Unido, EUA, Canadá, Austrália e boa parte da América Latina, incluindo Brasil e Argentina. China e Índia têm acesso facilitado via e-visa ou acordos específicos que mudam com frequência - vale confirmar a política vigente antes de viajar.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "Não exigido para a maioria dos vistos de turismo.",
+      "other_requirements": []
+    },
+    {
+      "country": "Argentina",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria"],
+      "visa_notes": "Isenção de visto por até 90 dias para a maior parte das Américas, UE, Reino Unido, Austrália e Japão.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Grécia",
+      "visa_required_nationalities": ["Brasil", "China", "Índia", "Vietnã", "Nigéria", "Filipinas", "Indonésia", "Marrocos", "Egito"],
+      "visa_notes": "País Schengen - mesma política do bloco descrita em Portugal.",
+      "vaccine_requirements": [],
+      "insurance_required": true,
+      "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+    },
+    {
+      "country": "Canadá",
+      "visa_required_nationalities": ["Brasil", "China", "Índia", "Vietnã", "Nigéria", "Filipinas", "Argentina"],
+      "visa_notes": "Isenção de visto tradicional para UE, Reino Unido, Austrália, Japão e Coreia do Sul, mas é necessária uma autorização eletrônica (eTA) antes de embarcar. Brasil, Argentina e a maior parte da América Latina e África precisam de visto de visitante tradicional (há exceções para quem já teve visto americano ou canadense nos últimos 10 anos - vale confirmar caso a caso).",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "Não exigido para entrada, mas fortemente recomendado dado o alto custo de saúde.",
+      "other_requirements": ["eTA obrigatório mesmo para nacionalidades isentas de visto tradicional"]
+    },
+    {
+      "country": "Tanzânia",
+      "visa_required_nationalities": [],
+      "visa_notes": "Visto na chegada ou e-visa disponível para a maioria das nacionalidades, incluindo Brasil, EUA, UE e Austrália - normalmente sem necessidade de solicitar visto tradicional com antecedência.",
+      "vaccine_requirements": ["Febre Amarela - certificado obrigatório para viajantes vindos de (ou em trânsito por) país com risco de transmissão"],
+      "insurance_required": false,
+      "insurance_notes": "Não exigido para entrada, mas recomendado, especialmente para safáris.",
+      "other_requirements": []
+    },
+    {
+      "country": "Estados Unidos",
+      "visa_required_nationalities": ["Brasil", "Argentina", "Uruguai", "Paraguai", "Bolívia", "Peru", "Colômbia", "México", "Índia", "China", "Rússia", "África do Sul", "Nigéria", "Egito", "Turquia", "Vietnã", "Tailândia", "Filipinas", "Indonésia"],
+      "visa_notes": "O Programa de Isenção de Visto (VWP) cobre cerca de 40 países - a maior parte da UE, Reino Unido, Japão, Coreia do Sul, Austrália, entre outros - que podem entrar por até 90 dias com autorização ESTA em vez de visto. A grande maioria dos demais países, incluindo praticamente toda a América Latina (Brasil, Argentina e vizinhos), precisa de visto de turista (B1/B2) tradicional, com entrevista no consulado.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "Não exigido para entrada, mas essencial dado o custo extremamente alto de saúde nos EUA sem seguro.",
+      "other_requirements": ["ESTA obrigatório (mesmo sem visto) para nacionalidades do VWP, solicitado com antecedência"]
+    },
+    {
+      "country": "Vietnã",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria"],
+      "visa_notes": "Isenção de visto tradicional para uma lista relativamente curta (~25 países, principalmente vizinhos da ASEAN e alguns da Europa Ocidental como Reino Unido, França, Alemanha, Itália, Espanha). E-visa está disponível para muitas outras nacionalidades, incluindo Brasil, EUA, Canadá e Austrália, mas precisa ser solicitado com antecedência - não é visto na chegada sem pré-aprovação.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Croácia",
+      "visa_required_nationalities": ["Brasil", "China", "Índia", "Vietnã", "Nigéria", "Filipinas", "Indonésia", "Marrocos", "Egito"],
+      "visa_notes": "País Schengen desde 2023 - mesma política do bloco descrita em Portugal.",
+      "vaccine_requirements": [],
+      "insurance_required": true,
+      "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+    },
+    {
+      "country": "México",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria"],
+      "visa_notes": "Isenção de visto para EUA, Canadá, UE, Reino Unido, Japão e a maior parte da América Latina. Quem já tem visto americano válido também pode entrar sem visto mexicano em muitos casos.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Maldivas",
+      "visa_required_nationalities": [],
+      "visa_notes": "Política bastante aberta: visto na chegada gratuito por 30 dias para praticamente todas as nacionalidades, incluindo Brasil, EUA, UE, China e Índia.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": ["Comprovante de reserva de hospedagem e passagem de volta"]
+    },
+    {
+      "country": "Reino Unido",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria", "Vietnã"],
+      "visa_notes": "Isenção de visto por até 6 meses para cidadãos da UE, EUA, Canadá, Austrália, Japão, Coreia do Sul e a maior parte da América Latina, incluindo Brasil, Argentina e México. Desde 2025, viajantes isentos de visto (incluindo cidadãos da UE) precisam de autorização eletrônica ETA antes de embarcar.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "Visitantes não têm acesso gratuito ao NHS - seguro viagem fortemente recomendado.",
+      "other_requirements": ["ETA obrigatório mesmo para nacionalidades isentas de visto"]
+    },
+    {
+      "country": "França",
+      "visa_required_nationalities": ["Brasil", "China", "Índia", "Vietnã", "Nigéria", "Filipinas", "Indonésia", "Marrocos", "Egito"],
+      "visa_notes": "País Schengen - mesma política do bloco descrita em Portugal.",
+      "vaccine_requirements": [],
+      "insurance_required": true,
+      "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+    },
+    {
+      "country": "Alemanha",
+      "visa_required_nationalities": ["Brasil", "China", "Índia", "Vietnã", "Nigéria", "Filipinas", "Indonésia", "Marrocos", "Egito"],
+      "visa_notes": "País Schengen - mesma política do bloco descrita em Portugal.",
+      "vaccine_requirements": [],
+      "insurance_required": true,
+      "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+    },
+    {
+      "country": "Itália",
+      "visa_required_nationalities": ["Brasil", "China", "Índia", "Vietnã", "Nigéria", "Filipinas", "Indonésia", "Marrocos", "Egito"],
+      "visa_notes": "País Schengen - mesma política do bloco descrita em Portugal.",
+      "vaccine_requirements": [],
+      "insurance_required": true,
+      "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+    },
+    {
+      "country": "Espanha",
+      "visa_required_nationalities": ["Brasil", "China", "Índia", "Vietnã", "Nigéria", "Filipinas", "Indonésia", "Marrocos", "Egito"],
+      "visa_notes": "País Schengen - mesma política do bloco descrita em Portugal.",
+      "vaccine_requirements": [],
+      "insurance_required": true,
+      "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+    },
+    {
+      "country": "Suíça",
+      "visa_required_nationalities": ["Brasil", "China", "Índia", "Vietnã", "Nigéria", "Filipinas", "Indonésia", "Marrocos", "Egito"],
+      "visa_notes": "País Schengen (embora fora da UE) - mesma política do bloco descrita em Portugal.",
+      "vaccine_requirements": [],
+      "insurance_required": true,
+      "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+    },
+    {
+      "country": "Irlanda",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria", "Vietnã"],
+      "visa_notes": "Não faz parte do Schengen (tem política própria, ligada à Área de Viagem Comum com o Reino Unido). Isenção de visto para a maior parte da UE, EUA, Canadá, Austrália e boa parte da América Latina, incluindo Brasil e Argentina.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Austrália",
+      "visa_required_nationalities": ["Brasil", "China", "Índia", "Nigéria"],
+      "visa_notes": "A maioria dos países ocidentais (UE, Reino Unido, EUA, Canadá, Japão, Coreia do Sul, Singapura) precisa apenas de uma autorização eletrônica (eVisitor ou ETA), não de um visto tradicional, para estadias curtas. Brasil, Argentina e a maior parte da América Latina, além da maior parte da África e Ásia, precisam de visto de visitante tradicional.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "Não exigido, mas fortemente recomendado dado o alto custo de saúde para não-residentes.",
+      "other_requirements": []
+    },
+    {
+      "country": "China",
+      "visa_required_nationalities": ["Brasil", "EUA", "Índia", "Reino Unido", "Canadá", "Austrália"],
+      "visa_notes": "Área em mudança recente e ativa: a China vem expandindo unilateralmente a isenção de visto para diversos países (principalmente da Europa) nos últimos anos, então esta lista pode já estar desatualizada - confirme a política vigente antes de assumir que precisa (ou não) de visto. Historicamente a maioria das nacionalidades, incluindo Brasil e EUA, precisava de visto tradicional solicitado com antecedência.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Índia",
+      "visa_required_nationalities": [],
+      "visa_notes": "Sistema de e-Visa cobre cerca de 170 países, incluindo Brasil, EUA, a maior parte da UE e Austrália - solicitado online, sem necessidade de ir a um consulado presencialmente. Não há isenção total de visto para a maioria das nacionalidades ocidentais.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Emirados Árabes Unidos",
+      "visa_required_nationalities": ["Índia", "Nigéria"],
+      "visa_notes": "Visto na chegada ou isenção de visto (30-90 dias, varia por nacionalidade) para a maioria da UE, Reino Unido, EUA, Canadá, Austrália e boa parte da América Latina, incluindo Brasil.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Egito",
+      "visa_required_nationalities": ["Nigéria"],
+      "visa_notes": "Visto na chegada ou e-visa disponível para a maioria da UE, Reino Unido, EUA, Canadá, Austrália e boa parte da América Latina, incluindo Brasil.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Turquia",
+      "visa_required_nationalities": ["Índia", "Nigéria"],
+      "visa_notes": "Isenção de visto para a maior parte da UE e boa parte da América Latina, incluindo Brasil, por estadias curtas. E-visa disponível para diversas outras nacionalidades.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Brasil",
+      "visa_required_nationalities": [],
+      "visa_notes": "Situação genuinamente volátil e de baixa confiança nesta entrada: a política recíproca do Brasil com EUA, Canadá e Austrália mudou de direção mais de uma vez nos últimos anos (períodos exigindo visto tradicional e períodos de isenção/e-visa) - confirme a política vigente diretamente antes de assumir isenção. UE, Reino Unido, Japão e a maior parte da América Latina normalmente entram sem visto por até 90 dias.",
+      "vaccine_requirements": ["Febre Amarela - recomendada/exigida para quem for visitar a região amazônica ou determinados estados, dependendo do itinerário"],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Rússia",
+      "visa_required_nationalities": ["EUA", "Reino Unido", "UE", "Canadá", "Austrália"],
+      "visa_notes": "Baixa confiança nesta entrada: as relações de visto entre a Rússia e países ocidentais estão em mudança ativa por razões geopolíticas, e a política pode ter mudado significativamente desde que este dado foi compilado - confirme diretamente na fonte oficial antes de qualquer decisão de viagem. Historicamente exige visto tradicional da maioria das nacionalidades ocidentais.",
+      "vaccine_requirements": [],
+      "insurance_required": true,
+      "insurance_notes": "Seguro viagem historicamente exigido como parte do processo de visto.",
+      "other_requirements": []
+    },
+    {
+      "country": "Coreia do Sul",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria"],
+      "visa_notes": "Isenção de visto por até 90 dias para a maior parte da UE, EUA, Canadá, Austrália e boa parte da América Latina, incluindo Brasil e Argentina - mas é necessária uma autorização eletrônica K-ETA antes de embarcar.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": ["K-ETA (autorização eletrônica) obrigatório mesmo para nacionalidades isentas de visto"]
+    },
+    {
+      "country": "Chile",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria"],
+      "visa_notes": "Isenção de visto por até 90 dias para a maior parte das Américas, UE, Reino Unido e Austrália.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Colômbia",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria"],
+      "visa_notes": "Isenção de visto por até 90 dias para a maior parte das Américas, UE, Reino Unido e Austrália.",
+      "vaccine_requirements": ["Febre Amarela - recomendada para quem for visitar regiões amazônicas"],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Costa Rica",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria"],
+      "visa_notes": "Isenção de visto por até 90 dias para a maior parte das Américas, UE, Reino Unido e Austrália.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Filipinas",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria"],
+      "visa_notes": "Isenção de visto por até 30 dias para a maior parte das Américas, UE, Reino Unido e Austrália.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Singapura",
+      "visa_required_nationalities": ["Índia", "Nigéria"],
+      "visa_notes": "Política bastante aberta: isenção de visto para a maioria das nacionalidades, incluindo Brasil, EUA, UE, Reino Unido e Austrália, por até 30-90 dias.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    },
+    {
+      "country": "Malásia",
+      "visa_required_nationalities": ["China", "Índia", "Nigéria"],
+      "visa_notes": "Isenção de visto por até 90 dias para a maior parte das Américas, UE, Reino Unido e Austrália.",
+      "vaccine_requirements": [],
+      "insurance_required": false,
+      "insurance_notes": "",
+      "other_requirements": []
+    }
+  ]
+}

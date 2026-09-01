@@ -1,7 +1,7 @@
 from django.test import TestCase
 
-from travel.models import Destination
-from travel.services import find_destination_slugs_by_name
+from travel.models import CountryEntryRequirement, Destination
+from travel.services import find_destination_slugs_by_name, get_entry_requirements
 
 
 class FindDestinationSlugsByNameTests(TestCase):
@@ -60,3 +60,26 @@ class FindDestinationSlugsByNameTests(TestCase):
         slugs = find_destination_slugs_by_name(["Marrakech", "Portugal"])
 
         self.assertEqual(slugs, frozenset({"marrakech-ma", "lisbon-pt"}))
+
+
+class GetEntryRequirementsTests(TestCase):
+    def setUp(self):
+        self.requirement = CountryEntryRequirement.objects.create(
+            country="Testland",
+            visa_required_nationalities=["Brazil"],
+        )
+
+    def test_matches_by_exact_country_name(self):
+        self.assertEqual(get_entry_requirements("Testland"), self.requirement)
+
+    def test_is_case_insensitive(self):
+        self.assertEqual(get_entry_requirements("testland"), self.requirement)
+
+    def test_strips_whitespace(self):
+        self.assertEqual(get_entry_requirements("  Testland  "), self.requirement)
+
+    def test_no_match_returns_none(self):
+        self.assertIsNone(get_entry_requirements("Nowhereland"))
+
+    def test_empty_name_returns_none(self):
+        self.assertIsNone(get_entry_requirements(""))

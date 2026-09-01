@@ -1,6 +1,31 @@
 from django.db.models import Q
 
-from .models import Destination
+from .models import CountryEntryRequirement, Destination
+
+# Must accompany CountryEntryRequirement data wherever it's ever shown or
+# referenced (see that model's docstring) - visa/vaccine/insurance
+# requirements are compiled from general knowledge, not verified against
+# each country's official source, change over time, and getting them
+# wrong carries real consequences (denied boarding/entry, a real
+# health/legal problem) unlike a merely inaccurate destination fact.
+ENTRY_REQUIREMENT_DISCLAIMER = (
+    "This is general guidance only, not verified against official sources, "
+    "and does not cover every country. Requirements change and can depend "
+    "on your specific nationality, passport, trip purpose, and length of "
+    "stay - always confirm with the destination country's official "
+    "government or embassy website and your airline before booking or "
+    "traveling."
+)
+
+
+def get_entry_requirements(country_name: str) -> CountryEntryRequirement | None:
+    """Look up entry-requirement guidance for a destination country by
+    name (case-insensitive). Returns None if nothing is on file for it -
+    callers must not treat that as "no requirements exist", only as "we
+    don't have data for this one" (see ENTRY_REQUIREMENT_DISCLAIMER)."""
+    if not country_name:
+        return None
+    return CountryEntryRequirement.objects.filter(country__iexact=country_name.strip()).first()
 
 
 def find_destination_slugs_by_name(place_names: list[str]) -> frozenset:

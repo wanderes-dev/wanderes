@@ -52,3 +52,88 @@ class Destination(models.Model):
 
     def __str__(self):
         return f"{self.name}, {self.country}"
+
+
+class CountryEntryRequirement(models.Model):
+    """Visa/vaccine/insurance entry guidance for one destination country
+    (2026-09-02, direct user request - "tabela de country regulation").
+
+    IMPORTANT - a fundamentally higher-stakes category of data than
+    Destination's descriptive travel facts: a traveler relying on a wrong
+    visa or vaccine requirement can be denied boarding, denied entry, or
+    face a real legal/health problem (some countries legally require proof
+    of a specific vaccination at the border). This data is compiled from
+    general knowledge, not verified against each country's official
+    government/embassy source, and does NOT cover every UN member state -
+    see travel/data/country_entry_requirements.json's own $schema_note for
+    the honest coverage/confidence account. For this reason:
+
+    - `travel.services.ENTRY_REQUIREMENT_DISCLAIMER` MUST be shown
+      alongside this data wherever it is ever displayed or referenced -
+      never presented as a substitute for an official source. This is
+      enforced by convention (there is no automatic way to guarantee a
+      future caller includes it), so any new code path that surfaces this
+      data must carry the disclaimer explicitly, the same way
+      05_AI_DESIGN.md §7 already requires for any AI-generated content.
+    - Visa requirements genuinely depend on the traveler's own
+      nationality, not just the destination - `visa_required_nationalities`
+      is deliberately a list (which nationalities need a visa for this
+      destination), not a single yes/no flag, so that nationality
+      dependency is structurally represented rather than flattened away.
+    """
+
+    country = models.CharField(
+        max_length=200,
+        unique=True,
+        help_text="The destination country these requirements apply to.",
+    )
+    visa_required_nationalities = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Nationalities that generally need a visa for a typical short "
+            "tourist stay in this country, e.g. ['Brazil', 'Argentina']. "
+            "Not exhaustive - see visa_notes for waiver programs/nuance."
+        ),
+    )
+    visa_notes = models.TextField(
+        blank=True,
+        help_text=(
+            "Free-form nuance - visa-waiver program names, e-visa availability, "
+            "typical stay length allowed."
+        ),
+    )
+    vaccine_requirements = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Vaccines required or recommended for entry, e.g. "
+            "['Yellow Fever - required if arriving from an endemic country']."
+        ),
+    )
+    insurance_required = models.BooleanField(
+        default=False,
+        help_text=(
+            "Whether travel/health insurance is a formal entry requirement, "
+            "not just a recommendation."
+        ),
+    )
+    insurance_notes = models.TextField(blank=True)
+    other_requirements = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Other entry requirements, e.g. "
+            "['Minimum 6 months passport validity', 'Proof of onward travel']."
+        ),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["country"]
+        verbose_name = "country entry requirement"
+        verbose_name_plural = "country entry requirements"
+
+    def __str__(self):
+        return f"Entry requirements for {self.country}"
