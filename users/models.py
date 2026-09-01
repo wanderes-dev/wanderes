@@ -49,7 +49,7 @@ class UserManager(DjangoUserManager):
 
 
 class User(AbstractUser):
-    """TravelAgent account and authentication identity.
+    """Wanderes account and authentication identity.
 
     Login is by email (not username) per the 2026-08-29 product decision.
     Google OAuth is a planned future login method (not yet implemented) —

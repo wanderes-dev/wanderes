@@ -1,5 +1,5 @@
 {
-  "$schema_note": "Curated initial destination dataset for TravelAgent's MVP, approved by the user on 2026-08-29. Not yet loaded into a Django model — the Destination model itself is a Phase 4 (Joint Review) deliverable per PROJECT_STATE.md. This file is the source of truth to seed that model once it exists. Weather/climate data at request time comes from the Open-Meteo integration (Phase 3 decision), not from the 'best_season'/'worst_season' fields here, which are general descriptive guidance only.",
+  "$schema_note": "Curated initial destination dataset for Wanderes's MVP, approved by the user on 2026-08-29. Not yet loaded into a Django model — the Destination model itself is a Phase 4 (Joint Review) deliverable per PROJECT_STATE.md. This file is the source of truth to seed that model once it exists. Weather/climate data at request time comes from the Open-Meteo integration (Phase 3 decision), not from the 'best_season'/'worst_season' fields here, which are general descriptive guidance only.",
   "cost_of_living_scale": {
     "1": "muito baixo",
     "2": "baixo",

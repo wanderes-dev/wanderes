@@ -2,7 +2,7 @@
 
 ## 1. Frontend Goals
 
-The initial TravelAgent frontend should prioritize:
+The initial Wanderes frontend should prioritize:
 
 * Simplicity.
 * Fast loading.
@@ -16,7 +16,7 @@ The frontend should not introduce complexity unless it provides a clear product 
 
 ## 2. Initial Technology Approach
 
-TravelAgent will initially use **Django templates with JavaScript enhancements**.
+Wanderes will initially use **Django templates with JavaScript enhancements**.
 
 Django will render the main pages and handle server-side application flows.
 
@@ -42,7 +42,7 @@ Business rules, permissions, recommendation logic, and data access remain respon
 
 ## 4. AI Conversation Experience
 
-The TravelAgent conversation interface should support **streaming AI responses**.
+The Wanderes conversation interface should support **streaming AI responses**.
 
 Instead of waiting for the complete AI response before displaying anything:
 
@@ -149,7 +149,7 @@ Background processing
         └── Perform other non-urgent work
 ```
 
-TravelAgent should not move every slow operation into a background job. Interactive operations should provide immediate progress or streamed results where possible.
+Wanderes should not move every slow operation into a background job. Interactive operations should provide immediate progress or streamed results where possible.
 
 ## 10. Future Evolution
 

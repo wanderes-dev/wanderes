@@ -1,9 +1,9 @@
 
-# Product Requirements — TravelAgent
+# Product Requirements — Wanderes
 
 ## 1. Purpose
 
-This document defines the product requirements for TravelAgent. It translates the company's vision and product principles into clear, actionable requirements describing what TravelAgent must provide to travelers. It focuses on what the product must do; technical design and implementation belong in architecture and engineering documents.
+This document defines the product requirements for Wanderes. It translates the company's vision and product principles into clear, actionable requirements describing what Wanderes must provide to travelers. It focuses on what the product must do; technical design and implementation belong in architecture and engineering documents.
 
 The document covers:
 
@@ -17,9 +17,9 @@ The document covers:
 
 ### 2.1 Product Goals
 
-TravelAgent helps people travel more confidently by making travel decisions easier, more personalized, and less overwhelming.
+Wanderes helps people travel more confidently by making travel decisions easier, more personalized, and less overwhelming.
 
-TravelAgent must:
+Wanderes must:
 
 - Understand each traveler as an individual (preferences, priorities, constraints, travel history).
 - Support discovery when the traveler has no fixed destination.
@@ -34,7 +34,7 @@ Optimize for decision quality, traveler confidence, and meaningful experiences r
 
 ### 2.2 Target Users
 
-TravelAgent serves travelers who want personalized guidance. Primary user archetypes include:
+Wanderes serves travelers who want personalized guidance. Primary user archetypes include:
 
 - Independent Traveler: organizes their own travel but wants efficient decision support.
 - Undecided Traveler: needs help discovering suitable destinations.
@@ -45,7 +45,7 @@ Users may span multiple archetypes depending on trip context.
 
 ### 2.3 User Needs
 
-TravelAgent should help users:
+Wanderes should help users:
 
 - Discover destinations and turn vague intentions into concrete options.
 - Choose appropriate dates and budgets.
@@ -58,7 +58,7 @@ Match and connection logic must prioritize meaningful compatibility (interests, 
 
 ## 3. Core Experience
 
-TravelAgent should guide travelers through a flexible, conversational decision journey. The experience should feel like a trusted travel consultant and allow users to enter, leave, or skip stages.
+Wanderes should guide travelers through a flexible, conversational decision journey. The experience should feel like a trusted travel consultant and allow users to enter, leave, or skip stages.
 
 ### 3.1 Expressing Intent
 
@@ -70,7 +70,7 @@ For open-ended requests, recommendations must consider budget, time, interests, 
 
 ### 3.3 Refinement & Evaluation
 
-Decisions should evolve through dialogue. TravelAgent must accept feedback, update recommendations, and show for each option:
+Decisions should evolve through dialogue. Wanderes must accept feedback, update recommendations, and show for each option:
 
 - Reasons it may fit the traveler
 - Reasons it may not fit
@@ -81,11 +81,11 @@ Personalized explanations should reference the traveler's profile and history wh
 
 ### 3.4 Decision Support & Handoff
 
-Once a traveler is ready, TravelAgent should support progressive decisions (destination, dates, flights, accommodation, activities) and hand off to booking providers without becoming the merchant of record. The traveler completes bookings and providers fulfill services.
+Once a traveler is ready, Wanderes should support progressive decisions (destination, dates, flights, accommodation, activities) and hand off to booking providers without becoming the merchant of record. The traveler completes bookings and providers fulfill services.
 
 ### 3.5 Social Connections
 
-When users opt in, TravelAgent may surface compatible travelers. Matching must be transparent and user-controlled (discoverability, viewing matches, initiating contact).
+When users opt in, Wanderes may surface compatible travelers. Matching must be transparent and user-controlled (discoverability, viewing matches, initiating contact).
 
 ### 3.6 Post-Trip Learning
 
@@ -93,7 +93,7 @@ After trips, invite structured feedback (rating 1–10, positive/negative commen
 
 ## 4. Functional Requirements
 
-TravelAgent must provide the following core capabilities.
+Wanderes must provide the following core capabilities.
 
 ### 4.1 Accounts & Privacy
 
@@ -148,15 +148,15 @@ Traveler connections must remain optional and must not interfere with the core t
 
 ### 4.10 Provider Handoff
 
-When a traveler is ready to book, TravelAgent should provide a clear path to the relevant travel provider or booking platform.
+When a traveler is ready to book, Wanderes should provide a clear path to the relevant travel provider or booking platform.
 
 The handoff should preserve the context of the recommendation where possible, so the traveler does not feel that the consultation abruptly ends before booking.
 
-TravelAgent does not assume responsibility for the travel service itself. The relevant provider remains responsible for the booking and service delivered.
+Wanderes does not assume responsibility for the travel service itself. The relevant provider remains responsible for the booking and service delivered.
 
 ## 5. Personalization & Intelligence
 
-TravelAgent must provide recommendations that become increasingly relevant as it learns more about each traveler.
+Wanderes must provide recommendations that become increasingly relevant as it learns more about each traveler.
 
 Personalization should be based on the combination of the traveler's current request, persistent profile, travel history, feedback, and relevant contextual information.
 
@@ -164,7 +164,7 @@ Personalization should be based on the combination of the traveler's current req
 
 Recommendations must reflect the individual traveler rather than generic popularity or general destination rankings.
 
-TravelAgent should consider, when relevant:
+Wanderes should consider, when relevant:
 
 * Traveler preferences.
 * Travel history.
@@ -182,7 +182,7 @@ The same destination or travel option may therefore receive different recommenda
 
 ### 5.2 Recommendation Explainability
 
-TravelAgent must explain the reasoning behind meaningful recommendations.
+Wanderes must explain the reasoning behind meaningful recommendations.
 
 The explanation should communicate:
 
@@ -197,7 +197,7 @@ Explanations should be understandable to the traveler and should not expose inte
 
 ### 5.3 Continuous Learning
 
-TravelAgent should improve its understanding of the traveler over time.
+Wanderes should improve its understanding of the traveler over time.
 
 Relevant information from conversations, recommendations, trips, and feedback may contribute to future personalization.
 
@@ -207,7 +207,7 @@ When inferred preferences conflict with explicit information provided by the tra
 
 ### 5.4 Context Awareness
 
-TravelAgent should distinguish between the traveler's long-term preferences and the requirements of a specific trip.
+Wanderes should distinguish between the traveler's long-term preferences and the requirements of a specific trip.
 
 For example, a traveler may generally prefer:
 
@@ -227,7 +227,7 @@ The current trip context must therefore be able to temporarily override or modif
 
 Recommendations should evolve as the conversation progresses.
 
-When a traveler provides new information, changes a preference, rejects an option, or adds a constraint, TravelAgent should reconsider relevant recommendations rather than continuing to rely on outdated assumptions.
+When a traveler provides new information, changes a preference, rejects an option, or adds a constraint, Wanderes should reconsider relevant recommendations rather than continuing to rely on outdated assumptions.
 
 ### 5.6 Trust and Independence
 
@@ -237,9 +237,9 @@ The traveler's interests must remain the primary objective of the recommendation
 
 ### 5.7 Collective Intelligence
 
-TravelAgent should learn from aggregated experiences and feedback across its traveler community to improve recommendations for future users.
+Wanderes should learn from aggregated experiences and feedback across its traveler community to improve recommendations for future users.
 
-When sufficient and relevant data is available, TravelAgent may identify patterns such as:
+When sufficient and relevant data is available, Wanderes may identify patterns such as:
 
 - Destinations that perform well for specific types of trips.
 - Destinations that are highly rated by travelers with similar profiles.
@@ -266,12 +266,12 @@ Collective intelligence should be presented transparently when it meaningfully i
 
 ## 6. Free & Premium
 
-TravelAgent should provide a meaningful free experience while using Premium to unlock greater usage, persistent travel capabilities, collective intelligence, and traveler-to-traveler interactions.
+Wanderes should provide a meaningful free experience while using Premium to unlock greater usage, persistent travel capabilities, collective intelligence, and traveler-to-traveler interactions.
 
 Premium should enhance the product without compromising the trustworthiness of the Free experience.
 ### 6.1 Unregistered Users
 
-Unregistered users should be able to experience TravelAgent without creating an account.
+Unregistered users should be able to experience Wanderes without creating an account.
 
 The unregistered experience is intended to demonstrate the platform's ability to provide useful travel information and basic travel recommendations.
 
@@ -279,7 +279,7 @@ An unregistered user may ask questions such as:
 
 > "I want to travel somewhere warm."
 
-TravelAgent may respond with relevant destinations and provide basic information and external options such as flights, hotels, or booking links.
+Wanderes may respond with relevant destinations and provide basic information and external options such as flights, hotels, or booking links.
 
 However, unregistered users do not receive a personalized travel consultation.
 
@@ -296,13 +296,13 @@ Unregistered users should not have access to:
 - Community intelligence.
 - Traveler-to-traveler communication.
 
-The unregistered experience should demonstrate the usefulness of TravelAgent while creating a natural opportunity for the user to register when they want a personalized travel experience.
+The unregistered experience should demonstrate the usefulness of Wanderes while creating a natural opportunity for the user to register when they want a personalized travel experience.
 
 ### 6.2 Registered Free Users
 
-Registered Free users receive the personalized TravelAgent experience.
+Registered Free users receive the personalized Wanderes experience.
 
-TravelAgent may:
+Wanderes may:
 
 - Build and maintain a traveler profile.
 - Remember relevant preferences.
@@ -332,7 +332,7 @@ Premium users receive everything available to Registered Free users, plus:
 
 ### 6.4 Collective Intelligence
 
-Premium users may benefit from aggregated knowledge generated by the TravelAgent community.
+Premium users may benefit from aggregated knowledge generated by the Wanderes community.
 
 This may include:
 
@@ -363,7 +363,7 @@ A Premium user should be able to search for a destination and discover travelers
 - Have previously traveled there.
 - Have relevant experience with the destination.
 
-For example, a traveler considering Paris should be able to discover other TravelAgent users who have visited or are currently visiting Paris and may be able to share relevant first-hand experiences.
+For example, a traveler considering Paris should be able to discover other Wanderes users who have visited or are currently visiting Paris and may be able to share relevant first-hand experiences.
 
 The user may then request to connect and, when the connection is accepted, communicate with that traveler.
 
@@ -395,7 +395,7 @@ Sensitive personal information, precise location, booking information, contact i
 
 ### 6.4.2 Traveler Communication
 
-After a connection is accepted, Premium users may communicate with each other through TravelAgent.
+After a connection is accepted, Premium users may communicate with each other through Wanderes.
 
 Users must be able to:
 
@@ -409,7 +409,7 @@ Traveler communication must be designed with privacy, consent, safety, and moder
 
 ### 6.5 Free vs Premium Philosophy
 
-The Free product should demonstrate the core value of TravelAgent.
+The Free product should demonstrate the core value of Wanderes.
 
 Premium should provide significantly greater:
 
@@ -423,13 +423,13 @@ Premium should never make the Free experience intentionally inaccurate, misleadi
 
 ## 7. Trust, Transparency & Safety
 
-Trust is a fundamental product requirement for TravelAgent.
+Trust is a fundamental product requirement for Wanderes.
 
 Travelers must feel that recommendations are designed to help them make better decisions, not to serve commercial interests or manipulate their choices.
 
 ### 7.1 Independent Recommendations
 
-TravelAgent recommendations must prioritize the traveler's interests.
+Wanderes recommendations must prioritize the traveler's interests.
 
 Recommendations must not be influenced by:
 
@@ -443,7 +443,7 @@ Commercial relationships, if introduced in the future, must not compromise recom
 
 ### 7.2 Recommendation Transparency
 
-TravelAgent should clearly explain why a destination, hotel, airline, or other travel option is recommended.
+Wanderes should clearly explain why a destination, hotel, airline, or other travel option is recommended.
 
 Where relevant, the traveler should understand:
 
@@ -455,7 +455,7 @@ Where relevant, the traveler should understand:
 * Relevant community insights.
 * Important limitations or uncertainty.
 
-TravelAgent should never present a recommendation as objectively correct when the decision depends on personal preferences or incomplete information.
+Wanderes should never present a recommendation as objectively correct when the decision depends on personal preferences or incomplete information.
 
 ### 7.3 User Control
 
@@ -471,13 +471,13 @@ Users should be able to:
 * Provide or withdraw feedback.
 * Control whether they are discoverable by other travelers.
 
-TravelAgent should assist decision-making rather than make decisions on behalf of the traveler.
+Wanderes should assist decision-making rather than make decisions on behalf of the traveler.
 
 ### 7.4 Community Data and Reviews
 
 Community-generated information must be handled responsibly.
 
-TravelAgent should distinguish between:
+Wanderes should distinguish between:
 
 * Individual traveler experiences.
 * Aggregated community insights.
@@ -490,11 +490,11 @@ When sufficient data exists, aggregated insights should provide context such as 
 
 ### 7.5 Uncertainty and Information Quality
 
-TravelAgent must acknowledge uncertainty when information is incomplete, outdated, conflicting, or unreliable.
+Wanderes must acknowledge uncertainty when information is incomplete, outdated, conflicting, or unreliable.
 
 The system should avoid presenting assumptions as facts.
 
-When information may materially affect a traveler's decision, TravelAgent should clearly communicate the limitation and, where appropriate, recommend verifying the information with the relevant provider.
+When information may materially affect a traveler's decision, Wanderes should clearly communicate the limitation and, where appropriate, recommend verifying the information with the relevant provider.
 
 ### 7.6 Traveler-to-Traveler Safety
 
@@ -515,11 +515,11 @@ Users must be able to:
 * End conversations.
 * Remove connections.
 
-TravelAgent must not expose sensitive information such as precise location, accommodation room information, contact details, booking details, or other private information without explicit user consent.
+Wanderes must not expose sensitive information such as precise location, accommodation room information, contact details, booking details, or other private information without explicit user consent.
 
 ### 7.7 Provider Responsibility
 
-TravelAgent provides recommendations and decision support.
+Wanderes provides recommendations and decision support.
 
 Travel providers remain responsible for the services they sell, including:
 
@@ -532,39 +532,39 @@ Travel providers remain responsible for the services they sell, including:
 * Baggage.
 * Other travel services.
 
-TravelAgent should clearly communicate this distinction when relevant.
+Wanderes should clearly communicate this distinction when relevant.
 
 ### 7.8 No Manipulative Recommendations
 
-TravelAgent must not use artificial urgency, misleading claims, hidden commercial incentives, or other manipulative techniques to influence travel decisions.
+Wanderes must not use artificial urgency, misleading claims, hidden commercial incentives, or other manipulative techniques to influence travel decisions.
 
 The objective is to help the traveler make the decision that best fits their needs, even when that decision does not result in a booking or transaction.
 
 
 ### 7.9 Purpose-Limited Data Use
 
-TravelAgent must collect, store, and process personal information only when it is necessary to:
+Wanderes must collect, store, and process personal information only when it is necessary to:
 
-- Provide the TravelAgent service.
+- Provide the Wanderes service.
 - Personalize the traveler's experience.
 - Improve recommendations.
-- Improve the TravelAgent product and its services.
+- Improve the Wanderes product and its services.
 - Maintain security, reliability, and legal compliance.
 
-TravelAgent must not use personal information for purposes unrelated to the traveler's experience or the improvement and operation of the platform.
+Wanderes must not use personal information for purposes unrelated to the traveler's experience or the improvement and operation of the platform.
 
 Personal information must not be sold or used for unrelated commercial purposes.
 
-TravelAgent should follow the principle of data minimization, collecting only the information that is reasonably necessary for the intended purpose.
+Wanderes should follow the principle of data minimization, collecting only the information that is reasonably necessary for the intended purpose.
 
-Where information is used to improve the platform or its recommendation systems, TravelAgent should apply appropriate privacy protections and, where possible, use aggregated, anonymized, or otherwise privacy-preserving data.
+Where information is used to improve the platform or its recommendation systems, Wanderes should apply appropriate privacy protections and, where possible, use aggregated, anonymized, or otherwise privacy-preserving data.
 
-Users should be able to understand, through clear and accessible information, how their data is used to provide and improve the TravelAgent experience.
+Users should be able to understand, through clear and accessible information, how their data is used to provide and improve the Wanderes experience.
 
 
 ### 7.10 User Information Isolation
 
-TravelAgent must never disclose, reveal, or transfer private information belonging to one user to another user through the AI system.
+Wanderes must never disclose, reveal, or transfer private information belonging to one user to another user through the AI system.
 
 A user's personal information, profile data, memories, conversations, travel history, preferences, feedback, behavioral data, or other private information must not be used as information about that user when interacting with another traveler.
 
@@ -576,7 +576,7 @@ The AI must not:
 - Reveal another user's location, travel plans, bookings, contact information, or other private information.
 - Infer and disclose sensitive information about another traveler from internal platform data.
 
-When users interact with each other through TravelAgent, only information that the relevant user has explicitly chosen to make visible or share may be presented to another traveler.
+When users interact with each other through Wanderes, only information that the relevant user has explicitly chosen to make visible or share may be presented to another traveler.
 
 User-to-user communication must therefore operate on an explicit consent model:
 
@@ -586,11 +586,11 @@ The AI must never override these boundaries in order to provide a more personali
 
 ## 8. Non-Functional Requirements
 
-TravelAgent must provide a reliable, secure, responsive, and scalable experience.
+Wanderes must provide a reliable, secure, responsive, and scalable experience.
 
 ### 8.1 Performance
 
-TravelAgent should provide responsive interactions during normal usage.
+Wanderes should provide responsive interactions during normal usage.
 
 The system should:
 
@@ -603,7 +603,7 @@ Performance requirements should be refined as real usage data becomes available.
 
 ### 8.2 Reliability
 
-TravelAgent should remain available and stable during normal operation.
+Wanderes should remain available and stable during normal operation.
 
 The system must:
 
@@ -612,7 +612,7 @@ The system must:
 * Protect the integrity of travel history, profiles, feedback, and recommendations.
 * Provide appropriate fallback behavior when external services are unavailable.
 
-A failure of an external provider or integration should not unnecessarily compromise the rest of the TravelAgent experience.
+A failure of an external provider or integration should not unnecessarily compromise the rest of the Wanderes experience.
 
 ### 8.3 Scalability
 
@@ -630,7 +630,7 @@ The system should be designed so that increasing usage does not require fundamen
 
 ### 8.4 Security
 
-TravelAgent must protect user accounts and data against unauthorized access, modification, disclosure, and loss.
+Wanderes must protect user accounts and data against unauthorized access, modification, disclosure, and loss.
 
 Security must include appropriate controls for:
 
@@ -661,7 +661,7 @@ Privacy requirements must be reflected in the system architecture and data model
 
 ### 8.6 Availability and Recovery
 
-TravelAgent should be designed to recover from infrastructure, application, and integration failures.
+Wanderes should be designed to recover from infrastructure, application, and integration failures.
 
 The platform should include:
 
@@ -689,7 +689,7 @@ Observability systems must themselves respect user privacy and must not unnecess
 
 ### 8.8 Maintainability
 
-TravelAgent should be designed for long-term evolution.
+Wanderes should be designed for long-term evolution.
 
 The system should:
 
@@ -704,11 +704,11 @@ Technical implementation details will be defined in the subsequent architecture 
 
 ## 9. Out of Scope
 
-TravelAgent is an Intelligent Travel Consultant. The following capabilities are intentionally outside the core scope of the product.
+Wanderes is an Intelligent Travel Consultant. The following capabilities are intentionally outside the core scope of the product.
 
 ### 9.1 Travel Provider Operations
 
-TravelAgent will not operate or directly provide:
+Wanderes will not operate or directly provide:
 
 * Flights.
 * Hotels.
@@ -722,13 +722,13 @@ Travel providers remain responsible for delivering these services.
 
 ### 9.2 Direct Booking Fulfillment
 
-TravelAgent may help travelers identify and evaluate suitable options and direct them to the relevant provider or booking platform.
+Wanderes may help travelers identify and evaluate suitable options and direct them to the relevant provider or booking platform.
 
-TravelAgent is not responsible for fulfilling the booking or delivering the purchased service.
+Wanderes is not responsible for fulfilling the booking or delivering the purchased service.
 
 ### 9.3 Travel Agency Operations
 
-TravelAgent will not operate as a traditional travel agency.
+Wanderes will not operate as a traditional travel agency.
 
 The platform will not primarily depend on human travel agents manually creating and managing trips for customers.
 
@@ -736,7 +736,7 @@ The core product is an intelligent, technology-driven travel consultation experi
 
 ### 9.4 Guaranteed Travel Outcomes
 
-TravelAgent cannot guarantee:
+Wanderes cannot guarantee:
 
 * The quality of a travel provider.
 * A specific travel experience.
@@ -752,7 +752,7 @@ Recommendations are intended to support informed decisions, not guarantee result
 
 Traveler-to-traveler connections are intended to support travel-related interactions.
 
-TravelAgent is not intended to become a general-purpose social network.
+Wanderes is not intended to become a general-purpose social network.
 
 Social features should remain focused on:
 
@@ -763,13 +763,13 @@ Social features should remain focused on:
 
 ### 9.6 Uncontrolled AI Autonomy
 
-TravelAgent should assist travelers in making decisions but should not make irreversible travel decisions without appropriate user involvement.
+Wanderes should assist travelers in making decisions but should not make irreversible travel decisions without appropriate user involvement.
 
 The traveler remains in control of significant decisions and actions.
 
 ### 9.7 Commercially Biased Recommendations
 
-TravelAgent will not intentionally prioritize recommendations based on:
+Wanderes will not intentionally prioritize recommendations based on:
 
 * Advertising revenue.
 * Sponsorship.
@@ -781,13 +781,13 @@ Traveler interests remain the primary consideration.
 
 ### 9.8 Unnecessary Data Collection
 
-TravelAgent will not collect or retain personal information simply because it may be technically possible or commercially useful.
+Wanderes will not collect or retain personal information simply because it may be technically possible or commercially useful.
 
 Personal information must have a defined and legitimate purpose related to the traveler experience, platform operation, security, or legal requirements.
 
 ### 9.9 Non-Travel Requests
 
-TravelAgent is designed specifically for travel-related assistance.
+Wanderes is designed specifically for travel-related assistance.
 
 The AI should focus its responses on topics that are directly relevant to:
 
@@ -809,21 +809,21 @@ The AI should not act as a general-purpose assistant or provide unrelated assist
 - General medical advice unrelated to travel.
 - General financial advice unrelated to travel.
 - General entertainment or unrelated personal tasks.
-- Other requests outside the TravelAgent domain.
+- Other requests outside the Wanderes domain.
 
-When a user asks an unrelated question, TravelAgent should politely explain that it is focused on travel and redirect the conversation toward travel-related assistance.
+When a user asks an unrelated question, Wanderes should politely explain that it is focused on travel and redirect the conversation toward travel-related assistance.
 
 The AI may answer questions from adjacent domains when they are necessary to support a travel-related decision.
 
 For example, questions about weather, currency, health requirements, local culture, safety, or language may be relevant when they directly relate to a traveler's trip.
 
-TravelAgent should therefore evaluate the **context and purpose of the request**, rather than relying only on the subject of the individual question.
+Wanderes should therefore evaluate the **context and purpose of the request**, rather than relying only on the subject of the individual question.
 
 ## 10. MVP Scope & Success Criteria
 
-The MVP should validate the core TravelAgent proposition:
+The MVP should validate the core Wanderes proposition:
 
-> **Can TravelAgent understand a traveler and help them make better travel decisions through personalized, explainable recommendations?**
+> **Can Wanderes understand a traveler and help them make better travel decisions through personalized, explainable recommendations?**
 
 The MVP should focus on the individual traveler's experience before introducing the full community and social ecosystem.
 
@@ -895,7 +895,7 @@ The following capabilities should be introduced after validating the core produc
 
 ### 10.3 Future
 
-The broader TravelAgent vision may include:
+The broader Wanderes vision may include:
 
 * Destination-based traveler discovery.
 * Compatibility-based traveler matching.
@@ -914,18 +914,18 @@ Success should be measured by whether travelers find the recommendations genuine
 
 Key indicators should include:
 
-* Users returning to TravelAgent for additional travel decisions.
-* Users completing trips planned with TravelAgent.
+* Users returning to Wanderes for additional travel decisions.
+* Users completing trips planned with Wanderes.
 * Users providing feedback after recommendations and trips.
 * Users reporting that recommendations match their preferences.
-* Users choosing a TravelAgent recommendation over alternatives they discovered independently.
+* Users choosing a Wanderes recommendation over alternatives they discovered independently.
 * Improvement in recommendation relevance as the system learns from each traveler.
 * Reduction in the time users spend researching travel decisions.
 * Users expressing greater confidence in their travel decisions.
 
 A particularly important long-term success indicator is:
 
-> **People travel more, or travel more confidently, because of TravelAgent.**
+> **People travel more, or travel more confidently, because of Wanderes.**
 
 The ultimate objective is not to maximize the number of recommendations generated, conversations held, or trips planned.
 
@@ -933,11 +933,11 @@ The objective is to help more people discover and take trips that are genuinely 
 
 ## 11. Product Metrics
 
-TravelAgent should measure success based on the quality of the traveler's experience and the value created for travelers, rather than only measuring usage or revenue.
+Wanderes should measure success based on the quality of the traveler's experience and the value created for travelers, rather than only measuring usage or revenue.
 
 ### 11.1 Recommendation Quality
 
-TravelAgent should measure whether recommendations are relevant to the individual traveler.
+Wanderes should measure whether recommendations are relevant to the individual traveler.
 
 Key indicators include:
 
@@ -950,18 +950,18 @@ Key indicators include:
 
 ### 11.2 Traveler Confidence
 
-TravelAgent should measure whether the product helps travelers feel more confident about their decisions.
+Wanderes should measure whether the product helps travelers feel more confident about their decisions.
 
 Possible indicators include:
 
 - Traveler-reported confidence before making a decision.
-- Traveler-reported confidence after using TravelAgent.
+- Traveler-reported confidence after using Wanderes.
 - Reduction in uncertainty during planning.
 - Traveler satisfaction with the final decision.
 
 ### 11.3 Engagement & Retention
 
-TravelAgent should measure whether users return because the product provides ongoing value.
+Wanderes should measure whether users return because the product provides ongoing value.
 
 Key indicators include:
 
@@ -972,23 +972,23 @@ Key indicators include:
 - Repeat usage across different trips.
 - Long-term user retention.
 
-Usage alone should not be treated as success. Repeated usage should indicate that TravelAgent continues to provide meaningful value.
+Usage alone should not be treated as success. Repeated usage should indicate that Wanderes continues to provide meaningful value.
 
 ### 11.4 Travel Outcomes
 
-TravelAgent should measure what happens after recommendations are made.
+Wanderes should measure what happens after recommendations are made.
 
 Relevant indicators include:
 
-- Trips planned with TravelAgent.
-- Trips actually taken after using TravelAgent.
+- Trips planned with Wanderes.
+- Trips actually taken after using Wanderes.
 - Traveler satisfaction after completed trips.
-- Percentage of travelers who would recommend TravelAgent.
-- Percentage of travelers who would use TravelAgent for their next trip.
+- Percentage of travelers who would recommend Wanderes.
+- Percentage of travelers who would use Wanderes for their next trip.
 
 ### 11.5 Learning & Personalization
 
-TravelAgent should measure whether its understanding of each traveler improves over time.
+Wanderes should measure whether its understanding of each traveler improves over time.
 
 Indicators may include:
 
@@ -1000,7 +1000,7 @@ Indicators may include:
 
 ### 11.6 Community Intelligence
 
-Once community features are introduced, TravelAgent should measure whether aggregated traveler knowledge improves recommendations.
+Once community features are introduced, Wanderes should measure whether aggregated traveler knowledge improves recommendations.
 
 Possible indicators include:
 
@@ -1028,31 +1028,31 @@ Business metrics must not encourage practices that compromise recommendation ind
 
 ### 11.8 Long-Term Impact
 
-The most important long-term success indicator is whether TravelAgent contributes to more people traveling and having better travel experiences.
+The most important long-term success indicator is whether Wanderes contributes to more people traveling and having better travel experiences.
 
 The company should therefore aim to measure:
 
-> **How many people traveled, or traveled more confidently, because of TravelAgent?**
+> **How many people traveled, or traveled more confidently, because of Wanderes?**
 
 This may include:
 
-- Users who took their first trip after using TravelAgent.
-- Users who traveled more frequently after becoming TravelAgent users.
+- Users who took their first trip after using Wanderes.
+- Users who traveled more frequently after becoming Wanderes users.
 - Users who discovered a destination they would not otherwise have considered.
-- Users who reported that TravelAgent gave them the confidence to travel.
-- Users who returned to TravelAgent for subsequent trips.
+- Users who reported that Wanderes gave them the confidence to travel.
+- Users who returned to Wanderes for subsequent trips.
 
-The ultimate measure of TravelAgent's success is not the number of conversations or recommendations generated.
+The ultimate measure of Wanderes's success is not the number of conversations or recommendations generated.
 
-**It is the number of travelers whose decisions and experiences were meaningfully improved by TravelAgent.**
+**It is the number of travelers whose decisions and experiences were meaningfully improved by Wanderes.**
 
 ## 12. Product Constraints & Assumptions
 
-TravelAgent's product decisions are based on the following constraints and assumptions.
+Wanderes's product decisions are based on the following constraints and assumptions.
 
 ### 12.1 Travel Consultant, Not Travel Provider
 
-TravelAgent provides travel consultation and decision support.
+Wanderes provides travel consultation and decision support.
 
 It does not operate airlines, hotels, transportation services, or other travel services.
 
@@ -1066,13 +1066,13 @@ Commercial relationships must not influence recommendation ranking or decision-m
 
 ### 12.3 AI Is the Technology, Not the Product
 
-TravelAgent is positioned as an Intelligent Travel Consultant.
+Wanderes is positioned as an Intelligent Travel Consultant.
 
 Users should experience the product as a trusted travel consultant rather than as a general-purpose AI assistant.
 
 ### 12.4 Human Decision-Making Remains Central
 
-TravelAgent assists travelers in making decisions but does not replace the traveler.
+Wanderes assists travelers in making decisions but does not replace the traveler.
 
 The traveler remains responsible for their final travel decisions and bookings.
 
@@ -1080,7 +1080,7 @@ The traveler remains responsible for their final travel decisions and bookings.
 
 Personal information should only be collected, stored, and processed for legitimate purposes related to:
 
-- Providing the TravelAgent experience.
+- Providing the Wanderes experience.
 - Personalization.
 - Platform improvement.
 - Security.
@@ -1100,11 +1100,11 @@ External information may be:
 - Temporarily unavailable.
 - Subject to change.
 
-TravelAgent must account for these limitations and communicate meaningful uncertainty to travelers.
+Wanderes must account for these limitations and communicate meaningful uncertainty to travelers.
 
 ### 12.7 Personalization Requires Continuous Learning
 
-The quality of TravelAgent's recommendations should improve as travelers provide more information, feedback, and travel history.
+The quality of Wanderes's recommendations should improve as travelers provide more information, feedback, and travel history.
 
 However, inferred preferences must not automatically override explicit preferences provided by the traveler.
 
@@ -1122,14 +1122,14 @@ These requirements must be addressed before social functionality is released.
 
 ### 12.10 MVP Scope
 
-The initial product must prioritize the core TravelAgent experience:
+The initial product must prioritize the core Wanderes experience:
 
 > Understanding the traveler → providing personalized recommendations → explaining the reasoning → learning from the traveler's feedback.
 
 Advanced community intelligence and social functionality should be introduced progressively after the core experience has been validated.
 ### 12.11 Referral and Affiliate Revenue
 
-TravelAgent may generate revenue by directing travelers to external travel providers through referral or affiliate links.
+Wanderes may generate revenue by directing travelers to external travel providers through referral or affiliate links.
 
 Referral or affiliate revenue must never influence:
 
@@ -1141,17 +1141,17 @@ Referral or affiliate revenue must never influence:
 
 The traveler's interests must remain the primary factor in all recommendations.
 
-If a commercial relationship could reasonably affect the perception of recommendation independence, TravelAgent should provide appropriate transparency to the traveler.
+If a commercial relationship could reasonably affect the perception of recommendation independence, Wanderes should provide appropriate transparency to the traveler.
 
 Detailed monetization models, commission structures, and commercial partnerships are defined in `13_monetization.md`.
 
 ## 13. Product Dependencies
 
-TravelAgent's ability to provide accurate and useful recommendations depends on several external and internal dependencies.
+Wanderes's ability to provide accurate and useful recommendations depends on several external and internal dependencies.
 
 ### 13.1 External Travel Data
 
-TravelAgent may depend on external data sources for information such as:
+Wanderes may depend on external data sources for information such as:
 
 - Flights.
 - Hotels.
@@ -1167,13 +1167,13 @@ External data may change frequently and may not always be complete or accurate.
 
 ### 13.2 Travel Providers
 
-TravelAgent may depend on airlines, hotels, booking platforms, and other travel providers to provide current information and allow travelers to continue their booking journey.
+Wanderes may depend on airlines, hotels, booking platforms, and other travel providers to provide current information and allow travelers to continue their booking journey.
 
-TravelAgent does not control the availability, pricing, policies, or quality of these providers.
+Wanderes does not control the availability, pricing, policies, or quality of these providers.
 
 ### 13.3 External APIs and Services
 
-TravelAgent may depend on third-party APIs and services for:
+Wanderes may depend on third-party APIs and services for:
 
 - Travel data.
 - Maps and geographic information.
@@ -1188,7 +1188,7 @@ The system should be designed to minimize the impact of failures or changes in i
 
 ### 13.4 AI Infrastructure
 
-TravelAgent depends on AI models and supporting AI infrastructure to provide conversational understanding, reasoning, personalization, and recommendation capabilities.
+Wanderes depends on AI models and supporting AI infrastructure to provide conversational understanding, reasoning, personalization, and recommendation capabilities.
 
 The product must not assume that an AI model is always correct.
 
@@ -1196,7 +1196,7 @@ AI-generated information should therefore be combined with appropriate data sour
 
 ### 13.5 Community Data
 
-Future collective intelligence features depend on receiving sufficient and relevant feedback from TravelAgent users.
+Future collective intelligence features depend on receiving sufficient and relevant feedback from Wanderes users.
 
 Community recommendations should not rely on small or statistically unreliable samples.
 
@@ -1217,9 +1217,9 @@ The system should still provide useful recommendations when limited user informa
 
 ### 13.7 Data Availability and Quality
 
-The quality of TravelAgent's recommendations is inherently dependent on the quality, freshness, and completeness of the information available to the system.
+The quality of Wanderes's recommendations is inherently dependent on the quality, freshness, and completeness of the information available to the system.
 
-When important information is unavailable or unreliable, TravelAgent should communicate the limitation rather than presenting uncertain information as fact.
+When important information is unavailable or unreliable, Wanderes should communicate the limitation rather than presenting uncertain information as fact.
 
 ### 13.8 Provider and Platform Changes
 
@@ -1233,10 +1233,10 @@ External providers may change:
 - Data formats.
 - Access requirements.
 
-TravelAgent must be designed to accommodate such changes without unnecessarily disrupting the core user experience.
+Wanderes must be designed to accommodate such changes without unnecessarily disrupting the core user experience.
 ## 14. MVP Prioritization
 
-TravelAgent should prioritize the capabilities required to validate its core value proposition before introducing advanced community and social functionality.
+Wanderes should prioritize the capabilities required to validate its core value proposition before introducing advanced community and social functionality.
 
 ### 14.1 Must Have — MVP
 
@@ -1281,7 +1281,7 @@ The following capabilities should be introduced after validating the core recomm
 
 ### 14.3 Future
 
-The following capabilities belong to the broader TravelAgent vision:
+The following capabilities belong to the broader Wanderes vision:
 
 - Destination-based traveler discovery.
 - Traveler compatibility matching.
@@ -1293,7 +1293,7 @@ The following capabilities belong to the broader TravelAgent vision:
 
 ### 14.4 Prioritization Principle
 
-When deciding whether a capability belongs in the MVP, TravelAgent should prioritize features that directly contribute to the core value proposition:
+When deciding whether a capability belongs in the MVP, Wanderes should prioritize features that directly contribute to the core value proposition:
 
 > **Understand the traveler → identify suitable options → explain the trade-offs → help the traveler make a better decision → learn from the outcome.**
 
@@ -1301,11 +1301,11 @@ Features that do not directly contribute to validating this experience should ge
 
 ## 15. Product Risks & Open Questions
 
-TravelAgent contains several areas of uncertainty that must be validated through research, experimentation, and real user feedback.
+Wanderes contains several areas of uncertainty that must be validated through research, experimentation, and real user feedback.
 
 ### 15.1 Recommendation Quality
 
-The core product depends on TravelAgent consistently providing recommendations that travelers consider relevant and useful.
+The core product depends on Wanderes consistently providing recommendations that travelers consider relevant and useful.
 
 The team must validate:
 
@@ -1316,7 +1316,7 @@ The team must validate:
 
 ### 15.2 User Adoption
 
-TravelAgent assumes that travelers are willing to use a conversational travel consultant instead of relying exclusively on traditional search engines, social media, booking platforms, or travel content.
+Wanderes assumes that travelers are willing to use a conversational travel consultant instead of relying exclusively on traditional search engines, social media, booking platforms, or travel content.
 
 This assumption must be validated through real user behavior.
 
@@ -1359,7 +1359,7 @@ These questions should be resolved before launching the social functionality.
 
 ### 15.6 Monetization and Trust
 
-TravelAgent may generate revenue through Premium subscriptions and referral or affiliate relationships.
+Wanderes may generate revenue through Premium subscriptions and referral or affiliate relationships.
 
 A key risk is creating a perceived or actual conflict between revenue generation and recommendation independence.
 
@@ -1400,7 +1400,7 @@ These decisions should be validated through product research, experimentation, a
 
 ## 16. Final Product Principles
 
-The following principles should guide all product decisions made for TravelAgent.
+The following principles should guide all product decisions made for Wanderes.
 
 ### 16.1 Traveler First
 
@@ -1408,7 +1408,7 @@ The traveler's interests, needs, preferences, and experience must always come fi
 
 ### 16.2 Trust Before Monetization
 
-TravelAgent must never compromise traveler trust in order to increase revenue.
+Wanderes must never compromise traveler trust in order to increase revenue.
 
 ### 16.3 Personalization Over Popularity
 
@@ -1424,11 +1424,11 @@ Personal information must remain private unless the traveler explicitly chooses 
 
 ### 16.6 AI as a Consultant
 
-AI is the technology behind TravelAgent. The product experience should feel like interacting with a knowledgeable and trustworthy travel consultant, not a generic AI assistant.
+AI is the technology behind Wanderes. The product experience should feel like interacting with a knowledgeable and trustworthy travel consultant, not a generic AI assistant.
 
 ### 16.7 Learn, But Respect Explicit Preferences
 
-TravelAgent should continuously learn from traveler behavior and feedback while respecting explicit preferences and corrections.
+Wanderes should continuously learn from traveler behavior and feedback while respecting explicit preferences and corrections.
 
 ### 16.8 Individual Intelligence Before Collective Intelligence
 
@@ -1436,11 +1436,11 @@ The traveler's own profile, preferences, context, and history should take priori
 
 ### 16.9 Honest Uncertainty
 
-When information is incomplete, uncertain, outdated, or conflicting, TravelAgent should communicate that uncertainty rather than present assumptions as facts.
+When information is incomplete, uncertain, outdated, or conflicting, Wanderes should communicate that uncertainty rather than present assumptions as facts.
 
 ### 16.10 Human Choice Remains Central
 
-TravelAgent helps travelers make better decisions. It does not replace the traveler or make significant decisions on their behalf without appropriate user involvement.
+Wanderes helps travelers make better decisions. It does not replace the traveler or make significant decisions on their behalf without appropriate user involvement.
 
 ### 16.11 Technology Should Be Invisible
 
@@ -1450,19 +1450,19 @@ The traveler should experience a simple, natural, and trustworthy consultation.
 
 ### 16.12 Build for Long-Term Value
 
-TravelAgent should optimize for long-term traveler relationships and better travel experiences rather than short-term engagement or revenue.
+Wanderes should optimize for long-term traveler relationships and better travel experiences rather than short-term engagement or revenue.
 
 ### 16.13 The Ultimate Goal
 
-TravelAgent exists to help people travel more, travel better, and feel more confident about the decisions they make.
+Wanderes exists to help people travel more, travel better, and feel more confident about the decisions they make.
 
-The ultimate measure of success is not how much the traveler uses TravelAgent.
+The ultimate measure of success is not how much the traveler uses Wanderes.
 
 It is how much better their travel experience becomes because they did.
 
 ### 16.14 Data Safety
 
-TravelAgent must treat traveler data as highly valuable and protect it throughout its lifecycle.
+Wanderes must treat traveler data as highly valuable and protect it throughout its lifecycle.
 
 The platform must:
 

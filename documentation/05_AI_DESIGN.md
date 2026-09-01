@@ -2,9 +2,9 @@
 
 ## 1. Purpose
 
-This document defines how TravelAgent uses AI, traveler data, travel data, deterministic rules, and recommendation scoring to produce personalized travel recommendations.
+This document defines how Wanderes uses AI, traveler data, travel data, deterministic rules, and recommendation scoring to produce personalized travel recommendations.
 
-The goal is not to create a generic chatbot. TravelAgent should behave as an intelligent travel consultant that combines user context with travel knowledge and explains why recommendations fit the traveler.
+The goal is not to create a generic chatbot. Wanderes should behave as an intelligent travel consultant that combines user context with travel knowledge and explains why recommendations fit the traveler.
 
 ## 2. Recommendation Pipeline
 
@@ -167,11 +167,11 @@ For example, if travelers with similar profiles consistently rate a destination 
 
 ## 10. AI Provider Abstraction
 
-TravelAgent should not depend directly on one AI provider throughout the application.
+Wanderes should not depend directly on one AI provider throughout the application.
 
 An internal AI interface should separate application logic from provider-specific APIs.
 
-This allows TravelAgent to change models or providers without redesigning the recommendation system.
+This allows Wanderes to change models or providers without redesigning the recommendation system.
 
 Provider-specific concerns such as authentication, request formatting, token limits, retries, and model selection belong in the AI infrastructure layer.
 
@@ -186,7 +186,7 @@ Before information is provided to an AI model, the application should determine:
 3. Is the data necessary for the current task?
 4. Can sensitive information be omitted or minimized?
 
-The AI model should never be treated as having unrestricted access to the TravelAgent database.
+The AI model should never be treated as having unrestricted access to the Wanderes database.
 
 The application controls data access; the AI operates on the authorized context provided to it.
 

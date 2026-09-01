@@ -1,5 +1,5 @@
 """
-Base Django settings for TravelAgent.
+Base Django settings for Wanderes.
 
 Shared by every environment. Environment-specific overrides live in
 development.py, production.py, and test.py.

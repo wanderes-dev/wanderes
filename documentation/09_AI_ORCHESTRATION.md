@@ -2,11 +2,11 @@
 
 ## 1. Purpose
 
-AI orchestration defines how TravelAgent coordinates the AI model with application logic, traveler data, travel information, and external services.
+AI orchestration defines how Wanderes coordinates the AI model with application logic, traveler data, travel information, and external services.
 
 The goal is to provide an intelligent conversational experience while keeping important business decisions under application control.
 
-TravelAgent should use a **controlled AI orchestration approach** rather than a fully autonomous AI agent.
+Wanderes should use a **controlled AI orchestration approach** rather than a fully autonomous AI agent.
 
 ## 2. Core Principle
 
@@ -67,7 +67,7 @@ For example, a simple destination question may require less processing than a pe
 
 ## 4. Context Construction
 
-Before calling the AI model, TravelAgent constructs a context containing only information relevant to the request.
+Before calling the AI model, Wanderes constructs a context containing only information relevant to the request.
 
 Possible context sources include:
 
@@ -179,7 +179,7 @@ Complete response
 Browser
 ```
 
-TravelAgent should support:
+Wanderes should support:
 
 ```text id="ypxv2p"
 Request
@@ -211,7 +211,7 @@ The system should detect issues such as:
 * Unsupported tool results.
 * Missing required information.
 * Contradictions with deterministic constraints.
-* Unexpected content outside TravelAgent's scope.
+* Unexpected content outside Wanderes's scope.
 
 Where structured AI output is required, the application should validate it against an explicit schema.
 
@@ -219,7 +219,7 @@ Natural-language responses can then be generated from validated application data
 
 ## 10. Travel Scope
 
-TravelAgent is intentionally limited to travel-related assistance.
+Wanderes is intentionally limited to travel-related assistance.
 
 The orchestration layer should detect requests that fall outside the product's intended scope and respond appropriately.
 
@@ -232,7 +232,7 @@ The application should communicate with an internal AI interface rather than dir
 Conceptually:
 
 ```text id="k3x4wq"
-TravelAgent
+Wanderes
      ↓
 AI Interface
      ↓
@@ -294,7 +294,7 @@ Validated Result
 Streaming Response
 ```
 
-TravelAgent should not initially implement autonomous planning loops, unrestricted tool access, or complex multi-agent systems.
+Wanderes should not initially implement autonomous planning loops, unrestricted tool access, or complex multi-agent systems.
 
 Additional AI complexity should only be introduced when a demonstrated product requirement justifies it.
 

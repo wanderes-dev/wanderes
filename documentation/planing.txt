@@ -1,5 +1,5 @@
 ============ Documentation Structure ==============
-travelagent-ai/
+wanderes-ai/
 
 README.md
 

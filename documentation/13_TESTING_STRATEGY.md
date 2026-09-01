@@ -1,12 +1,12 @@
-# Testing Strategy — TravelAgent
+# Testing Strategy — Wanderes
 
 ## 1. Purpose
 
-This document defines the testing strategy for TravelAgent. Testing should ensure the product is reliable, secure, and conforms to the product requirements. Because TravelAgent combines deterministic application logic with AI-generated behavior, different testing approaches are required for different system layers.
+This document defines the testing strategy for Wanderes. Testing should ensure the product is reliable, secure, and conforms to the product requirements. Because Wanderes combines deterministic application logic with AI-generated behavior, different testing approaches are required for different system layers.
 
 ## 2. Testing Principles
 
-TravelAgent testing should:
+Wanderes testing should:
 
 - Prefer automated tests for core functionality
 - Test business rules independently from AI behavior

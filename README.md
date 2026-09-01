@@ -1,6 +1,6 @@
-# TravelAgent
+# Wanderes
 
-TravelAgent is an Intelligent Travel Consultant — not an AI trip planner, not a travel agency, not a booking platform. It helps travelers make better, more confident travel decisions through personalized, explainable recommendations.
+Wanderes is an Intelligent Travel Consultant — not an AI trip planner, not a travel agency, not a booking platform. It helps travelers make better, more confident travel decisions through personalized, explainable recommendations.
 
 Full product and architecture documentation lives in [`documentation/`](documentation/). Start with [`documentation/02_PROJECT_CONTEXT.md`](documentation/02_PROJECT_CONTEXT.md) for the project's purpose and working principles, and [`documentation/15_IMPLEMENTATION_GUIDE.md`](documentation/15_IMPLEMENTATION_GUIDE.md) for how development proceeds phase by phase.
 

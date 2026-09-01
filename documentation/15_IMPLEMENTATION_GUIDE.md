@@ -7,7 +7,7 @@
 
 1. Purpose
 
-This document is the practical execution guide for building TravelAgent.
+This document is the practical execution guide for building Wanderes.
 
 Unlike the previous architecture documents, this document is not primarily about what the system should look like.
 
@@ -90,13 +90,13 @@ Analytics architecture.
 Payment integration.
 Affiliate integration.
 
-Claude can write the implementation, but we review whether the implementation actually matches the TravelAgent architecture.
+Claude can write the implementation, but we review whether the implementation actually matches the Wanderes architecture.
 
 3. Golden Rule
 
 Claude Code should not be given the instruction:
 
-Build the entire TravelAgent application.
+Build the entire Wanderes application.
 
 Instead:
 
@@ -127,11 +127,11 @@ Owner
 
 Human + Claude Code
 
-# Implementation Guide — TravelAgent
+# Implementation Guide — Wanderes
 
 ## 1. Purpose
 
-This document is the practical execution guide for building TravelAgent. It describes the sequence of implementation phases, who is responsible, and what must be reviewed before moving forward. The guiding principle is: build the smallest useful version first, validate with real users, then iterate.
+This document is the practical execution guide for building Wanderes. It describes the sequence of implementation phases, who is responsible, and what must be reviewed before moving forward. The guiding principle is: build the smallest useful version first, validate with real users, then iterate.
 
 ## 2. Roles & Responsibilities
 
@@ -259,7 +259,7 @@ User
  ↓
 "I want somewhere warm in October."
  ↓
-TravelAgent
+Wanderes
  ↓
 Travel data
  ↓
@@ -420,7 +420,7 @@ Human Decision + Claude Code
 
 Goal
 
-Measure whether people actually use TravelAgent.
+Measure whether people actually use Wanderes.
 
 Analytics should be introduced before significant public growth.
 
@@ -463,7 +463,7 @@ Premium conversion.
 Affiliate clicks.
 Important
 
-An active user should mean a user performing a meaningful TravelAgent action, not simply opening the website.
+An active user should mean a user performing a meaningful Wanderes action, not simply opening the website.
 
 The exact definition should be documented before using the metric for business decisions.
 
@@ -474,7 +474,7 @@ Human
 
 Goal
 
-Put TravelAgent in front of real users.
+Put Wanderes in front of real users.
 
 Initial progression:
 
@@ -669,7 +669,7 @@ Human Decision + Research
 
 Goal
 
-Generate revenue when TravelAgent sends users to relevant external travel providers.
+Generate revenue when Wanderes sends users to relevant external travel providers.
 
 Potential categories:
 
@@ -691,7 +691,7 @@ Important Principle
 
 Affiliate revenue must never determine recommendation quality.
 
-A provider should not rank higher simply because TravelAgent earns more money from it.
+A provider should not rank higher simply because Wanderes earns more money from it.
 
 28. Phase 24 — Affiliate Integration
 Owner
@@ -741,7 +741,7 @@ Human Decision + Claude Code
 
 Goal
 
-Understand whether TravelAgent is becoming financially viable.
+Understand whether Wanderes is becoming financially viable.
 
 Track:
 
@@ -773,7 +773,7 @@ Payment fees.
 Other per-user infrastructure costs.
 Human Decision
 
-Define which financial metrics matter for TravelAgent.
+Define which financial metrics matter for Wanderes.
 
 30. Phase 26 — Community Intelligence
 Owner
@@ -815,7 +815,7 @@ Traveler communication.
 
 Do not automatically implement all of them.
 
-Each feature should be validated against the core TravelAgent purpose.
+Each feature should be validated against the core Wanderes purpose.
 
 32. Phase 28 — Provider Redundancy
 Owner
@@ -949,7 +949,7 @@ External provider credentials.
 Production launch.
 37. Phase 33 — MVP Launch Review
 
-Before calling TravelAgent an MVP, review the following.
+Before calling Wanderes an MVP, review the following.
 
 Product
  Users can register.
@@ -1012,8 +1012,8 @@ Whether a new technology should be introduced.
 Whether a feature belongs in the MVP.
 Whether monetization should influence a recommendation.
 Whether a security/privacy trade-off is acceptable.
-Whether TravelAgent is ready for public launch.
-Whether TravelAgent should raise external funding.
+Whether Wanderes is ready for public launch.
+Whether Wanderes should raise external funding.
 
 Claude can provide recommendations for these decisions, but the decision should be explicitly reviewed.
 
@@ -1119,7 +1119,7 @@ Every recurring cost should have a reason.
 
 Important
 
-As TravelAgent gains users, we should measure:
+As Wanderes gains users, we should measure:
 
 Revenue per user
         ↓
@@ -1161,7 +1161,7 @@ Accelerator.
 Strategic investment.
 Important
 
-Do not raise money simply because TravelAgent is a startup.
+Do not raise money simply because Wanderes is a startup.
 
 Funding becomes interesting when additional capital can significantly accelerate something that is already showing evidence of demand.
 
@@ -1211,7 +1211,7 @@ Recommendation quality.
 Monetization.
 Growth.
 
-If TravelAgent eventually becomes strategically valuable to a larger company, an acquisition may become possible.
+If Wanderes eventually becomes strategically valuable to a larger company, an acquisition may become possible.
 
 However:
 
@@ -1221,7 +1221,7 @@ Build a valuable company first. Optimize for a €50M exit only after the busine
 
 The practical workflow between us should be:
 
-TravelAgent Documentation
+Wanderes Documentation
         ↓
 We decide the next task
         ↓
@@ -1283,7 +1283,7 @@ Those are explicit decisions.
 
 The first useful MVP should focus on one core experience:
 
-A registered user tells TravelAgent what kind of trip they want, and TravelAgent uses their profile, travel history, travel data, rules, and AI reasoning to provide a personalized recommendation.
+A registered user tells Wanderes what kind of trip they want, and Wanderes uses their profile, travel history, travel data, rules, and AI reasoning to provide a personalized recommendation.
 
 The MVP should prioritize:
 
@@ -1308,9 +1308,9 @@ Mobile application.
 Kubernetes.
 49. Final Principle
 
-Claude Code can write a large percentage of the TravelAgent codebase.
+Claude Code can write a large percentage of the Wanderes codebase.
 
-It should not become the person who decides what TravelAgent is.
+It should not become the person who decides what Wanderes is.
 
 The division should remain:
 

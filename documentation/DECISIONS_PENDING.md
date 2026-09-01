@@ -6,7 +6,7 @@ Per `15_IMPLEMENTATION_GUIDE.md` §2 and §38, these decisions must be made or e
 
 ## 1. AI Provider Selection (blocks Phase 2) — ✅ RESOLVED 2026-08-28
 
-**Decision:** **OpenAI** (GPT models) is the AI provider for TravelAgent's conversational/reasoning layer.
+**Decision:** **OpenAI** (GPT models) is the AI provider for Wanderes's conversational/reasoning layer.
 
 **Product naming (not a technical decision, recorded here for continuity):** the AI assistant persona is named **"Wander"** — this is user-facing copy/branding, independent of which provider powers it underneath. (Originally named "Lunna"; renamed to "Wander" on 2026-08-30 per direct user request.)
 
@@ -14,7 +14,7 @@ Per `15_IMPLEMENTATION_GUIDE.md` §2 and §38, these decisions must be made or e
 
 - Conversation context handled separately from persistent traveler memory — per `09_AI_ORCHESTRATION.md` §7.
 - Context summarization — condensing conversation history instead of sending the full transcript every turn (supports §13 "avoid unnecessarily large conversation histories").
-- Only relevant travel data is sent to the AI, never the whole database or full user history — per `09_AI_ORCHESTRATION.md` §4 and §11 ("The AI model should never be treated as having unrestricted access to the TravelAgent database").
+- Only relevant travel data is sent to the AI, never the whole database or full user history — per `09_AI_ORCHESTRATION.md` §4 and §11 ("The AI model should never be treated as having unrestricted access to the Wanderes database").
 - Caching where it makes sense — per `09_AI_ORCHESTRATION.md` §13 ("Reuse cached information where appropriate").
 - The provider must sit behind the internal `AI Provider Abstraction` (`05_AI_DESIGN.md` §10, `09_AI_ORCHESTRATION.md` §11) so switching providers later does not require redesigning the recommendation system.
 
@@ -22,7 +22,7 @@ Per `15_IMPLEMENTATION_GUIDE.md` §2 and §38, these decisions must be made or e
 
 ### What needs to be decided
 
-Which AI provider/model powers TravelAgent's conversational and reasoning layer. The architecture already requires this to sit behind an internal AI interface (`AI Provider Abstraction`), so switching later is possible but the *first* choice still needs to be made deliberately — it affects cost, latency, and how much structured-output/tool-use scaffolding is needed.
+Which AI provider/model powers Wanderes's conversational and reasoning layer. The architecture already requires this to sit behind an internal AI interface (`AI Provider Abstraction`), so switching later is possible but the *first* choice still needs to be made deliberately — it affects cost, latency, and how much structured-output/tool-use scaffolding is needed.
 
 ### What to evaluate (per the architecture docs)
 
@@ -50,7 +50,7 @@ Implements the AI provider adapter behind the internal interface described in `0
 **Decision:**
 
 - **Destination data** (name, country, description, points of interest): a **curated static dataset**, provided/approved by the user, stored in the application (not a live external API for this piece). Explicitly documented here as a **deliberate MVP simplification** per `14_MVP_IMPLEMENTATION_PLAN.md` — revisit if/when destination breadth or freshness outgrows a static list.
-- **Weather/climate data**: **Open-Meteo** (free, no API key required for the endpoints TravelAgent needs). Chosen specifically so it sits behind the internal Travel Data Interface (`10_EXTERNAL_INTEGRATIONS.md` §3) and can be swapped for another weather provider later without touching business logic — this replaceability was an explicit requirement from the user, not just the general architectural default.
+- **Weather/climate data**: **Open-Meteo** (free, no API key required for the endpoints Wanderes needs). Chosen specifically so it sits behind the internal Travel Data Interface (`10_EXTERNAL_INTEGRATIONS.md` §3) and can be swapped for another weather provider later without touching business logic — this replaceability was an explicit requirement from the user, not just the general architectural default.
 - **Flights**: deferred, per the MVP plan (`14_MVP_IMPLEMENTATION_PLAN.md` §6 — not required for the first vertical slice).
 - **Hotels**: deferred, same reasoning.
 
@@ -109,7 +109,7 @@ Implemented the `analytics` app (`Event` model, `services.record_event()`, `metr
 
 **Requested out of sequence 2026-09-01** — Phase 19-22 (Premium Strategy/Entitlements, Payment Provider/Integration) haven't started; this jumps ahead to Phase 23/24 material at the user's explicit direction. Noted here for an honest record, not a reason to refuse: this is research and documentation only, nothing was implemented, and `15_IMPLEMENTATION_GUIDE.md` itself lists Phase 23's owner as "Human Decision + Research" - exactly what this is.
 
-**The headline finding, upfront**: every genuine real-time flight/hotel *search* API researched (not just a banner link) gates access behind a traffic/volume threshold TravelAgent doesn't have yet as a pre-launch MVP - commonly 50,000-100,000+ monthly users, sometimes phrased as "established business," sometimes as an explicit MAU minimum. This isn't a TravelAgent-specific problem; it's the standard shape of this industry's provider ecosystem. Two real options exist anyway (see recommendation below), but both come with trade-offs the guide's "no assumptions" instruction means should go to you, not get decided quietly.
+**The headline finding, upfront**: every genuine real-time flight/hotel *search* API researched (not just a banner link) gates access behind a traffic/volume threshold Wanderes doesn't have yet as a pre-launch MVP - commonly 50,000-100,000+ monthly users, sometimes phrased as "established business," sometimes as an explicit MAU minimum. This isn't a Wanderes-specific problem; it's the standard shape of this industry's provider ecosystem. Two real options exist anyway (see recommendation below), but both come with trade-offs the guide's "no assumptions" instruction means should go to you, not get decided quietly.
 
 ### What was researched
 
@@ -117,7 +117,7 @@ Implemented the `analytics` app (`Event` model, `services.record_event()`, `metr
 
 | Provider | Access model | Startup accessibility now | Notes |
 |---|---|---|---|
-| **Skyscanner** | Affiliate Programme (deep-links, via impact.com) vs. Travel API (real search) | Affiliate: needs 5,000+ monthly visitors. Travel API: needs an "established business" with >100k monthly traffic, and explicitly excludes "start-ups without a robust business plan and pre-developed product." | Neither tier is realistically open to TravelAgent today. [Partner support: acceptance criteria](https://skyscannerpartnersupport.zendesk.com/hc/en-us/articles/10881149122717-What-is-the-acceptance-criteria-for-the-Travel-API), [affiliate programme criteria](https://skyscannerpartnersupport.zendesk.com/hc/en-us/articles/10877740886045-Getting-Started-What-is-the-acceptance-criteria-for-the-programme) |
+| **Skyscanner** | Affiliate Programme (deep-links, via impact.com) vs. Travel API (real search) | Affiliate: needs 5,000+ monthly visitors. Travel API: needs an "established business" with >100k monthly traffic, and explicitly excludes "start-ups without a robust business plan and pre-developed product." | Neither tier is realistically open to Wanderes today. [Partner support: acceptance criteria](https://skyscannerpartnersupport.zendesk.com/hc/en-us/articles/10881149122717-What-is-the-acceptance-criteria-for-the-Travel-API), [affiliate programme criteria](https://skyscannerpartnersupport.zendesk.com/hc/en-us/articles/10877740886045-Getting-Started-What-is-the-acceptance-criteria-for-the-programme) |
 | **KAYAK** | Affiliate network + API, via affiliates.kayak.com | Affiliate program is effectively aimed at sites with ~1M+ monthly visitors per third-party sources; API access requires a manual business application, an assigned account manager, and has no public docs/OpenAPI spec/sandbox until approved - "small developers and hobbyists are typically declined." | Not accessible now despite the application form offering a "Sandbox APIs" checkbox - that's a step *after* business approval, not open self-serve. [API assessment](https://supergood.ai/api-report-card/kayak) |
 | **Kiwi.com (Tequila API)** | Self-serve API | Self-serve registration closed May 2024; now invitation-only. The Travelpayouts-routed affiliate path needs 50,000+ MAU. | Not accessible now. |
 | **Amadeus for Developers (Self-Service)** | Free/low-cost self-serve tier, historically the standard startup on-ramp | **Fully decommissioned 2026-07-17** - new registrations were already paused before that. This is very recent and changes the landscape materially versus older guidance. Amadeus Enterprise still exists but is a full commercial GDS relationship, not a startup path. | Confirmed via independent trade press ([PhocusWire](https://www.phocuswire.com/amadeus-shut-down-self-service-apis-portal-developers)), not just a vendor blog. |
@@ -129,22 +129,22 @@ Implemented the `analytics` app (`Event` model, `services.record_event()`, `metr
 
 | Provider | Access model | Startup accessibility now | Notes |
 |---|---|---|---|
-| **Booking.com Affiliate Partner Program** | Application-reviewed, free once approved | Open to "a wide range of applicants, from large companies... to travel bloggers" - no hard traffic minimum found, though approval isn't instant (one source noted new Connectivity applications paused pending a Terms update, separate from the basic Affiliate tier). Approved partners get a real XML feed (hotel info, photos, **real-time pricing and availability**), commission 25-40% of Booking.com's own cut. | **The most promising hotel option for TravelAgent's current stage.** |
+| **Booking.com Affiliate Partner Program** | Application-reviewed, free once approved | Open to "a wide range of applicants, from large companies... to travel bloggers" - no hard traffic minimum found, though approval isn't instant (one source noted new Connectivity applications paused pending a Terms update, separate from the basic Affiliate tier). Approved partners get a real XML feed (hotel info, photos, **real-time pricing and availability**), commission 25-40% of Booking.com's own cut. | **The most promising hotel option for Wanderes's current stage.** |
 | **Duffel Stays** | Same self-serve platform as Duffel Flights | Not separately verified in depth, but reasonable to assume similar accessibility given the shared platform - would need direct confirmation before relying on it. | Same architectural note as Duffel Flights applies. |
 | **Skyscanner / KAYAK Hotels APIs** | Same programs as their flight APIs | Same high-traffic gating as flights. | Not accessible now. |
 
 ### The real fork: two fundamentally different architectures, not just two vendors
 
-1. **Pure affiliate redirect** (Skyscanner, KAYAK, Booking.com Affiliate, Travelpayouts) - TravelAgent shows options, the user clicks through and completes the purchase on the *provider's own site*, TravelAgent earns a referral commission. This matches the brief's stated flow exactly (`Recommendation → Affiliate Link → External Website → Booking → Commission`) and keeps TravelAgent furthest from ever needing to be a merchant of record, handle payments, or manage bookings/cancellations - the explicit "we are not building Booking.com" boundary stays clean.
-2. **Book-through-API / hosted checkout** (Duffel) - TravelAgent integrates Duffel's API and either books directly or redirects to "Duffel Links," a *Duffel-hosted*, TravelAgent-branded checkout page. The customer still doesn't check out on TravelAgent's own infrastructure, but TravelAgent is now functionally reselling Duffel's inventory and earning a revenue *share*, not a referral *commission* - a meaningfully different commercial relationship (closer to a light travel-agency role than a pure affiliate), even though it's the only flights option that's actually usable today without a traffic minimum.
+1. **Pure affiliate redirect** (Skyscanner, KAYAK, Booking.com Affiliate, Travelpayouts) - Wanderes shows options, the user clicks through and completes the purchase on the *provider's own site*, Wanderes earns a referral commission. This matches the brief's stated flow exactly (`Recommendation → Affiliate Link → External Website → Booking → Commission`) and keeps Wanderes furthest from ever needing to be a merchant of record, handle payments, or manage bookings/cancellations - the explicit "we are not building Booking.com" boundary stays clean.
+2. **Book-through-API / hosted checkout** (Duffel) - Wanderes integrates Duffel's API and either books directly or redirects to "Duffel Links," a *Duffel-hosted*, Wanderes-branded checkout page. The customer still doesn't check out on Wanderes's own infrastructure, but Wanderes is now functionally reselling Duffel's inventory and earning a revenue *share*, not a referral *commission* - a meaningfully different commercial relationship (closer to a light travel-agency role than a pure affiliate), even though it's the only flights option that's actually usable today without a traffic minimum.
 
 This distinction - not just "which brand" - is the crux of the decision, and it's exactly the kind of business-model call `15_IMPLEMENTATION_GUIDE.md` reserves for you, not Claude Code.
 
 ### Claude Code's recommendation (not a decision - your call, per the brief)
 
-If real flight/hotel search is wanted **now**, before TravelAgent has meaningful traffic: **Duffel for flights + Booking.com Affiliate Partner Program for hotels** is the only combination that's actually reachable at this stage - everything else requires traffic TravelAgent doesn't have yet. This means accepting the Duffel Links revenue-share model for flights (a real, if minor, departure from "pure affiliate only") while keeping hotels as a clean traditional affiliate redirect. **Travelpayouts is worth adding regardless of the above** as a zero-cost, zero-barrier fallback/supplement (covers both categories with simple links), even though it can't power real search/filtering.
+If real flight/hotel search is wanted **now**, before Wanderes has meaningful traffic: **Duffel for flights + Booking.com Affiliate Partner Program for hotels** is the only combination that's actually reachable at this stage - everything else requires traffic Wanderes doesn't have yet. This means accepting the Duffel Links revenue-share model for flights (a real, if minor, departure from "pure affiliate only") while keeping hotels as a clean traditional affiliate redirect. **Travelpayouts is worth adding regardless of the above** as a zero-cost, zero-barrier fallback/supplement (covers both categories with simple links), even though it can't power real search/filtering.
 
-If staying strictly "pure affiliate, no hosted-checkout revenue-share" is a hard requirement: the honest answer is to defer flights entirely until TravelAgent has enough traffic to qualify for Skyscanner/KAYAK/Kiwi (a real, unknown amount of time), and launch with hotels only via Booking.com's Affiliate Partner Program (or Travelpayouts links as a stopgap) in the meantime.
+If staying strictly "pure affiliate, no hosted-checkout revenue-share" is a hard requirement: the honest answer is to defer flights entirely until Wanderes has enough traffic to qualify for Skyscanner/KAYAK/Kiwi (a real, unknown amount of time), and launch with hotels only via Booking.com's Affiliate Partner Program (or Travelpayouts links as a stopgap) in the meantime.
 
 ### What needs to be decided
 
@@ -152,7 +152,7 @@ If staying strictly "pure affiliate, no hosted-checkout revenue-share" is a hard
 - Which hotel provider(s) to pursue (Booking.com Affiliate Partner Program is the clear front-runner from this research).
 - Whether to add Travelpayouts as a lightweight supplementary layer regardless of the above.
 - Commission/revenue-share expectations and how that interacts with the already-established "recommendations must never be influenced by commission" principle (`10_EXTERNAL_INTEGRATIONS.md` §9, reaffirmed in the brief for this task).
-- Geographic coverage requirements (not deeply researched here - would need clarifying what markets TravelAgent targets first).
+- Geographic coverage requirements (not deeply researched here - would need clarifying what markets Wanderes targets first).
 - Timing: pursue this now (accepting Duffel's different model for flights) or defer until real traffic exists (delaying flight search, hotels-only via Booking.com in the meantime)?
 
 ### What Claude Code does once you decide

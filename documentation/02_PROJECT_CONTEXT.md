@@ -1,10 +1,10 @@
 # PROJECT_CONTEXT.md
 
-# TravelAgent - Project Context
+# Wanderes - Project Context
 
 ## Project Overview
 
-TravelAgent is a startup building the world's most trusted Intelligent Travel Consultant.
+Wanderes is a startup building the world's most trusted Intelligent Travel Consultant.
 
 It is **not** an AI Trip Planner.
 It is **not** a Travel Agency.
@@ -31,7 +31,7 @@ You must think as:
 * UX Designer
 * Startup Advisor
 
-Your responsibility is to maximize the long-term success of TravelAgent, not to validate my ideas.
+Your responsibility is to maximize the long-term success of Wanderes, not to validate my ideas.
 
 You must challenge assumptions whenever you believe there is a better solution.
 
@@ -67,13 +67,13 @@ Always explain important architectural and product decisions.
 
 # Product Positioning
 
-TravelAgent is an Intelligent Travel Consultant.
+Wanderes is an Intelligent Travel Consultant.
 
 It helps travelers make better travel decisions through personalized, transparent, and trustworthy guidance.
 
-TravelAgent does not sell travel.
+Wanderes does not sell travel.
 
-TravelAgent does not replace airlines, hotels, OTAs, travel agencies, or travel providers.
+Wanderes does not replace airlines, hotels, OTAs, travel agencies, or travel providers.
 
 Booking is only the final step.
 
@@ -93,7 +93,7 @@ Every recommendation must feel human.
 
 Trust is earned through transparency.
 
-TravelAgent connects travelers through meaningful compatibility, never through social networking.
+Wanderes connects travelers through meaningful compatibility, never through social networking.
 
 Every feature must improve the travel experience before, during, or after the journey.
 
@@ -138,7 +138,7 @@ Business growth is the consequence of trust, never the objective.
 
 # Partner Philosophy
 
-TravelAgent recommends products and services only when they provide genuine value to the traveler.
+Wanderes recommends products and services only when they provide genuine value to the traveler.
 
 Recommendations are contextual, personalized, and based on the traveler's itinerary, destination, preferences, and needs.
 
@@ -146,7 +146,7 @@ Products are recommended because they are relevant—not because they generate r
 
 Affiliate partnerships are a monetization mechanism, never a ranking factor.
 
-TravelAgent may recommend travel-related products and services such as:
+Wanderes may recommend travel-related products and services such as:
 
 * Travel cards
 * Travel insurance
@@ -168,7 +168,7 @@ Commercial partnerships must never override recommendation quality.
 
 # Community Philosophy
 
-TravelAgent is not a social network.
+Wanderes is not a social network.
 
 Community features exist exclusively to enrich travel experiences and improve travel decisions.
 
@@ -189,7 +189,7 @@ Users always control:
 * Contact methods
 * Availability period
 
-TravelAgent does not provide an internal messaging system.
+Wanderes does not provide an internal messaging system.
 
 When two travelers decide to connect, communication happens through the social platforms they voluntarily choose to share.
 
@@ -197,7 +197,7 @@ When two travelers decide to connect, communication happens through the social p
 
 # Legal Principles
 
-TravelAgent is an Intelligent Travel Consultant.
+Wanderes is an Intelligent Travel Consultant.
 
 Travel providers remain responsible for:
 
@@ -209,7 +209,7 @@ Travel providers remain responsible for:
 * Baggage
 * Other travel services
 
-TravelAgent is responsible for providing trustworthy recommendations and helping travelers make informed decisions.
+Wanderes is responsible for providing trustworthy recommendations and helping travelers make informed decisions.
 
 ---
 
@@ -246,7 +246,7 @@ Everything included in Economy, plus:
 
 # Traveler Compatibility
 
-TravelAgent includes a Traveler Compatibility Engine designed to connect travelers with similar travel styles and preferences.
+Wanderes includes a Traveler Compatibility Engine designed to connect travelers with similar travel styles and preferences.
 
 Compatibility is calculated using multiple dimensions, including:
 
@@ -277,7 +277,7 @@ The objective is not to maximize the number of matches, but to maximize the qual
 
 # Partner Analytics
 
-TravelAgent measures anonymous interaction with partner recommendations to continuously improve both the user experience and business decisions.
+Wanderes measures anonymous interaction with partner recommendations to continuously improve both the user experience and business decisions.
 
 The platform tracks metrics such as:
 
@@ -290,7 +290,7 @@ The platform tracks metrics such as:
 * Country
 * Membership tier
 
-Partner links are routed through TravelAgent before redirecting users to the provider.
+Partner links are routed through Wanderes before redirecting users to the provider.
 
 Analytics are used to:
 
@@ -305,7 +305,7 @@ User privacy must always be respected and comply with applicable regulations.
 
 Marketing is part of the long-term product strategy, but marketing execution must follow product maturity.
 
-TravelAgent should not spend significant resources promoting a product before the core experience is sufficiently developed to deliver its promise.
+Wanderes should not spend significant resources promoting a product before the core experience is sufficiently developed to deliver its promise.
 
 The objective is not to generate attention as early as possible.
 
@@ -315,7 +315,7 @@ The objective is to build sustainable awareness at the right moment.
 
 ## Marketing Philosophy
 
-TravelAgent should not primarily market itself as an AI product.
+Wanderes should not primarily market itself as an AI product.
 
 Artificial Intelligence is the technology behind the experience, not the product's identity.
 
@@ -330,7 +330,7 @@ Marketing should focus on:
 * Helping inexperienced travelers take their first steps
 * Discovering destinations that truly fit each person
 
-TravelAgent should communicate emotion first and technology second.
+Wanderes should communicate emotion first and technology second.
 
 ---
 
@@ -389,7 +389,7 @@ Limited public communication may be used to document the journey, but no major d
 
 ### Internal MVP Validation
 
-When the core TravelAgent experience can be used from the beginning of a trip-planning process to a meaningful final recommendation, begin preparing the public launch.
+When the core Wanderes experience can be used from the beginning of a trip-planning process to a meaningful final recommendation, begin preparing the public launch.
 
 Focus:
 
@@ -438,7 +438,7 @@ Marketing efforts should be measured by meaningful product outcomes, not vanity 
 
 ## Primary Marketing Positioning
 
-TravelAgent should not primarily communicate:
+Wanderes should not primarily communicate:
 
 > "An AI that plans your trip."
 
@@ -495,7 +495,7 @@ Potential content pillars include:
 * Unexpected experiences
 * Community insights
 
-### Building TravelAgent
+### Building Wanderes
 
 The company may occasionally share:
 
@@ -513,7 +513,7 @@ Technology should support the story, not become the story.
 
 ## Marketing Principles
 
-TravelAgent should:
+Wanderes should:
 
 * Build trust before asking for conversion.
 * Educate before selling.
@@ -552,13 +552,13 @@ Follower count, impressions, and views may be useful secondary metrics, but they
 
 ## Long-Term Marketing Vision
 
-TravelAgent should become associated with a feeling:
+Wanderes should become associated with a feeling:
 
 > "I want to travel, but I don't know where to begin."
 
 And the answer should be:
 
-> "Start with TravelAgent."
+> "Start with Wanderes."
 
 The long-term goal is to build a brand that represents confidence, discovery, personalization, and the excitement of seeing the world through one's own eyes.
 
@@ -566,7 +566,7 @@ The long-term goal is to build a brand that represents confidence, discovery, pe
 
 # Long-Term Vision
 
-TravelAgent may evolve into a collaborative travel ecosystem where travelers can optionally:
+Wanderes may evolve into a collaborative travel ecosystem where travelers can optionally:
 
 * Meet compatible travelers
 * Share experiences
@@ -619,7 +619,7 @@ For every significant product or technical decision, evaluate it from four persp
 
 1. Product — Does this improve the user experience?
 2. Engineering — Is it scalable and maintainable?
-3. Business — Does it strengthen TravelAgent's positioning and competitive advantage?
+3. Business — Does it strengthen Wanderes's positioning and competitive advantage?
 4. Long-Term — Will this still be the right decision in five years?
 
 Whenever possible, recommend the best long-term solution rather than simply answering the requested question.

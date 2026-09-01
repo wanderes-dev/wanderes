@@ -2,7 +2,7 @@
 
 ## 1. Database Design Goals
 
-TravelAgent's database must support personalization, travel planning, travel history, feedback, and community intelligence while remaining simple enough for a small team to maintain.
+Wanderes's database must support personalization, travel planning, travel history, feedback, and community intelligence while remaining simple enough for a small team to maintain.
 
 The database should:
 
@@ -136,4 +136,4 @@ Changes should be:
 
 The initial schema should avoid speculative entities and fields that are not required by the product.
 
-As TravelAgent evolves, the database model can be expanded based on real product requirements and observed usage rather than attempting to predict the complete future system.
+As Wanderes evolves, the database model can be expanded based on real product requirements and observed usage rather than attempting to predict the complete future system.

@@ -2,13 +2,13 @@
 
 ## 1. Purpose
 
-TravelAgent depends on external services for travel information, availability, location data, booking opportunities, and AI capabilities.
+Wanderes depends on external services for travel information, availability, location data, booking opportunities, and AI capabilities.
 
-External integrations must remain isolated from the core application so providers can be replaced without requiring major changes to TravelAgent's business logic.
+External integrations must remain isolated from the core application so providers can be replaced without requiring major changes to Wanderes's business logic.
 
 ## 2. Integration Categories
 
-TravelAgent may integrate with:
+Wanderes may integrate with:
 
 * Flight search and availability providers.
 * Hotel and accommodation providers.
@@ -25,7 +25,7 @@ The exact providers will be selected based on coverage, reliability, cost, licen
 External providers should be accessed through stable internal interfaces and provider-specific adapters.
 
 ```text id="3j1f3x"
-TravelAgent
+Wanderes
      ↓
 Internal Integration Interface
      ↓
@@ -36,12 +36,12 @@ External API
 
 The rest of the application should depend on the internal interface rather than directly on a specific provider.
 
-For example, the recommendation system should request flight options through TravelAgent's flight interface without needing to know which external provider supplies the data.
+For example, the recommendation system should request flight options through Wanderes's flight interface without needing to know which external provider supplies the data.
 
 This allows a provider to be replaced with minimal application changes:
 
 ```text id="6f4m2a"
-TravelAgent
+Wanderes
      ↓
 Flight Provider Interface
      ↓
@@ -51,7 +51,7 @@ Provider A
 can later become:
 
 ```text id="q7v8hx"
-TravelAgent
+Wanderes
      ↓
 Flight Provider Interface
      ↓
@@ -75,13 +75,13 @@ The application should:
 * Handle provider failures gracefully.
 * Avoid exposing raw provider responses unless required.
 
-TravelAgent should not assume that an external provider will always be available.
+Wanderes should not assume that an external provider will always be available.
 
 ## 5. Provider Redundancy & Availability
 
-TravelAgent should avoid critical single points of failure in external dependencies.
+Wanderes should avoid critical single points of failure in external dependencies.
 
-For critical capabilities, TravelAgent should aim to have at least two viable providers when technically and commercially practical.
+For critical capabilities, Wanderes should aim to have at least two viable providers when technically and commercially practical.
 
 Examples may include:
 
@@ -113,7 +113,7 @@ The fallback strategy should be defined according to the importance and real-tim
 
 ## 6. Monitoring & Service Health
 
-TravelAgent should monitor important external dependencies.
+Wanderes should monitor important external dependencies.
 
 Monitoring should track, where applicable:
 
@@ -159,7 +159,7 @@ External providers may experience:
 * Temporary network failures.
 * Changes to their API.
 
-TravelAgent should handle these situations without bringing down the entire application.
+Wanderes should handle these situations without bringing down the entire application.
 
 Where appropriate, the system may:
 
@@ -171,13 +171,13 @@ Where appropriate, the system may:
 
 ## 9. Booking & Affiliate Providers
 
-TravelAgent may redirect users to external booking providers.
+Wanderes may redirect users to external booking providers.
 
-The backend should generate or retrieve the appropriate provider link and the frontend should clearly indicate that the user is leaving TravelAgent when appropriate.
+The backend should generate or retrieve the appropriate provider link and the frontend should clearly indicate that the user is leaving Wanderes when appropriate.
 
 Commercial relationships must not influence recommendation quality.
 
-A provider should not receive preferential ranking simply because TravelAgent earns a referral commission.
+A provider should not receive preferential ranking simply because Wanderes earns a referral commission.
 
 ## 10. Credentials & Secrets
 
@@ -195,7 +195,7 @@ The first implementation should use only providers required by the MVP.
 
 Additional providers and fallback mechanisms should be introduced based on actual reliability, business importance, cost, and usage.
 
-The Integration Layer should make provider replacement possible without requiring major changes to TravelAgent's domain, recommendation logic, or frontend.
+The Integration Layer should make provider replacement possible without requiring major changes to Wanderes's domain, recommendation logic, or frontend.
 
 Changing a provider should primarily involve implementing or configuring a new adapter behind the existing internal interface.
 
@@ -248,7 +248,7 @@ Raw provider responses should not be exposed to the rest of the application unle
 
 ### 13.3 Recommendation independence from commission (reaffirmed)
 
-§9 above already establishes this; restated here because it's specifically load-bearing for this feature: **flight/hotel options must be scored on genuine fit for the traveler (price, convenience, stops, timing) - never boosted because a provider pays a higher commission.** A concrete example from the request that prompted this research: a traveler who values convenience should see the direct flight recommended over a cheaper one with a 9-hour layover, regardless of which of the two pays TravelAgent more. This must live in `recommendations/scoring.py`'s existing scoring logic, structurally separated from any per-provider commission data - the same separation already enforced between the AI reasoning layer and deterministic scoring elsewhere in the app.
+§9 above already establishes this; restated here because it's specifically load-bearing for this feature: **flight/hotel options must be scored on genuine fit for the traveler (price, convenience, stops, timing) - never boosted because a provider pays a higher commission.** A concrete example from the request that prompted this research: a traveler who values convenience should see the direct flight recommended over a cheaper one with a 9-hour layover, regardless of which of the two pays Wanderes more. This must live in `recommendations/scoring.py`'s existing scoring logic, structurally separated from any per-provider commission data - the same separation already enforced between the AI reasoning layer and deterministic scoring elsewhere in the app.
 
 ### 13.4 Affiliate tracking
 
@@ -265,4 +265,4 @@ Per §7's general principle (highly dynamic data should not be treated as perman
 
 ## 14. Principle
 
-> **External providers provide capabilities and data; TravelAgent controls the business logic and user experience. Providers should be replaceable, monitored, and isolated so that external failures or provider changes do not unnecessarily disrupt the platform.**
+> **External providers provide capabilities and data; Wanderes controls the business logic and user experience. Providers should be replaceable, monitored, and isolated so that external failures or provider changes do not unnecessarily disrupt the platform.**

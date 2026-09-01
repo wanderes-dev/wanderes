@@ -1,4 +1,4 @@
-"""Celery application for TravelAgent background processing.
+"""Celery application for Wanderes background processing.
 
 Per 03_SYSTEM_ARCHITETURE.md, Redis backs the background job queue and no
 tasks are defined yet at this stage of the project (Milestone 1 only
@@ -13,7 +13,7 @@ from celery import Celery
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
 
-app = Celery("travelagent")
+app = Celery("wanderes")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
 

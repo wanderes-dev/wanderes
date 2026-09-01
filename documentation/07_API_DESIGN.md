@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-The TravelAgent API is the communication boundary between the frontend and the Django backend.
+The Wanderes API is the communication boundary between the frontend and the Django backend.
 
 It should expose product capabilities without exposing internal implementation details.
 
@@ -24,7 +24,7 @@ The initial API can use REST rather than introducing GraphQL or another API arch
 
 ## 3. Authentication & Authorization
 
-TravelAgent should initially use Django's built-in authentication and session system rather than creating a separate authentication API.
+Wanderes should initially use Django's built-in authentication and session system rather than creating a separate authentication API.
 
 Django is responsible for:
 
@@ -129,7 +129,7 @@ Feedback processing that affects recommendations may be performed asynchronously
 
 ## 8. Recommendations & AI
 
-The recommendation API is the main entry point for TravelAgent's intelligent consultant experience.
+The recommendation API is the main entry point for Wanderes's intelligent consultant experience.
 
 A simplified request could be:
 

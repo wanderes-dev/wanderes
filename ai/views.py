@@ -15,7 +15,7 @@ MAX_MESSAGE_LENGTH = 2000
 # "Save relevant recommendations") without needing a second endpoint or
 # server-side session state. Distinctive enough that real reply text is
 # very unlikely to contain it by coincidence.
-RECOMMENDATIONS_DELIMITER = "\n<<<TRAVELAGENT_RECOMMENDATIONS>>>\n"
+RECOMMENDATIONS_DELIMITER = "\n<<<WANDERES_RECOMMENDATIONS>>>\n"
 
 
 def chat_page(request):

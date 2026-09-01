@@ -2,9 +2,9 @@
 
 ## 1. Purpose
 
-This document translates the TravelAgent architecture into a practical implementation sequence for a solo developer or small team.
+This document translates the Wanderes architecture into a practical implementation sequence for a solo developer or small team.
 
-The objective is to build the **smallest useful version of TravelAgent first**, while preserving the architectural boundaries needed for future personalization, community intelligence, premium features, and provider redundancy.
+The objective is to build the **smallest useful version of Wanderes first**, while preserving the architectural boundaries needed for future personalization, community intelligence, premium features, and provider redundancy.
 
 The implementation should proceed incrementally.
 
@@ -38,11 +38,11 @@ Streaming Response
 User
 ```
 
-This allows TravelAgent to demonstrate its core value before implementing advanced personalization or community features.
+This allows Wanderes to demonstrate its core value before implementing advanced personalization or community features.
 
 The implementation should follow this principle:
 
-> Build the smallest useful version first, while preserving the architectural boundaries that allow TravelAgent to evolve later.
+> Build the smallest useful version first, while preserving the architectural boundaries that allow Wanderes to evolve later.
 
 ---
 
@@ -100,7 +100,7 @@ Do not abstract every small piece of code merely because it might change.
 
 ## Objective
 
-Create a reproducible local development environment containing the core TravelAgent infrastructure.
+Create a reproducible local development environment containing the core Wanderes infrastructure.
 
 ## Components
 
@@ -120,7 +120,7 @@ The project should use Django applications/modules organized around meaningful b
 Potential initial applications include:
 
 ```text
-travelagent/
+wanderes/
 ├── users/
 ├── travel/
 ├── recommendations/
@@ -153,7 +153,7 @@ A new developer should be able to clone the repository, configure the required e
 
 ## Objective
 
-Create the minimum account system required for persistent TravelAgent experiences.
+Create the minimum account system required for persistent Wanderes experiences.
 
 ## Features
 
@@ -183,7 +183,7 @@ A user can:
 2. Log in.
 3. Log out.
 4. Maintain an authenticated session.
-5. Access an authenticated TravelAgent area.
+5. Access an authenticated Wanderes area.
 
 Authentication and authorization tests must exist.
 
@@ -208,7 +208,7 @@ Depending on the selected data provider, the initial domain may include concepts
 
 Only concepts actually required by the first recommendation flow should be implemented.
 
-**Flight result / Hotel result status (2026-09-01)**: not implemented as part of this milestone - Destination/climate data (Open-Meteo) was sufficient for the first vertical slice, and flights/hotels were explicitly deferred (`DECISIONS_PENDING.md` §2). Real provider research for flights/hotels has since been done ahead of schedule (`DECISIONS_PENDING.md` §4, `10_EXTERNAL_INTEGRATIONS.md` §13) at the user's direction - findings: every genuine real-time search API researched gates access behind traffic TravelAgent doesn't have yet pre-launch, except Duffel (flights, but a book-through-API model rather than pure affiliate) and Booking.com's Affiliate Partner Program (hotels). Implementation is still pending a human decision on provider(s) and is properly Phase 23-24 work (`15_IMPLEMENTATION_GUIDE.md`), not this milestone.
+**Flight result / Hotel result status (2026-09-01)**: not implemented as part of this milestone - Destination/climate data (Open-Meteo) was sufficient for the first vertical slice, and flights/hotels were explicitly deferred (`DECISIONS_PENDING.md` §2). Real provider research for flights/hotels has since been done ahead of schedule (`DECISIONS_PENDING.md` §4, `10_EXTERNAL_INTEGRATIONS.md` §13) at the user's direction - findings: every genuine real-time search API researched gates access behind traffic Wanderes doesn't have yet pre-launch, except Duffel (flights, but a book-through-API model rather than pure affiliate) and Booking.com's Affiliate Partner Program (hotels). Implementation is still pending a human decision on provider(s) and is properly Phase 23-24 work (`15_IMPLEMENTATION_GUIDE.md`), not this milestone.
 
 ## External Provider Boundary
 
@@ -240,7 +240,7 @@ Provider-specific response formats should not leak into the rest of the applicat
 
 ## Definition of Done
 
-TravelAgent can request the travel information required by the first MVP scenario without the recommendation logic depending directly on provider-specific code.
+Wanderes can request the travel information required by the first MVP scenario without the recommendation logic depending directly on provider-specific code.
 
 ---
 
@@ -303,7 +303,7 @@ The exact schema should be defined during implementation based on actual require
 
 ## Definition of Done
 
-TravelAgent can send a controlled travel-related request to the configured AI provider and safely process the response.
+Wanderes can send a controlled travel-related request to the configured AI provider and safely process the response.
 
 ---
 
@@ -311,7 +311,7 @@ TravelAgent can send a controlled travel-related request to the configured AI pr
 
 ## Objective
 
-Build the first genuinely useful TravelAgent experience.
+Build the first genuinely useful Wanderes experience.
 
 Example request:
 
@@ -383,7 +383,7 @@ The application should still handle:
 
 ## Definition of Done
 
-A user can submit a natural-language travel request and receive a useful, grounded recommendation through the TravelAgent interface.
+A user can submit a natural-language travel request and receive a useful, grounded recommendation through the Wanderes interface.
 
 This milestone is the first major MVP checkpoint.
 
@@ -422,7 +422,7 @@ The application should explicitly determine what information is worth storing.
 
 ## Definition of Done
 
-A registered user can maintain a traveler profile and TravelAgent can use authorized profile information to personalize recommendations.
+A registered user can maintain a traveler profile and Wanderes can use authorized profile information to personalize recommendations.
 
 ---
 
@@ -430,7 +430,7 @@ A registered user can maintain a traveler profile and TravelAgent can use author
 
 ## Objective
 
-Allow TravelAgent to remember where the user has traveled.
+Allow Wanderes to remember where the user has traveled.
 
 ## Features
 
@@ -454,7 +454,7 @@ A previously visited destination may still be appropriate when:
 
 ## Definition of Done
 
-TravelAgent can recognize previous travel and incorporate it into recommendation decisions.
+Wanderes can recognize previous travel and incorporate it into recommendation decisions.
 
 ---
 
@@ -485,7 +485,7 @@ A registered user can save and retrieve a basic trip.
 
 ## Objective
 
-Allow TravelAgent to learn from explicit user feedback.
+Allow Wanderes to learn from explicit user feedback.
 
 ## Features
 
@@ -630,7 +630,7 @@ These features should only be implemented after the privacy model and community 
 
 Do not build a full social network.
 
-Implement only interactions that directly support TravelAgent's travel-consultancy value.
+Implement only interactions that directly support Wanderes's travel-consultancy value.
 
 ---
 
@@ -652,7 +652,7 @@ Potential areas:
 ## Strategy
 
 ```text
-TravelAgent
+Wanderes
      ↓
 Internal Interface
      ↓
@@ -764,7 +764,7 @@ Kubernetes is not required.
 
 ## Definition of Done
 
-A production user can register, interact with TravelAgent, receive recommendations, save relevant information, and use the available MVP features reliably.
+A production user can register, interact with Wanderes, receive recommendations, save relevant information, and use the available MVP features reliably.
 
 ---
 
@@ -878,7 +878,7 @@ The first sprint should focus exclusively on creating the development foundation
 
 At the end of the first sprint:
 
-> TravelAgent should run locally as a reproducible Django application connected to PostgreSQL and Redis, with automated tests executing successfully.
+> Wanderes should run locally as a reproducible Django application connected to PostgreSQL and Redis, with automated tests executing successfully.
 
 No AI functionality is required yet.
 
@@ -888,7 +888,7 @@ No AI functionality is required yet.
 
 After the foundation, the most important development goal is:
 
-> A user can ask TravelAgent for a travel recommendation and receive a useful answer based on real travel information.
+> A user can ask Wanderes for a travel recommendation and receive a useful answer based on real travel information.
 
 This should be achieved before investing heavily in:
 
@@ -898,7 +898,7 @@ This should be achieved before investing heavily in:
 * Multiple providers.
 * Complex memory systems.
 
-This gives us an early opportunity to evaluate whether the core TravelAgent experience is actually valuable.
+This gives us an early opportunity to evaluate whether the core Wanderes experience is actually valuable.
 
 ---
 
@@ -907,7 +907,7 @@ This gives us an early opportunity to evaluate whether the core TravelAgent expe
 The MVP is successful when a user can:
 
 1. Create an account.
-2. Tell TravelAgent something about their travel preferences.
+2. Tell Wanderes something about their travel preferences.
 3. Ask for a travel recommendation.
 4. Receive a recommendation based on relevant travel information.
 5. Understand why the destination was recommended.
@@ -921,7 +921,7 @@ The system should perform these core tasks reliably before the project expands i
 
 # 24. Guiding Principle
 
-TravelAgent should evolve through validated increments:
+Wanderes should evolve through validated increments:
 
 ```text
 Build
@@ -939,7 +939,7 @@ Build the next capability
 
 The objective is not to implement the entire architecture as quickly as possible.
 
-The objective is to discover whether TravelAgent can consistently provide **better travel decisions through personalized, trustworthy assistance**.
+The objective is to discover whether Wanderes can consistently provide **better travel decisions through personalized, trustworthy assistance**.
 
 That is the product we are actually building.
 

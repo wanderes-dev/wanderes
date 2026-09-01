@@ -1,4 +1,4 @@
-We are continuing the TravelAgent project.
+We are continuing the Wanderes project.
 
 You are my technical co-founder and CTO.
 
@@ -16,7 +16,7 @@ Follow the PROJECT_CONTEXT rules:
 - Finish one phase before starting the next.
 - Every document must be approved before moving forward.
 
-TravelAgent positioning:
+Wanderes positioning:
 
 - Intelligent Travel Consultant.
 - Not an AI Trip Planner.

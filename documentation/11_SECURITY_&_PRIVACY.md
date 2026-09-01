@@ -2,13 +2,13 @@
 
 ## 1. Purpose
 
-Security and privacy are core architectural requirements of TravelAgent.
+Security and privacy are core architectural requirements of Wanderes.
 
 The system stores personal travel information and may use that information to personalize recommendations. Access to this data must therefore be controlled throughout the application.
 
 ## 2. Security Principles
 
-TravelAgent should follow these principles:
+Wanderes should follow these principles:
 
 * Protect user data by default.
 * Enforce authorization on the backend.
@@ -24,9 +24,9 @@ Security should be built into the architecture rather than added after implement
 
 ## 3. Authentication & Authorization
 
-Django's authentication system will manage TravelAgent user accounts and sessions.
+Django's authentication system will manage Wanderes user accounts and sessions.
 
-TravelAgent may also support external identity providers such as Google to reduce registration friction.
+Wanderes may also support external identity providers such as Google to reduce registration friction.
 
 External authentication should use established **OAuth 2.0 / OpenID Connect** libraries rather than implementing authentication protocols manually.
 
@@ -41,12 +41,12 @@ Verified Identity
  ↓
 Django
  ↓
-TravelAgent User Account
+Wanderes User Account
  ↓
 Django Session
 ```
 
-External providers authenticate the user's identity, while Django remains responsible for the TravelAgent account, session, and application permissions.
+External providers authenticate the user's identity, while Django remains responsible for the Wanderes account, session, and application permissions.
 
 Additional identity providers may be added in the future if there is a clear product benefit.
 
@@ -82,7 +82,7 @@ A user must never be able to access another user's private information by manipu
 
 ## 5. AI Data Boundaries
 
-The AI system must not have unrestricted access to TravelAgent's database.
+The AI system must not have unrestricted access to Wanderes's database.
 
 Before information is sent to an AI provider, the application should determine:
 
@@ -97,7 +97,7 @@ Private information belonging to one user must never be included in another user
 
 ## 6. Data Minimization
 
-TravelAgent should avoid collecting or storing information without a legitimate product purpose.
+Wanderes should avoid collecting or storing information without a legitimate product purpose.
 
 Data should be classified according to its purpose and sensitivity.
 
@@ -115,7 +115,7 @@ If information is no longer required, the system should support appropriate dele
 
 Community intelligence must not expose individual users through aggregated insights.
 
-TravelAgent should distinguish between:
+Wanderes should distinguish between:
 
 * Private user information.
 * Public information intentionally shared by users.
@@ -180,7 +180,7 @@ Security monitoring should focus on actionable signals rather than collecting ex
 
 ## 11. Privacy & GDPR
 
-TravelAgent should be designed with privacy requirements applicable to its operating markets, including GDPR where applicable.
+Wanderes should be designed with privacy requirements applicable to its operating markets, including GDPR where applicable.
 
 The architecture should support principles such as:
 
@@ -196,7 +196,7 @@ Legal requirements should be reviewed with appropriate professional advice befor
 
 ## 12. Data Retention & Deletion
 
-TravelAgent should define retention rules for different categories of data.
+Wanderes should define retention rules for different categories of data.
 
 Users should be able to delete their account and associated personal data according to the product's privacy policy and applicable legal requirements.
 
@@ -214,7 +214,7 @@ Aggregated data that cannot reasonably be linked back to an individual may follo
 
 The initial implementation should use established Django and infrastructure security practices rather than building custom security mechanisms.
 
-As TravelAgent grows, security practices should evolve based on:
+As Wanderes grows, security practices should evolve based on:
 
 * Actual threats.
 * User scale.
@@ -226,4 +226,4 @@ Security should be reviewed regularly rather than treated as a one-time implemen
 
 ## 14. Principle
 
-> **TravelAgent should collect only what it needs, protect what it stores, expose only what is authorized, and give AI and other systems only the information required for the task.**
+> **Wanderes should collect only what it needs, protect what it stores, expose only what is authorized, and give AI and other systems only the information required for the task.**

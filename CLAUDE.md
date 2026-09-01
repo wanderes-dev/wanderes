@@ -1,4 +1,4 @@
-# CLAUDE.md — TravelAgent Working Manual
+# CLAUDE.md — Wanderes Working Manual
 
 This file is read automatically at the start of every session in this repository. It captures **how we work together**, decisions already made, and mistakes already made — so they aren't repeated. It is a supplement to `documentation/`, not a replacement for it.
 
@@ -11,7 +11,7 @@ Do not assume the state described in this file's examples reflects the current p
 
 ---
 
-## What TravelAgent is
+## What Wanderes is
 
 An Intelligent Travel Consultant — not an AI trip planner, not a travel agency, not a booking platform. Full product/architecture spec lives in `documentation/01`–`15`. Start with `documentation/02_PROJECT_CONTEXT.md` (project philosophy, roles, communication rules) and `documentation/15_IMPLEMENTATION_GUIDE.md` (how development proceeds, phase by phase).
 
@@ -29,19 +29,19 @@ These come directly from `02_PROJECT_CONTEXT.md` and `15_IMPLEMENTATION_GUIDE.md
 
 ## Safety judgment calls already made — keep applying these
 
-- **Never try to access, guess, or reset credentials for infrastructure you didn't create.** Found a pre-existing local PostgreSQL 18 Windows service on this machine (unrelated to TravelAgent, likely from another project) — did not attempt to use or modify it without asking the user first.
+- **Never try to access, guess, or reset credentials for infrastructure you didn't create.** Found a pre-existing local PostgreSQL 18 Windows service on this machine (unrelated to Wanderes, likely from another project) — did not attempt to use or modify it without asking the user first.
 - **Never modify system/security settings** (BIOS/UEFI, Windows optional features, services) directly — these require the human to act. When encountered (e.g., virtualization disabled, blocking Docker's WSL2 backend), explain exactly what needs to change and how, then wait.
 - **Don't introduce architecture-deviating workarounds even when they'd unblock things faster.** E.g., PostgreSQL is the documented source of truth (`04_DATABASE_DESIGN.md`); don't fall back to SQLite locally "just for now" — behavioral differences (JSON fields, constraints, migration behavior) can mask real bugs that only surface later.
 - Git commits are only made when the user explicitly asks (per global Claude Code instructions) — infrastructure/config file creation itself doesn't require that permission, but committing does.
 
 ## Environment notes specific to this machine
 
-(`C:\Users\vinic\OneDrive\Desktop\TravelAgent`, Windows 11, PowerShell/Git Bash tools)
+(`C:\Users\vinic\OneDrive\Desktop\Wanderes`, Windows 11, PowerShell/Git Bash tools)
 
 - Use `py` to invoke Python, not `python` or `python3` (Windows Store alias breaks the latter two). Local venv: `.venv/Scripts/python.exe`.
 - Git and a local Python 3.14 (via `py`) are available by default. Docker was **not** pre-installed — it was installed mid-project (2026-08-28) but its engine (WSL2-based) could not start because **hardware virtualization was disabled**. Fix requires: enabling the Windows "Virtual Machine Platform" feature + enabling virtualization (Intel VT-x / AMD-V) in BIOS/UEFI + reboot. See `documentation/PROJECT_STATE.md` for whether this is still pending — check before re-suggesting a Docker install, it may already be done.
 - Docker Desktop installed to `C:\Users\vinic\AppData\Local\Programs\DockerDesktop` (user-local, not `Program Files`) — not automatically on `PATH` in already-open shell sessions; use the full path to `resources\bin\docker.exe` or open a fresh terminal.
-- A **PostgreSQL 18** server runs as a Windows service (`postgresql-x64-18`) on port 5432, unrelated to TravelAgent's Dockerized Postgres 16. Don't confuse the two; TravelAgent's own Postgres runs inside Docker Compose (`db` service) on the same port, so they cannot run simultaneously without a port conflict — this is expected and fine since TravelAgent uses the Dockerized one.
+- A **PostgreSQL 18** server runs as a Windows service (`postgresql-x64-18`) on port 5432, unrelated to Wanderes's Dockerized Postgres 16. Don't confuse the two; Wanderes's own Postgres runs inside Docker Compose (`db` service) on the same port, so they cannot run simultaneously without a port conflict — this is expected and fine since Wanderes uses the Dockerized one.
 - Long-running interactive commands (like `docker info` while the engine is still starting) hang past the default tool timeout and get moved to background — check the output file or wait for the task notification rather than assuming failure.
 - **⚠️ Always run local Dockerized tests as `docker compose exec -e DJANGO_SETTINGS_MODULE=config.settings.test web pytest` — never bare `docker compose exec web pytest`.** `docker-compose.yml` sets `DJANGO_SETTINGS_MODULE=config.settings.development` as an env var for the `web`/`worker` services (needed for `runserver`/`celery worker` to behave correctly normally), and pytest-django gives an *existing* env var priority over `pyproject.toml`'s ini-option setting — so without the `-e` override, tests silently run under **development** settings, not **test** settings. Confirmed 2026-08-29 (Phase 15): this was harmless for 14 phases since nothing depended on a setting that actually differs between the two files — until `CELERY_TASK_ALWAYS_EAGER` (`True` in test.py, `False` under development.py) made a signal-triggered Celery task silently never fire in "eager" tests. **CI was never affected** — `.github/workflows/ci.yml` already sets `DJANGO_SETTINGS_MODULE=config.settings.test` as an explicit job-level env var.
 

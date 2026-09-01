@@ -1,8 +1,8 @@
-# TravelAgent — System Architecture
+# Wanderes — System Architecture
 
 ## 1. Architecture Goals & Principles
 
-The TravelAgent architecture must support the product's core objective: providing a trustworthy, personalized, and continuously improving travel consultation experience.
+The Wanderes architecture must support the product's core objective: providing a trustworthy, personalized, and continuously improving travel consultation experience.
 
 The architecture should be designed to support the MVP while providing clear paths for future expansion.
 
@@ -122,7 +122,7 @@ The system should avoid producing recommendations that cannot be meaningfully ex
 
 External travel providers and data sources should be isolated behind integration interfaces.
 
-The core TravelAgent system should not depend directly on the implementation details of a specific provider.
+The core Wanderes system should not depend directly on the implementation details of a specific provider.
 
 This allows providers to be:
 
@@ -169,13 +169,13 @@ The system should provide sufficient observability to understand:
 - System performance.
 - User-facing errors.
 
-Observability data must itself follow TravelAgent's privacy requirements.
+Observability data must itself follow Wanderes's privacy requirements.
 
 ### 1.12 Evolution Over Time
 
-The architecture should support the evolution of TravelAgent from:
+The architecture should support the evolution of Wanderes from:
 
-MVP → Growing Platform → Full TravelAgent Ecosystem
+MVP → Growing Platform → Full Wanderes Ecosystem
 
 without requiring a complete rewrite at each stage.
 
@@ -183,7 +183,7 @@ However, future scalability requirements should not justify unnecessary complexi
 
 Architectural complexity should be introduced only when the product demonstrates a need for it.
 
-                    TravelAgent
+                    Wanderes
                          │
                     Django / API
                          │
@@ -201,7 +201,7 @@ Architectural complexity should be introduced only when the product demonstrates
 
 ## 2. High-Level Architecture
 
-TravelAgent will use a modular application architecture centered around a Django-based backend.
+Wanderes will use a modular application architecture centered around a Django-based backend.
 
 The initial system should remain simple enough to be developed and operated by a small team or solo developer while maintaining clear boundaries between major domains.
 
@@ -285,7 +285,7 @@ The initial implementation may run as a modular monolithic application rather th
 
 ### 2.3 Client Applications
 
-The client layer is responsible for presenting the TravelAgent experience to users.
+The client layer is responsible for presenting the Wanderes experience to users.
 
 The architecture should allow multiple clients to use the same backend services.
 
@@ -331,7 +331,7 @@ The application layer coordinates the relevant domain services rather than imple
 
 ### 2.6 Domain Services
 
-Domain services contain the core TravelAgent business capabilities.
+Domain services contain the core Wanderes business capabilities.
 
 Important domains include:
 
@@ -350,7 +350,7 @@ Each domain should have clear responsibilities and controlled access to other do
 
 ### 2.7 AI Orchestration Layer
 
-The AI orchestration layer controls how AI models are used by TravelAgent.
+The AI orchestration layer controls how AI models are used by Wanderes.
 
 It should be responsible for:
 
@@ -429,7 +429,7 @@ Examples include:
 - Weather services.
 - Other travel-related APIs.
 
-External provider responses should be normalized before being used by the core TravelAgent system.
+External provider responses should be normalized before being used by the core Wanderes system.
 
 This prevents provider-specific formats from spreading throughout the application.
 
@@ -453,7 +453,7 @@ Sensitive traveler information must not be unnecessarily exposed through logs, m
 
 The initial implementation should remain a modular monolith.
 
-As TravelAgent grows, individual components may be extracted into independent services when justified by:
+As Wanderes grows, individual components may be extracted into independent services when justified by:
 
 - Performance requirements.
 - Independent scaling requirements.
@@ -465,13 +465,13 @@ As TravelAgent grows, individual components may be extracted into independent se
 The architecture should therefore prioritize strong internal boundaries before introducing distributed infrastructure.
 ## 3. Architectural Layers & Responsibilities
 
-TravelAgent will use clearly defined architectural layers to separate user interaction, application workflows, core business logic, AI capabilities, infrastructure, and external integrations.
+Wanderes will use clearly defined architectural layers to separate user interaction, application workflows, core business logic, AI capabilities, infrastructure, and external integrations.
 
 The purpose of these layers is to keep the system organized, understandable, maintainable, and easy to evolve.
 
 ### 3.1 Presentation Layer
 
-The Presentation Layer is responsible for communication between TravelAgent and the user.
+The Presentation Layer is responsible for communication between Wanderes and the user.
 
 It receives requests from the web or mobile application and returns responses.
 
@@ -484,7 +484,7 @@ Responsibilities include:
 - Returning responses.
 - Returning errors in a consistent format.
 
-The Presentation Layer should not contain TravelAgent's core business logic.
+The Presentation Layer should not contain Wanderes's core business logic.
 
 For example, it should not decide which destination is best for a traveler.
 
@@ -505,7 +505,7 @@ The Application Layer coordinates these operations but should not contain all of
 
 ### 3.3 Domain Layer
 
-The Domain Layer contains the core concepts and business rules of TravelAgent.
+The Domain Layer contains the core concepts and business rules of Wanderes.
 
 Examples include:
 
@@ -523,11 +523,11 @@ For example:
 
 If a traveler has already visited Paris, the system may decide that Paris should normally not be recommended again.
 
-This is a TravelAgent business rule and therefore belongs to the domain logic rather than the user interface or AI provider.
+This is a Wanderes business rule and therefore belongs to the domain logic rather than the user interface or AI provider.
 
 ### 3.4 AI Layer
 
-The AI Layer provides artificial intelligence capabilities to TravelAgent.
+The AI Layer provides artificial intelligence capabilities to Wanderes.
 
 The AI may be responsible for tasks such as:
 
@@ -558,7 +558,7 @@ Examples include:
 - Logging.
 - Monitoring.
 
-The core TravelAgent logic should not be tightly coupled to a specific infrastructure implementation when avoidable.
+The core Wanderes logic should not be tightly coupled to a specific infrastructure implementation when avoidable.
 
 ### 3.6 Integration Layer
 
@@ -575,9 +575,9 @@ Examples include:
 - AI providers.
 - Affiliate or referral providers.
 
-External provider-specific formats should be converted into TravelAgent's internal formats before being used by the core application.
+External provider-specific formats should be converted into Wanderes's internal formats before being used by the core application.
 
-This prevents external providers from becoming tightly coupled to TravelAgent's internal business logic.
+This prevents external providers from becoming tightly coupled to Wanderes's internal business logic.
 
 ### 3.7 Dependency Direction
 
@@ -597,7 +597,7 @@ Infrastructure / Integrations
 
 AI capabilities may be used by the Application and Domain layers through controlled interfaces.
 
-External providers and infrastructure should not directly control TravelAgent's business logic.
+External providers and infrastructure should not directly control Wanderes's business logic.
 
 ### 3.8 Architectural Principle
 
@@ -607,17 +607,17 @@ The system should avoid placing unrelated responsibilities into the same layer s
 
 The objective is not to create unnecessary complexity.
 
-The objective is to ensure that each part of TravelAgent has a clear purpose and can evolve without unnecessarily affecting the rest of the system.               
+The objective is to ensure that each part of Wanderes has a clear purpose and can evolve without unnecessarily affecting the rest of the system.               
 
 ## 4. Data Architecture
 
-TravelAgent will use PostgreSQL as its primary persistent database and Redis as a supporting infrastructure component.
+Wanderes will use PostgreSQL as its primary persistent database and Redis as a supporting infrastructure component.
 
 The data architecture must prioritize reliability, privacy, clear ownership, and the ability to scale as the platform grows.
 
 ### 4.1 PostgreSQL
 
-PostgreSQL will be the primary system of record for TravelAgent.
+PostgreSQL will be the primary system of record for Wanderes.
 
 It will store persistent application data, including:
 
@@ -679,7 +679,7 @@ Persistent data belongs in PostgreSQL.
 
 Temporary data may use Redis or other appropriate temporary storage.
 
-The system should avoid storing information permanently when it has no legitimate purpose for the TravelAgent experience.
+The system should avoid storing information permanently when it has no legitimate purpose for the Wanderes experience.
 
 ### 4.6 Data Architecture Principles
 
@@ -694,7 +694,7 @@ The data architecture should follow these principles:
 
 ## 6. Integrations & Background Processing
 
-TravelAgent depends on external travel providers and background processing for tasks that should not block the main user request.
+Wanderes depends on external travel providers and background processing for tasks that should not block the main user request.
 
 ### 6.1 External Integrations
 
@@ -746,11 +746,11 @@ Background processing should improve performance and reliability without becomin
 
 ## 7. Security, Scalability & Evolution
 
-Security, privacy, and controlled growth are core architectural concerns. The initial system should remain simple while establishing boundaries that allow TravelAgent to scale safely.
+Security, privacy, and controlled growth are core architectural concerns. The initial system should remain simple while establishing boundaries that allow Wanderes to scale safely.
 
 ### 7.1 Security & Privacy
 
-TravelAgent must protect user data throughout the application.
+Wanderes must protect user data throughout the application.
 
 Key principles:
 
@@ -782,7 +782,7 @@ PostgreSQL remains the source of truth as the system grows.
 
 ### 7.3 Evolution of the Architecture
 
-TravelAgent will initially remain a modular monolith.
+Wanderes will initially remain a modular monolith.
 
 If the system grows significantly, individual components may eventually be separated into independent services when there is a clear technical or organizational reason.
 

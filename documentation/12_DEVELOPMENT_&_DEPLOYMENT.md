@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-This document defines how TravelAgent is developed, configured, tested, and deployed.
+This document defines how Wanderes is developed, configured, tested, and deployed.
 
 The initial operational setup should remain simple and reproducible while supporting the services required by the application.
 
@@ -79,7 +79,7 @@ Secrets must never be committed to source control.
 
 ## 6. Development, Staging & Production
 
-TravelAgent should separate environments:
+Wanderes should separate environments:
 
 ```text id="g8zqv6"
 Development
@@ -139,7 +139,7 @@ The detailed testing strategy is defined separately.
 
 ## 10. CI/CD
 
-TravelAgent should use a simple CI/CD pipeline.
+Wanderes should use a simple CI/CD pipeline.
 
 A typical workflow is:
 
@@ -227,4 +227,4 @@ The exact hosting provider can be selected later based on cost, reliability, geo
 
 ## 15. Operational Principle
 
-> **Use the simplest infrastructure that reliably runs TravelAgent, and add operational complexity only when scale or reliability requirements justify it.**
+> **Use the simplest infrastructure that reliably runs Wanderes, and add operational complexity only when scale or reliability requirements justify it.**

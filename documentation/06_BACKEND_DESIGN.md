@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-This document defines how the TravelAgent backend is organized inside the Django application.
+This document defines how the Wanderes backend is organized inside the Django application.
 
 The goal is to keep the system maintainable as a modular monolith while supporting future growth.
 
@@ -153,4 +153,4 @@ New features should be added as modules rather than mixed into existing code.
 
 When a module becomes independently scalable or operationally complex, it may be considered for extraction into a separate service.
 
-Until then, TravelAgent remains a modular monolith.
+Until then, Wanderes remains a modular monolith.

@@ -7,11 +7,11 @@ It creates memories, strengthens relationships, broadens perspectives, and allow
 
 Yet for many people, planning a trip is stressful. Endless research, overwhelming choices, conflicting information, and the fear of making the wrong decision often replace the excitement that travel should bring. For others, the uncertainty is so great that they never take the first step.
 
-At TravelAgent, we believe travel should begin with excitement, not anxiety.
+At Wanderes, we believe travel should begin with excitement, not anxiety.
 
 Our vision is to remove the complexity of travel planning by providing guidance that is deeply personal, transparent, and trustworthy—allowing travelers to focus on what truly matters: living every moment of their journey.
 
-Whether someone is planning their very first adventure or their hundredth, TravelAgent is there to understand, guide, and grow with every traveler, making every journey feel uniquely their own.
+Whether someone is planning their very first adventure or their hundredth, Wanderes is there to understand, guide, and grow with every traveler, making every journey feel uniquely their own.
 
 2. Mission
 
@@ -52,9 +52,9 @@ Travelers no longer want to spend days comparing flights, hotels, destinations, 
 
 For the first time, modern technology makes it possible to offer everyone the experience of having a personal travel consultant—one that is always available, continuously learns, and adapts to each traveler over time.
 
-Unlike traditional travel platforms that focus on selling products, TravelAgent is built around understanding people. Every recommendation is tailored to the traveler's preferences, needs, budget, and personal travel style, while remaining transparent and easy to understand.
+Unlike traditional travel platforms that focus on selling products, Wanderes is built around understanding people. Every recommendation is tailored to the traveler's preferences, needs, budget, and personal travel style, while remaining transparent and easy to understand.
 
-Rather than replacing airlines, hotels, or booking platforms, TravelAgent connects them into a single personalized experience, helping travelers make informed decisions with confidence.
+Rather than replacing airlines, hotels, or booking platforms, Wanderes connects them into a single personalized experience, helping travelers make informed decisions with confidence.
 
 We believe the future of travel is not about offering more options—it is about helping every person choose the right one.
 
@@ -66,9 +66,9 @@ Travelers no longer want to spend days comparing flights, hotels, destinations, 
 
 For the first time, modern technology makes it possible to offer everyone the experience of having a personal travel consultant—one that is always available, continuously learns, and adapts to each traveler over time.
 
-Unlike traditional travel platforms that focus on selling products, TravelAgent is built around understanding people. Every recommendation is tailored to the traveler's preferences, needs, budget, and personal travel style, while remaining transparent and easy to understand.
+Unlike traditional travel platforms that focus on selling products, Wanderes is built around understanding people. Every recommendation is tailored to the traveler's preferences, needs, budget, and personal travel style, while remaining transparent and easy to understand.
 
-Rather than replacing airlines, hotels, or booking platforms, TravelAgent connects them into a single personalized experience, helping travelers make informed decisions with confidence.
+Rather than replacing airlines, hotels, or booking platforms, Wanderes connects them into a single personalized experience, helping travelers make informed decisions with confidence.
 
 We believe the future of travel is not about offering more options—it is about helping every person choose the right one.
 
@@ -93,7 +93,7 @@ Every recommendation must be clear, understandable, and supported by objective r
 
 ### Conversation Before Recommendation
 
-Great recommendations begin with understanding. TravelAgent listens first, asks meaningful questions, and only then provides personalized guidance.
+Great recommendations begin with understanding. Wanderes listens first, asks meaningful questions, and only then provides personalized guidance.
 
 ### Intelligence with Responsibility
 
@@ -121,7 +121,7 @@ Travelers own their data. Personal information and travel history are collected 
 
 ### Continuous Improvement
 
-TravelAgent is never finished. We continuously improve our knowledge, recommendations, and user experience based on feedback, data, and real-world travel experiences.
+Wanderes is never finished. We continuously improve our knowledge, recommendations, and user experience based on feedback, data, and real-world travel experiences.
 
 ### Memories Over Bookings
 
@@ -137,7 +137,7 @@ Every recommendation must be clear, understandable, and supported by objective r
 
 ### Conversation Before Recommendation
 
-Great recommendations begin with understanding. TravelAgent listens first, asks meaningful questions, and only then provides personalized guidance.
+Great recommendations begin with understanding. Wanderes listens first, asks meaningful questions, and only then provides personalized guidance.
 
 ### Intelligence with Responsibility
 
@@ -165,7 +165,7 @@ Travelers own their data. Personal information and travel history are collected 
 
 ### Continuous Improvement
 
-TravelAgent is never finished. We continuously improve our knowledge, recommendations, and user experience based on feedback, data, and real-world travel experiences.
+Wanderes is never finished. We continuously improve our knowledge, recommendations, and user experience based on feedback, data, and real-world travel experiences.
 
 ### Memories Over Bookings
 
@@ -187,7 +187,7 @@ We communicate openly and honestly. We explain our recommendations, acknowledge 
 
 ### Trust
 
-Trust is earned through consistency, reliability, and honesty. Every interaction should strengthen the confidence travelers place in TravelAgent.
+Trust is earned through consistency, reliability, and honesty. Every interaction should strengthen the confidence travelers place in Wanderes.
 
 ### Excellence
 
@@ -201,7 +201,7 @@ We continuously learn from travelers, the industry, and new technologies to buil
 
 We prioritize decisions that create lasting value for travelers, our product, and our company, even when they require greater effort today.
 
-8. What TravelAgent Is
+8. What Wanderes Is
 
 
 Travel has the power to transform lives. It creates memories, broadens perspectives, strengthens relationships, and connects people with the world.
@@ -210,24 +210,24 @@ Yet planning a trip has become increasingly overwhelming. Travelers are forced t
 
 We believe travelers deserve better.
 
-TravelAgent exists to bring clarity, confidence, and trust back to travel planning. By combining intelligent technology with a human-centered approach, we help people make informed decisions with confidence, knowing that every recommendation is made in their best interest.
+Wanderes exists to bring clarity, confidence, and trust back to travel planning. By combining intelligent technology with a human-centered approach, we help people make informed decisions with confidence, knowing that every recommendation is made in their best interest.
 
 Our purpose is not to replace human judgment, but to empower it—making every journey begin with confidence rather than uncertainty.
 
-9. What TravelAgent Is NOT
+9. What Wanderes Is NOT
 
 
-TravelAgent is not a travel agency.
+Wanderes is not a travel agency.
 
 We do not sell flights, hotels, tours, or travel packages.
 
-TravelAgent is not an AI trip planner that automatically generates itineraries without understanding the traveler.
+Wanderes is not an AI trip planner that automatically generates itineraries without understanding the traveler.
 
-TravelAgent is not a booking platform.
+Wanderes is not a booking platform.
 
 We do not replace airlines, hotels, or travel providers, nor are we responsible for delivering travel services.
 
-Instead, TravelAgent is an Intelligent Travel Consultant.
+Instead, Wanderes is an Intelligent Travel Consultant.
 
 Our role is to help travelers make informed decisions through personalized, transparent, and trustworthy recommendations. Booking is simply the final step of a much larger decision-making process.
 
@@ -236,11 +236,11 @@ Our role is to help travelers make informed decisions through personalized, tran
 
 We envision a future where every traveler has access to a trusted personal travel consultant that understands their preferences, learns from every journey, and grows alongside them throughout their lifetime.
 
-TravelAgent will become the world's most trusted Intelligent Travel Consultant, empowering millions of travelers to make informed decisions with confidence through personalized, transparent, and unbiased guidance.
+Wanderes will become the world's most trusted Intelligent Travel Consultant, empowering millions of travelers to make informed decisions with confidence through personalized, transparent, and unbiased guidance.
 
 Our ambition is not to become the largest travel company, nor to replace travel providers. Our ambition is to become the most trusted companion for every travel decision.
 
-When people think about traveling, they should think of TravelAgent first—not because they need to book a trip, but because they want to make the best possible decisions.
+When people think about traveling, they should think of Wanderes first—not because they need to book a trip, but because they want to make the best possible decisions.
 
 11. Success Metrics
 
@@ -251,12 +251,12 @@ Our success is measured by the value we create for travelers, not simply by busi
 We succeed when:
 
 - Travelers consistently trust our recommendations.
-- TravelAgent inspires people to travel more by making travel planning simpler, more trustworthy, and less overwhelming.
+- Wanderes inspires people to travel more by making travel planning simpler, more trustworthy, and less overwhelming.
 - People make better travel decisions with greater confidence.
 - Travel planning becomes less stressful and more enjoyable.
 - Recommendations become increasingly personalized through long-term relationships.
-- Users return to TravelAgent before making every important travel decision.
-- Travelers actively recommend TravelAgent to friends and family.
+- Users return to Wanderes before making every important travel decision.
+- Travelers actively recommend Wanderes to friends and family.
 - Transparency, honesty, and independence remain at the core of every recommendation.
 
 
@@ -298,7 +298,7 @@ A complete product blueprint ready for implementation.
 
 Objective:
 
-Build the first production-ready version of TravelAgent.
+Build the first production-ready version of Wanderes.
 
 Main goals:
 
@@ -389,7 +389,7 @@ Community-driven intelligence.
 
 Objective:
 
-Transform TravelAgent into the world's most intelligent travel consultant.
+Transform Wanderes into the world's most intelligent travel consultant.
 
 Main goals:
 
