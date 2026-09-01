@@ -177,26 +177,55 @@ a:hover {
     border-radius: 1px;
 }
 
+.site-nav-backdrop {
+    display: none;
+}
+
 @media (max-width: 640px) {
     .nav-toggle {
         display: flex;
     }
 
+    /* Slides in from the left and overlays the page instead of pushing
+       its content down (2026-09-02, direct request - the previous
+       behavior pushed .site-content below the open menu). Stays in
+       normal `display: flex` at all times so the transform transition
+       can actually animate; position: fixed takes it out of the header's
+       flow entirely, so it never affects .site-header-inner's layout. */
     .site-nav {
-        display: none;
-        width: 100%;
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 50;
+        width: 80%;
+        max-width: 300px;
+        margin: 0;
+        background: var(--color-surface);
+        box-shadow: var(--shadow-lg);
         flex-direction: column;
         align-items: flex-start;
-        gap: 0.6rem;
-        padding-top: 0.75rem;
-    }
-
-    .site-header-inner {
-        flex-wrap: wrap;
+        gap: 1rem;
+        padding: 4.5rem 1.5rem 1.5rem;
+        overflow-y: auto;
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
     }
 
     .site-nav.is-open {
-        display: flex;
+        transform: translateX(0);
+    }
+
+    .site-nav-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(31, 41, 51, 0.45);
+        z-index: 49;
+    }
+
+    .site-nav-backdrop.is-open {
+        display: block;
     }
 }
 

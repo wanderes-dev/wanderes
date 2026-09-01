@@ -12,6 +12,9 @@
 <body>
     <header class="site-header">
         <div class="site-header-inner">
+            <button type="button" class="nav-toggle" id="nav-toggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="site-nav">
+                <span></span><span></span><span></span>
+            </button>
             <a class="brand" href="{% url 'core:landing' %}">Wanderes</a>
             <nav class="site-nav" id="site-nav">
                 <a href="{% url 'ai:chat' %}">Chat</a>
@@ -29,11 +32,9 @@
                 <a href="{% url 'users:register' %}">Register</a>
                 {% endif %}
             </nav>
-            <button type="button" class="nav-toggle" id="nav-toggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="site-nav">
-                <span></span><span></span><span></span>
-            </button>
         </div>
     </header>
+    <div id="site-nav-backdrop" class="site-nav-backdrop"></div>
 
     {% if messages %}
     <ul class="messages">
