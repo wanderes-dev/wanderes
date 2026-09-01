@@ -260,7 +260,7 @@ TravelAgent/
 
 ## Next actionable steps
 
-Per `15_IMPLEMENTATION_GUIDE.md`'s phase list, Phases 0-17 are done and Phase 18 (MVP Validation, owner: Human) is in progress - deploy-readiness prep is done, but the actual deploy is a human action: create a Render account, apply `render.yaml` via Render's "New Blueprint" flow, provide the `sync: false` secrets (`OPENAI_API_KEY`, and copying the generated `DJANGO_SECRET_KEY` into the worker service - see README's "Deployment (Render)" section for the exact steps). Once real users exist, Phase 18 proper starts: talking to them, watching behavior, deciding what to build next based on what's actually learned - not something Claude Code can do on its own.
+Per `15_IMPLEMENTATION_GUIDE.md`'s phase list, Phases 0-17 are done. **Phase 18 (MVP Validation) is live and actively in progress** - the deploy itself is done (see the summary line at the top of this file), and the app has been in continuous real use since. Phase 18 has no formal "done" checkbox; per the guide, Claude Code's role in it is exactly what's been happening since deploy - fix bugs, implement validated improvements, analyze usage data, improve tests - while the Human's role is talking to users, watching behavior, and deciding what's worth building next. **Confirmed explicitly with the user (2026-09-01)**: continue in this same mode - live-testing-driven bug fixes and UX improvements - rather than jumping ahead to Phase 19 (Premium Strategy), which requires human decisions (pricing, free/premium limits, billing) not yet made. Don't start building monetization/premium features speculatively; wait for those decisions or for the user to explicitly ask to move to Phase 19.
 
 ## Resume checklist for a fresh Claude session
 
