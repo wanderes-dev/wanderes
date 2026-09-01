@@ -1,22 +1,46 @@
 {% extends "base.html" %}
+{% load i18n %}
 
-{% block title %}My account - Wanderes{% endblock %}
+{% block title %}{% trans "My account" %} - Wanderes{% endblock %}
 
 {% block content %}
-<h1>My account</h1>
-<div class="card">
-    <p>Email: {{ user.email }}</p>
-    <p>Member since: {{ user.date_joined|date:"Y-m-d" }}</p>
+<div class="account-header card">
+    <div class="avatar-circle">{{ user.email|slice:":1"|upper }}</div>
+    <div>
+        <h1>{% trans "My account" %}</h1>
+        <p class="account-meta">{{ user.email }}</p>
+        <p class="account-meta account-meta-muted">
+            {% blocktrans with date=user.date_joined|date:"F Y" %}Member since {{ date }}{% endblocktrans %}
+        </p>
+    </div>
 </div>
 
-<ul class="item-list">
-    <li><a href="{% url 'users:profile' %}">Edit my traveler profile</a></li>
-    <li><a href="{% url 'trips:history-list' %}">My travel history</a></li>
-    <li><a href="{% url 'trips:trip-list' %}">My trips</a></li>
-</ul>
+<div class="quick-link-grid">
+    <a class="quick-link-card" href="{% url 'users:profile' %}">
+        <span class="quick-link-icon">🧭</span>
+        <span class="quick-link-text">
+            <span class="quick-link-title">{% trans "Traveler profile" %}</span>
+            <span class="quick-link-desc">{% trans "Preferences that shape your recommendations" %}</span>
+        </span>
+    </a>
+    <a class="quick-link-card" href="{% url 'trips:history-list' %}">
+        <span class="quick-link-icon">🗺️</span>
+        <span class="quick-link-text">
+            <span class="quick-link-title">{% trans "Travel history" %}</span>
+            <span class="quick-link-desc">{% trans "Places you've already been" %}</span>
+        </span>
+    </a>
+    <a class="quick-link-card" href="{% url 'trips:trip-list' %}">
+        <span class="quick-link-icon">🧳</span>
+        <span class="quick-link-text">
+            <span class="quick-link-title">{% trans "My trips" %}</span>
+            <span class="quick-link-desc">{% trans "Plans you're building or have saved" %}</span>
+        </span>
+    </a>
+</div>
 
 <form method="post" action="{% url 'users:logout' %}" class="actions">
     {% csrf_token %}
-    <button type="submit" class="btn btn-secondary">Log out</button>
+    <button type="submit" class="btn btn-secondary">{% trans "Log out" %}</button>
 </form>
 {% endblock %}

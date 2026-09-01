@@ -786,6 +786,165 @@ button:focus-visible, .btn:focus-visible {
     color: var(--color-text-muted);
 }
 
+/* Account page */
+
+.account-header {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+}
+
+.avatar-circle {
+    flex-shrink: 0;
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-primary-light);
+    color: var(--color-primary-dark);
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.4rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.account-header h1 {
+    margin-bottom: 0.15rem;
+}
+
+.account-meta {
+    margin: 0;
+    color: var(--color-text);
+}
+
+.account-meta-muted {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}
+
+.quick-link-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.85rem;
+    margin: 1.25rem 0;
+}
+
+.quick-link-card {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.1rem;
+    box-shadow: var(--shadow-sm);
+    text-decoration: none;
+    color: var(--color-text);
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.quick-link-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+    color: var(--color-text);
+}
+
+.quick-link-icon {
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-accent-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+}
+
+.quick-link-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.quick-link-title {
+    font-weight: 600;
+}
+
+.quick-link-desc {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+
+/* Traveler profile page */
+
+.page-subtitle {
+    color: var(--color-text-muted);
+    margin: -0.35rem 0 1.5rem;
+}
+
+.profile-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.profile-section + .profile-section {
+    margin-top: 1.75rem;
+    padding-top: 1.75rem;
+    border-top: 1px solid var(--color-border);
+}
+
+.profile-section h2 {
+    margin: 0 0 0.9rem;
+    font-size: 1.15rem;
+}
+
+.profile-section-hint {
+    margin: -0.5rem 0 1rem;
+    color: var(--color-text-muted);
+    font-size: 0.88rem;
+}
+
+.field-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 1rem;
+}
+
+.field-block label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+}
+
+.field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+@media (max-width: 480px) {
+    .field-row {
+        grid-template-columns: 1fr;
+    }
+
+    .account-header {
+        align-items: flex-start;
+    }
+}
+
+.form-errors {
+    background: var(--color-error-bg);
+    color: var(--color-error-text);
+    border-radius: var(--radius);
+    padding: 0.65rem 0.9rem;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
 /* Landing page */
 
 .landing-hero {

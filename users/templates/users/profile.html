@@ -1,13 +1,66 @@
 {% extends "base.html" %}
+{% load i18n %}
 
-{% block title %}My traveler profile - Wanderes{% endblock %}
+{% block title %}{% trans "My traveler profile" %} - Wanderes{% endblock %}
 
 {% block content %}
-<h1>My traveler profile</h1>
-<form method="post">
+<h1>{% trans "My traveler profile" %}</h1>
+<p class="page-subtitle">
+    {% trans "Tell Wander more about how you like to travel - this shapes every recommendation." %}
+</p>
+
+<form method="post" class="profile-form card">
     {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit" class="btn">Save</button>
+    {% if form.non_field_errors %}
+    <div class="form-errors">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <section class="profile-section">
+        <h2>{% trans "Trip preferences" %}</h2>
+        <div class="field-block">
+            {{ form.preferred_trip_types.label_tag }}
+            {{ form.preferred_trip_types }}
+            {{ form.preferred_trip_types.errors }}
+        </div>
+        <div class="field-block">
+            {{ form.preferred_cost_of_living.label_tag }}
+            {{ form.preferred_cost_of_living }}
+            {{ form.preferred_cost_of_living.errors }}
+        </div>
+    </section>
+
+    <section class="profile-section">
+        <h2>{% trans "Travel details" %}</h2>
+        <p class="profile-section-hint">
+            {% trans "Helps Wander tailor suggestions to your trips - optional, fill in what applies." %}
+        </p>
+        <div class="field-block">
+            {{ form.home_country.label_tag }}
+            {{ form.home_country }}
+            {{ form.home_country.errors }}
+        </div>
+        <div class="field-block">
+            {{ form.travelers_count.label_tag }}
+            {{ form.travelers_count }}
+            {{ form.travelers_count.errors }}
+        </div>
+        <div class="field-row">
+            <div class="field-block">
+                {{ form.budget_amount.label_tag }}
+                {{ form.budget_amount }}
+                {{ form.budget_amount.errors }}
+            </div>
+            <div class="field-block">
+                {{ form.budget_period.label_tag }}
+                {{ form.budget_period }}
+                {{ form.budget_period.errors }}
+            </div>
+        </div>
+    </section>
+
+    <div class="actions">
+        <button type="submit" class="btn">{% trans "Save" %}</button>
+        <a href="{% url 'users:account' %}" class="btn btn-secondary">{% trans "Back to my account" %}</a>
+    </div>
 </form>
-<p><a href="{% url 'users:account' %}">Back to my account</a></p>
 {% endblock %}

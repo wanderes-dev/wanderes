@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.models import UserManager as DjangoUserManager
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 # Same 1-5 scale used by travel.Destination.cost_of_living, so a traveler's
 # preferred cost of living and a destination's cost of living are directly
@@ -64,13 +65,27 @@ class User(AbstractUser):
         return self.email
 
 
-class TravelerProfile(models.Model):
-    """Minimal traveler preferences.
+BUDGET_PERIOD_CHOICES = [
+    ("day", _("Per day")),
+    ("week", _("Per week")),
+    ("month", _("Per month")),
+]
 
-    Deliberately thin per 14_MVP_IMPLEMENTATION_PLAN.md Milestone 2
-    ("do not build the complete traveler profile yet"). Preference
-    history, inferred preferences, and feedback-driven learning belong to
-    later milestones.
+
+class TravelerProfile(models.Model):
+    """Traveler preferences used to personalize recommendations.
+
+    Originally deliberately thin per 14_MVP_IMPLEMENTATION_PLAN.md
+    Milestone 2 ("do not build the complete traveler profile yet").
+    Extended 2026-09-02 (direct user request) with home_country,
+    travelers_count, and a budget amount/period pair - concrete trip-context
+    fields, distinct from preferred_cost_of_living's abstract 1-5 tier.
+    These new fields are stored but NOT YET wired into
+    recommendations.scoring or ai.orchestration - surfacing them there
+    (e.g. converting a budget + period into a currency-aware constraint)
+    is a separate follow-up decision, not implied by "collect this data."
+    Preference history, inferred preferences, and feedback-driven learning
+    belong to later milestones.
     """
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="traveler_profile")
@@ -81,6 +96,26 @@ class TravelerProfile(models.Model):
     )
     preferred_cost_of_living = models.PositiveSmallIntegerField(
         choices=COST_OF_LIVING_CHOICES, null=True, blank=True
+    )
+    home_country = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Where you usually travel from, e.g. 'Brazil'.",
+    )
+    travelers_count = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="How many people you usually travel with, including yourself.",
+    )
+    budget_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Typical travel budget, paired with budget_period.",
+    )
+    budget_period = models.CharField(
+        max_length=10, choices=BUDGET_PERIOD_CHOICES, blank=True
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

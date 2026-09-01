@@ -63,6 +63,61 @@ class TravelerProfileViewTests(TestCase):
             Event.objects.filter(user=self.user, event_type="profile_completed").exists()
         )
 
+    def test_post_updates_new_travel_detail_fields(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("users:profile"),
+            {
+                "preferred_trip_types": [],
+                "home_country": "Brazil",
+                "travelers_count": 2,
+                "budget_amount": "150.00",
+                "budget_period": "day",
+            },
+        )
+
+        self.assertRedirects(response, reverse("users:profile"))
+        profile = TravelerProfile.objects.get(user=self.user)
+        self.assertEqual(profile.home_country, "Brazil")
+        self.assertEqual(profile.travelers_count, 2)
+        self.assertEqual(str(profile.budget_amount), "150.00")
+        self.assertEqual(profile.budget_period, "day")
+
+    def test_budget_amount_without_period_is_rejected(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("users:profile"),
+            {"preferred_trip_types": [], "budget_amount": "100.00"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(TravelerProfile.objects.get(user=self.user).budget_amount)
+
+    def test_budget_period_without_amount_is_rejected(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("users:profile"),
+            {"preferred_trip_types": [], "budget_period": "week"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(TravelerProfile.objects.get(user=self.user).budget_period)
+
+    def test_home_country_alone_records_profile_completed(self):
+        self.client.force_login(self.user)
+
+        self.client.post(
+            reverse("users:profile"),
+            {"preferred_trip_types": [], "home_country": "Portugal"},
+        )
+
+        self.assertTrue(
+            Event.objects.filter(user=self.user, event_type="profile_completed").exists()
+        )
+
     def test_users_cannot_affect_each_others_profile(self):
         other_user = User.objects.create_user(email="other@example.com", password="testpass123")
         TravelerProfile.objects.create(

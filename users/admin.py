@@ -24,4 +24,11 @@ class UserAdmin(DjangoUserAdmin):
 
 @admin.register(TravelerProfile)
 class TravelerProfileAdmin(admin.ModelAdmin):
-    list_display = ["user", "preferred_cost_of_living"]
+    list_display = [
+        "user",
+        "preferred_cost_of_living",
+        "home_country",
+        "travelers_count",
+        "budget_amount",
+        "budget_period",
+    ]

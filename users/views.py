@@ -44,7 +44,11 @@ def profile(request):
         if form.is_valid():
             profile = form.save()
             is_now_complete = bool(
-                profile.preferred_trip_types or profile.preferred_cost_of_living is not None
+                profile.preferred_trip_types
+                or profile.preferred_cost_of_living is not None
+                or profile.home_country
+                or profile.travelers_count is not None
+                or profile.budget_amount is not None
             )
             if is_now_complete and not Event.objects.filter(
                 user=request.user, event_type="profile_completed"
