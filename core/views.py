@@ -23,7 +23,26 @@ def landing(request):
     applies to product marketing surfaces too, not just AI replies.
     """
     featured_destinations = Destination.objects.order_by("id")[:3]
-    return render(request, "core/landing.html", {"featured_destinations": featured_destinations})
+    # A single example destination for the "see it in action" product
+    # preview (2026-09-01, second UX pass, §4: "show the product, not
+    # just describe it") - reuses the exact same .chat-bubble/
+    # .recommendation-card markup as the real chat page, so this is a
+    # real product screenshot in spirit, not a disconnected mockup. Picks
+    # a beach/nature destination specifically since that's what the
+    # accompanying example message describes - falls back to whatever
+    # exists if the curated set ever stops including one.
+    preview_destination = (
+        Destination.objects.filter(trip_type__in=["beach", "nature"]).order_by("id").first()
+        or Destination.objects.order_by("id").first()
+    )
+    return render(
+        request,
+        "core/landing.html",
+        {
+            "featured_destinations": featured_destinations,
+            "preview_destination": preview_destination,
+        },
+    )
 
 
 def health_check(request):

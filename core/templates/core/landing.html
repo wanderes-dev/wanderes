@@ -3,7 +3,7 @@
 
 {% block title %}Wanderes - Your personal travel advisor{% endblock %}
 
-{% block content_class %}content-flush{% endblock %}
+{% block content_class %}content-wide{% endblock %}
 
 {% block content %}
 <section class="landing-hero">
@@ -19,6 +19,34 @@
         </div>
     </div>
 </section>
+
+{% if preview_destination %}
+<section class="landing-preview">
+    <div class="landing-section">
+        <h2>{% trans "See it in action" %}</h2>
+        <p class="landing-preview-caption">{% trans "A real example of what a conversation with Wanderes looks like." %}</p>
+        <div class="landing-preview-mock">
+            <div class="chat-bubble user">{% trans "I want somewhere warm, good food, nature, and not too crowded." %}</div>
+            <div class="recommendation-cards">
+                <div class="recommendation-card">
+                    <div class="destination-name">{{ preview_destination.name }}</div>
+                    <div class="destination-country">{{ preview_destination.country }}</div>
+                    <div class="tag-group">
+                        <span class="tag">{{ preview_destination.get_trip_type_display }}</span>
+                        <span class="tag tag-accent">{{ preview_destination.get_cost_of_living_display }}</span>
+                    </div>
+                    <div class="fit-reasons-label">{% trans "Why this fits you" %}</div>
+                    <ul class="fit-reasons">
+                        <li>{% trans "Matches your travel style" %}</li>
+                        <li>{% trans "Within your budget" %}</li>
+                    </ul>
+                    <span class="btn btn-secondary" aria-hidden="true">{% trans "Save this trip" %}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}
 
 <section class="landing-section">
     <h2>{% trans "How it works" %}</h2>

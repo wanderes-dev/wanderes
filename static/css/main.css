@@ -263,14 +263,35 @@ a:hover {
     padding: 1.5rem 1rem 2.5rem;
 }
 
-/* Used by pages that manage their own full-height layout (e.g. /chat/) -
-   grows to fill the space left by the header/footer like .site-content,
-   but without imposing padding/max-width of its own. */
+/* Used by pages that manage their own full-height layout with an
+   internally-scrolling region (e.g. /chat/'s .chat-messages) - grows to
+   fill the space left by the header/footer like .site-content, but
+   without imposing padding/max-width of its own. min-height:0 is
+   required here so the flex child can be squeezed to exactly one
+   viewport's worth of space, letting its own internal overflow:auto
+   region absorb anything taller - never use this class for a page
+   without such a region (see .content-wide below for why: found live,
+   2026-09-01, on production - the landing page reused this class before
+   it had any internal scroll area, which silently capped <main> at a
+   flex-computed height shorter than its actual content and caused the
+   footer to render on top of the overflowing destinations section
+   instead of below it). */
 .content-flush {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     min-height: 0;
+}
+
+/* Used by full-width pages that are simply taller than one viewport and
+   should scroll normally (e.g. the landing page) - same flush styling as
+   .content-flush (no padding/max-width imposed) but without min-height:0,
+   so <main> is free to grow to its full content height instead of being
+   capped to the flex-computed space left by the header/footer. */
+.content-wide {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Forms - targets the default {{ form.as_p }} output, no per-template markup needed */
@@ -517,6 +538,178 @@ button:focus-visible, .btn:focus-visible {
     gap: 0.4rem;
 }
 
+/* Chat bubbles and recommendation cards - shared between the real chat
+   page (ai/templates/ai/chat.html) and the landing page's product
+   preview (core/templates/core/landing.html), so a visitor's first
+   look at "what happens after the CTA" is the *actual* UI, not a
+   disconnected marketing mockup (2026-09-01 second UX pass, §4: "show
+   the product, not just describe it"). Previously lived only in
+   chat.html's own <style> block - moved here once a second page needed
+   the exact same components, rather than duplicating the rules. */
+
+.chat-bubble {
+    max-width: 85%;
+    padding: 0.7rem 1rem;
+    border-radius: var(--radius-lg);
+    line-height: 1.5;
+    word-wrap: break-word;
+    box-shadow: var(--shadow-sm);
+}
+
+.chat-bubble.user {
+    align-self: flex-end;
+    background: var(--color-primary);
+    color: #fff;
+    white-space: pre-wrap;
+    border-bottom-right-radius: 0.3rem;
+}
+
+/* Assistant replies are rendered from Markdown (see chat.html's
+   renderMarkdown()) into real <p>/<table>/<ul> elements, so they don't
+   need white-space: pre-wrap - these reset the browser's default block
+   margins so spacing stays tight and consistent between chunks. */
+.chat-bubble.assistant p {
+    margin: 0 0 0.6rem;
+}
+
+.chat-bubble.assistant p:last-child {
+    margin-bottom: 0;
+}
+
+.chat-bubble.assistant ul,
+.chat-bubble.assistant ol {
+    margin: 0 0 0.6rem;
+    padding-left: 1.4rem;
+}
+
+.chat-bubble.assistant li {
+    margin-bottom: 0.2rem;
+}
+
+.chat-bubble.assistant .table-scroll {
+    overflow-x: auto;
+    margin: 0 0 0.6rem;
+}
+
+.chat-bubble.assistant table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.92rem;
+}
+
+.chat-bubble.assistant th,
+.chat-bubble.assistant td {
+    border: 1px solid var(--color-border);
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    vertical-align: top;
+}
+
+.chat-bubble.assistant th {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.chat-bubble.assistant {
+    align-self: flex-start;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-bottom-left-radius: 0.3rem;
+}
+
+.chat-bubble.error {
+    align-self: flex-start;
+    background: var(--color-error-bg);
+    color: var(--color-error-text);
+    border-bottom-left-radius: 0.3rem;
+}
+
+.chat-bubble.loading {
+    align-self: flex-start;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    border-bottom-left-radius: 0.3rem;
+    animation: chat-loading-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes chat-loading-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+}
+
+.recommendation-cards {
+    align-self: flex-start;
+    max-width: 100%;
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+}
+
+.recommendation-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.recommendation-card .destination-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.recommendation-card .destination-country {
+    color: var(--color-text-muted);
+    font-size: 0.88rem;
+    margin-top: -0.35rem;
+}
+
+/* "Why this fits you" - visually separated from the destination's own
+   facts (name/country/tags above) per direct request: the personalized
+   rationale should read as clearly distinct from generic description. */
+.recommendation-card .fit-reasons-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-accent-dark);
+    margin: 0.15rem 0 -0.15rem;
+}
+
+.recommendation-card .fit-reasons {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.85rem;
+    color: var(--color-text);
+}
+
+.recommendation-card .fit-reasons li::before {
+    content: "✓ ";
+    color: var(--color-primary);
+    font-weight: 700;
+}
+
+.recommendation-card .btn {
+    margin-top: auto;
+    align-self: flex-start;
+    font-size: 0.88rem;
+    padding: 0.45rem 0.9rem;
+}
+
+@media (max-width: 480px) {
+    .chat-bubble { max-width: 95%; }
+    .recommendation-cards { grid-template-columns: 1fr; }
+}
+
 /* Auth pages (login/register) - a centered card instead of a bare
    {{ form.as_p }} dropped into the generic content column. */
 
@@ -617,12 +810,36 @@ button:focus-visible, .btn:focus-visible {
 .landing-section {
     max-width: 900px;
     margin: 0 auto;
-    padding: 3.5rem 1.25rem;
+    padding: 2.75rem 1.25rem;
 }
 
 .landing-section h2 {
     text-align: center;
     margin-top: 0;
+}
+
+/* Product preview - a real .chat-bubble + .recommendation-card, not an
+   illustration, per direct request (2026-09-01 second UX pass, §4). */
+.landing-preview-caption {
+    text-align: center;
+    color: var(--color-text-muted);
+    margin: -0.5rem 0 1.75rem;
+}
+
+.landing-preview-mock {
+    max-width: 480px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.landing-preview-mock .chat-bubble.user {
+    align-self: flex-end;
+}
+
+.landing-preview-mock .recommendation-cards {
+    display: block;
 }
 
 .landing-steps {

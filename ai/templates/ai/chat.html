@@ -33,81 +33,41 @@
         gap: 0.75rem;
         padding: 0.5rem 0;
     }
-    .chat-bubble {
-        max-width: 85%;
-        padding: 0.7rem 1rem;
-        border-radius: var(--radius-lg);
-        line-height: 1.5;
-        word-wrap: break-word;
-        box-shadow: var(--shadow-sm);
+    /* .chat-bubble and .recommendation-card* live in static/css/main.css -
+       shared with the landing page's product preview, see 2026-09-01
+       second UX pass notes there. */
+    .chat-empty-state {
+        margin: auto 0;
+        text-align: center;
+        padding: 2rem 1rem;
     }
-    .chat-bubble.user {
-        align-self: flex-end;
-        background: var(--color-primary);
-        color: #fff;
-        white-space: pre-wrap;
-        border-bottom-right-radius: 0.3rem;
-    }
-    /* Assistant replies are rendered from Markdown (see renderMarkdown() below)
-       into real <p>/<table>/<ul> elements, so they don't need white-space:
-       pre-wrap - these reset the browser's default block margins so spacing
-       stays tight and consistent between chunks of a reply instead. */
-    .chat-bubble.assistant p {
-        margin: 0 0 0.6rem;
-    }
-    .chat-bubble.assistant p:last-child {
-        margin-bottom: 0;
-    }
-    .chat-bubble.assistant ul,
-    .chat-bubble.assistant ol {
-        margin: 0 0 0.6rem;
-        padding-left: 1.4rem;
-    }
-    .chat-bubble.assistant li {
-        margin-bottom: 0.2rem;
-    }
-    .chat-bubble.assistant .table-scroll {
-        overflow-x: auto;
-        margin: 0 0 0.6rem;
-    }
-    .chat-bubble.assistant table {
-        border-collapse: collapse;
-        width: 100%;
-        font-size: 0.92rem;
-    }
-    .chat-bubble.assistant th,
-    .chat-bubble.assistant td {
-        border: 1px solid var(--color-border, #dde2e7);
-        padding: 0.4rem 0.6rem;
-        text-align: left;
-        vertical-align: top;
-    }
-    .chat-bubble.assistant th {
-        background: rgba(0, 0, 0, 0.04);
-    }
-    .chat-bubble.assistant {
-        align-self: flex-start;
-        background: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-bottom-left-radius: 0.3rem;
-    }
-    .chat-bubble.error {
-        align-self: flex-start;
-        background: var(--color-error-bg);
-        color: var(--color-error-text);
-        border-bottom-left-radius: 0.3rem;
-    }
-    .chat-bubble.loading {
-        align-self: flex-start;
-        background: var(--color-surface);
-        border: 1px solid var(--color-border);
+    .chat-empty-hint {
         color: var(--color-text-muted);
-        border-bottom-left-radius: 0.3rem;
-        animation: chat-loading-pulse 1.6s ease-in-out infinite;
+        margin: 0 0 1rem;
     }
-    @keyframes chat-loading-pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.55; }
+    .chat-suggestions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem;
+        max-width: 480px;
+        margin: 0 auto;
+    }
+    .chat-suggestion-chip {
+        font: inherit;
+        background: var(--color-surface);
+        color: var(--color-text);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-pill);
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        box-shadow: none;
+    }
+    .chat-suggestion-chip:hover {
+        border-color: var(--color-primary);
+        color: var(--color-primary-dark);
+        transform: none;
+        box-shadow: none;
     }
     .chat-form {
         flex-shrink: 0;
@@ -133,64 +93,11 @@
         box-shadow: none;
     }
 
-    /* Recommendation cards - real destination data (never fabricated,
-       see ai/views.py's _recommendation_card_data()), rendered as
-       structured cards instead of the AI's prose alone (2026-09-01
-       UX pass: "recommendations must feel like recommendations"). */
     .recommendation-cards {
-        align-self: flex-start;
-        max-width: 100%;
-        width: 100%;
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 0.75rem;
         margin-top: -0.25rem;
-    }
-    .recommendation-card {
-        background: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-lg);
-        box-shadow: var(--shadow-sm);
-        padding: 1rem 1.1rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    .recommendation-card .destination-name {
-        font-family: var(--font-display);
-        font-weight: 600;
-        font-size: 1.1rem;
-    }
-    .recommendation-card .destination-country {
-        color: var(--color-text-muted);
-        font-size: 0.88rem;
-        margin-top: -0.35rem;
-    }
-    .recommendation-card .fit-reasons {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 0.2rem;
-        font-size: 0.85rem;
-        color: var(--color-text);
-    }
-    .recommendation-card .fit-reasons li::before {
-        content: "✓ ";
-        color: var(--color-primary);
-        font-weight: 700;
-    }
-    .recommendation-card .btn {
-        margin-top: auto;
-        align-self: flex-start;
-        font-size: 0.88rem;
-        padding: 0.45rem 0.9rem;
     }
     @media (max-width: 480px) {
         .chat-page { padding: 0.5rem; }
-        .chat-bubble { max-width: 95%; }
-        .recommendation-cards { grid-template-columns: 1fr; }
     }
 </style>
 
@@ -200,7 +107,16 @@
         <p>Tell me what kind of trip you're thinking about - dates, budget, climate, anything.</p>
     </div>
 
-    <div id="chat-messages" class="chat-messages"></div>
+    <div id="chat-messages" class="chat-messages">
+        <div id="chat-empty-state" class="chat-empty-state">
+            <p class="chat-empty-hint">Not sure where to start? Try one of these:</p>
+            <div class="chat-suggestions">
+                <button type="button" class="chat-suggestion-chip">Somewhere warm in October, not too expensive</button>
+                <button type="button" class="chat-suggestion-chip">A relaxing beach trip with great food</button>
+                <button type="button" class="chat-suggestion-chip">Somewhere I can hike and explore nature</button>
+            </div>
+        </div>
+    </div>
 
     <form id="chat-form" class="chat-form">
         <input
@@ -381,6 +297,11 @@
             }
 
             if (destination.fit_reasons && destination.fit_reasons.length) {
+                const label = document.createElement("div");
+                label.className = "fit-reasons-label";
+                label.textContent = "Why this fits you";
+                card.appendChild(label);
+
                 const list = document.createElement("ul");
                 list.className = "fit-reasons";
                 destination.fit_reasons.forEach(function (reason) {
@@ -403,7 +324,12 @@
         messages.scrollTop = messages.scrollHeight;
     }
 
+    const emptyState = document.getElementById("chat-empty-state");
+
     async function sendMessage(message) {
+        if (emptyState) {
+            emptyState.remove();
+        }
         addBubble(message, "user");
         const loadingBubble = addBubble(randomLoadingMessage(), "loading");
         setLoading(true);
@@ -481,6 +407,17 @@
         }
         input.value = "";
         sendMessage(message);
+    });
+
+    // Empty-state suggestion chips (2026-09-01 second UX pass, §5/§11 -
+    // a real, functional starting point instead of a blank void) - fill
+    // the input and let the traveler send it (or edit it first), rather
+    // than auto-sending on click.
+    document.querySelectorAll(".chat-suggestion-chip").forEach(function (chip) {
+        chip.addEventListener("click", function () {
+            input.value = chip.textContent;
+            input.focus();
+        });
     });
 })();
 </script>
