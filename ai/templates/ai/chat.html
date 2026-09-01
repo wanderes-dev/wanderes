@@ -38,6 +38,19 @@
         flex-shrink: 0;
         transition: opacity 0.2s ease;
     }
+    /* Shown next to the title whenever this conversation currently won't
+       be saved - unchecked checkbox, or the 5-conversation cap silently
+       disabling saving for this thread (2026-09-02, direct request: make
+       that state visible instead of only surfacing it as a one-time
+       modal). Empty/hidden whenever saving is active. */
+    .save-status-indicator {
+        font-family: var(--font-sans);
+        font-size: 0.85rem;
+        font-weight: 400;
+        color: var(--color-text-muted);
+        margin-left: 0.5rem;
+        vertical-align: middle;
+    }
     .chat-messages {
         flex: 1 1 auto;
         overflow-y: auto;
@@ -370,7 +383,7 @@
 
     <div class="chat-page chat-empty" id="chat-page">
         <div class="chat-header">
-            <h1>Chat with Wander</h1>
+            <h1>Chat with Wander<span id="save-status-indicator" class="save-status-indicator"></span></h1>
             <p>Tell me what kind of trip you're thinking about - dates, budget, climate, anything.</p>
         </div>
 
@@ -634,6 +647,31 @@
     const emptyState = document.getElementById("chat-empty-state");
     const chatPage = document.getElementById("chat-page");
     const saveCheckbox = document.getElementById("save-conversation-checkbox");
+    const saveStatusIndicator = document.getElementById("save-status-indicator");
+
+    // Reflects whether the *next* message will actually be saved - next
+    // to the chat title, in smaller/muted text (2026-09-02, direct
+    // request), not just a one-time modal when a limit is hit. Covers
+    // both reasons a message might not save: the checkbox itself is
+    // unchecked, or the 5-conversation cap silently disabled saving for
+    // this thread (saveBlockedForThread).
+    function updateSaveStatusIndicator() {
+        if (!saveStatusIndicator) {
+            return;
+        }
+        if (!saveCheckbox) {
+            // Anonymous visitors have no save feature at all - nothing to
+            // indicate (the checkbox itself isn't rendered for them either).
+            saveStatusIndicator.textContent = "";
+            return;
+        }
+        const willSave = saveCheckbox.checked && !saveBlockedForThread;
+        saveStatusIndicator.textContent = willSave ? "" : "(not saving)";
+    }
+    if (saveCheckbox) {
+        saveCheckbox.addEventListener("change", updateSaveStatusIndicator);
+    }
+    updateSaveStatusIndicator();
 
     // Saved-conversations sidebar (2026-09-02, direct request - "like
     // ChatGPT's left side, summarized history, click to load"). Everything
@@ -746,6 +784,7 @@
                 if (saveCheckbox) {
                     saveCheckbox.checked = true;
                 }
+                updateSaveStatusIndicator();
                 messages.innerHTML = "";
                 chatPage.classList.remove("chat-empty");
                 data.messages.forEach(function (turn) {
@@ -788,6 +827,7 @@
         if (saveCheckbox) {
             saveCheckbox.checked = true;
         }
+        updateSaveStatusIndicator();
         messages.innerHTML = "";
         if (emptyState) {
             // .remove() only detaches emptyState from the DOM - the
@@ -833,6 +873,7 @@
         }
         if (status.reason === "conversation_limit_reached") {
             saveBlockedForThread = true;
+            updateSaveStatusIndicator();
             if (conversationLimitModal) {
                 conversationLimitModal.show();
             }
