@@ -208,6 +208,8 @@ Depending on the selected data provider, the initial domain may include concepts
 
 Only concepts actually required by the first recommendation flow should be implemented.
 
+**Flight result / Hotel result status (2026-09-01)**: not implemented as part of this milestone - Destination/climate data (Open-Meteo) was sufficient for the first vertical slice, and flights/hotels were explicitly deferred (`DECISIONS_PENDING.md` §2). Real provider research for flights/hotels has since been done ahead of schedule (`DECISIONS_PENDING.md` §4, `10_EXTERNAL_INTEGRATIONS.md` §13) at the user's direction - findings: every genuine real-time search API researched gates access behind traffic TravelAgent doesn't have yet pre-launch, except Duffel (flights, but a book-through-API model rather than pure affiliate) and Booking.com's Affiliate Partner Program (hotels). Implementation is still pending a human decision on provider(s) and is properly Phase 23-24 work (`15_IMPLEMENTATION_GUIDE.md`), not this milestone.
+
 ## External Provider Boundary
 
 The application should communicate with providers through internal interfaces.

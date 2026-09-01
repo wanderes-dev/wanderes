@@ -199,6 +199,70 @@ The Integration Layer should make provider replacement possible without requirin
 
 Changing a provider should primarily involve implementing or configuring a new adapter behind the existing internal interface.
 
-## 12. Principle
+## 13. Flight & Hotel Affiliate Integration (research, 2026-09-01 — not yet implemented)
+
+Requested out of sequence, ahead of Phases 19-22, at the user's explicit direction - research and documentation only, per Phase 23's "Human Decision + Research" ownership in `15_IMPLEMENTATION_GUIDE.md`. **See `DECISIONS_PENDING.md` §4 for the full provider comparison, eligibility findings, and the pending human decision** - this section covers the technical shape the eventual implementation should take, decided in advance so the decision in §4 can move straight to implementation once made.
+
+### 13.1 Internal interfaces
+
+Following this document's §3 pattern exactly - the recommendation engine and the rest of the application depend on these interfaces, never on Skyscanner/KAYAK/Duffel/Booking.com directly:
+
+```text
+FlightProvider (ABC)
+    search_flights(origin, destination, depart_date, return_date=None, ...) -> list[FlightOption]
+    get_flight_details(provider_reference) -> FlightOption
+    build_affiliate_link(FlightOption) -> str
+
+HotelProvider (ABC)
+    search_hotels(destination, check_in, check_out, guests, ...) -> list[HotelOption]
+    get_hotel_details(provider_reference) -> HotelOption
+    build_affiliate_link(HotelOption) -> str
+```
+
+Provider-specific adapters (`SkyscannerFlightProvider`, `DuffelFlightProvider`, `BookingComHotelProvider`, etc.) implement these behind a `get_flight_provider()`/`get_hotel_provider()` factory reading a settings key - the same pattern already used for `ClimateProvider` (`integrations/climate/`) and `AIProvider` (`ai/provider/`). Provider-specific request/response shapes, auth, and error handling stay inside the adapter; nothing above the interface should ever see a raw Skyscanner or Duffel response.
+
+### 13.2 Normalized internal representations
+
+External providers return different shapes; the application should only ever work with its own normalized dataclasses:
+
+```text
+FlightOption
+    provider, provider_reference
+    origin, destination
+    departure, arrival, duration, stops
+    cabin, price, currency
+    baggage_information
+    booking_url                    # the affiliate/deep link, or Duffel Links checkout URL
+
+HotelOption
+    provider, provider_reference
+    destination, name, rating
+    price, currency
+    room_information
+    cancellation_information
+    amenities
+    booking_url
+```
+
+Raw provider responses should not be exposed to the rest of the application unless there is a justified reason (§4 above).
+
+### 13.3 Recommendation independence from commission (reaffirmed)
+
+§9 above already establishes this; restated here because it's specifically load-bearing for this feature: **flight/hotel options must be scored on genuine fit for the traveler (price, convenience, stops, timing) - never boosted because a provider pays a higher commission.** A concrete example from the request that prompted this research: a traveler who values convenience should see the direct flight recommended over a cheaper one with a 9-hour layover, regardless of which of the two pays TravelAgent more. This must live in `recommendations/scoring.py`'s existing scoring logic, structurally separated from any per-provider commission data - the same separation already enforced between the AI reasoning layer and deterministic scoring elsewhere in the app.
+
+### 13.4 Affiliate tracking
+
+Extends the existing `analytics` app (`Event` model, Phase 17) rather than introducing new infrastructure - candidate event types, mirroring what's already instrumented (`recommendation_generated`, `trip_created`, etc.):
+
+- `flight_search_performed` / `hotel_search_performed` - provider used, whether results were returned (not raw results).
+- `affiliate_link_generated` - already anticipated and deliberately deferred in `DECISIONS_PENDING.md` §3 ("monetization/premium and an affiliate provider don't exist in the app yet") - this research is the trigger to revisit that deferral once a provider is actually selected.
+- `affiliate_link_clicked` - same.
+- Provider-side conversion tracking (an actual booking happening) depends entirely on what each provider's attribution mechanism supports - Duffel can report this directly (it processes the booking); pure affiliate providers (Skyscanner, KAYAK, Booking.com) rely on their own postback/pixel mechanisms, which vary per provider and would need per-adapter research once one is selected. Only small structured metadata should ever be stored (provider, a reference ID, a price) - never full search queries or personal booking details, consistent with the privacy principles already applied to the existing `analytics` app.
+
+### 13.5 Caching
+
+Per §7's general principle (highly dynamic data should not be treated as permanently cached): flight/hotel prices and availability are exactly the kind of data that principle warns about - a cached price shown to a user that's no longer available at booking time is a real trust problem for a travel consultant product. Any caching here should be short-lived (Redis, likely single-digit minutes at most) and scoped to reducing duplicate identical searches in a short window, not to avoiding repeat API calls generally. Do not introduce caching prematurely - only once real usage patterns justify it.
+
+## 14. Principle
 
 > **External providers provide capabilities and data; TravelAgent controls the business logic and user experience. Providers should be replaceable, monitored, and isolated so that external failures or provider changes do not unnecessarily disrupt the platform.**
