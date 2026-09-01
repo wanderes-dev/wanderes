@@ -61,10 +61,12 @@ services:
         value: gpt-4o-mini
       - key: CLIMATE_PROVIDER
         value: open_meteo
-      # DJANGO_ALLOWED_HOSTS deliberately not set here - production.py
-      # falls back to Render's own RENDER_EXTERNAL_HOSTNAME env var (set
-      # automatically) so the first deploy works before a custom domain
-      # exists. Add DJANGO_ALLOWED_HOSTS manually once one does.
+      # Custom domain wanderes.com now exists (2026-09-01) - production.py
+      # otherwise falls back to Render's own RENDER_EXTERNAL_HOSTNAME env
+      # var (set automatically), which only covers the onrender.com
+      # subdomain, not a custom domain.
+      - key: DJANGO_ALLOWED_HOSTS
+        value: wanderes.com,www.wanderes.com
 
   - type: worker
     name: travelagent-worker
