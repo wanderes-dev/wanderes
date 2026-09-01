@@ -89,7 +89,7 @@ ASGI_APPLICATION = "config.asgi.application"
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
-        default="postgres://travelagent:travelagent@localhost:5432/travelagent",
+        default="postgres://wanderes:wanderes@localhost:5432/wanderes",
     )
 }
 

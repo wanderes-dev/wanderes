@@ -86,7 +86,9 @@ python manage.py load_destinations
 
 ## Deployment (Render)
 
-Phase 18 (`15_IMPLEMENTATION_GUIDE.md`) needs the app in front of real users, which means it has to be reachable outside `localhost`. [`render.yaml`](render.yaml) is a [Render Blueprint](https://render.com/docs/blueprint-spec) declaring a web service, a Celery background worker, a managed Postgres database, and a managed Key Value (Redis) instance — the same four services `docker-compose.yml` runs locally, deployed for real. It was written against Render's documented spec but has not yet been validated against a live deploy (this repo has no Render account) — if Render's parser rejects anything, report the error back so it can be fixed quickly.
+Phase 18 (`15_IMPLEMENTATION_GUIDE.md`) needs the app in front of real users, which means it has to be reachable outside `localhost`. [`render.yaml`](render.yaml) is a [Render Blueprint](https://render.com/docs/blueprint-spec) declaring a web service, a Celery background worker, a managed Postgres database, and a managed Key Value (Redis) instance — the same four services `docker-compose.yml` runs locally, deployed for real.
+
+**2026-09-02: resource names renamed `travelagent-*` → `wanderes-*`.** Render matches Blueprint resources to already-provisioned ones by their `name:` field, so this is not an in-place rename — the next Blueprint apply provisions brand-new `wanderes-web`/`wanderes-worker`/`wanderes-db`/`wanderes-redis` resources rather than renaming the existing `travelagent-*` ones, which stay orphaned (not auto-deleted) with all prior data. Done deliberately, with prior production data judged fine to lose. The steps below describe applying the Blueprint fresh under the new names — do the same steps in the Render dashboard (**New > Blueprint**) rather than trying to edit the existing services in place.
 
 To deploy it:
 
@@ -95,16 +97,17 @@ To deploy it:
    ```bash
    python -c "import secrets; print(secrets.token_urlsafe(50))"
    ```
-3. In the Render dashboard, choose **New > Blueprint** and connect this repository. Render reads `render.yaml` and proposes the four services above.
+3. In the Render dashboard, choose **New > Blueprint** and connect this repository. Render reads `render.yaml` and proposes the four `wanderes-*` services above.
 4. During the Blueprint creation flow, Render prompts for every `sync: false` secret — fill in:
-   - `OPENAI_API_KEY` (both `travelagent-web` and `travelagent-worker`) — the same real key from your local `.env`.
-   - `DJANGO_SECRET_KEY` (both `travelagent-web` and `travelagent-worker`) — paste the exact same value you generated in step 2 into both prompts.
-5. Apply the Blueprint and wait for both services to build and deploy. `travelagent-web` builds the `production` stage of the `Dockerfile` (leaner than the local dev image — no pytest/ruff, runs under `gunicorn`, not `runserver`); `travelagent-worker` builds the same image but overrides the start command to run the Celery worker instead.
-6. Once `travelagent-web` is live, run migrations and load the destination dataset from Render's **Shell** tab (or a one-off job):
+   - `OPENAI_API_KEY` (both `wanderes-web` and `wanderes-worker`) — the same real key from your local `.env`.
+   - `DJANGO_SECRET_KEY` (both `wanderes-web` and `wanderes-worker`) — paste the exact same value you generated in step 2 into both prompts.
+5. Apply the Blueprint and wait for both services to build and deploy. `wanderes-web` builds the `production` stage of the `Dockerfile` (leaner than the local dev image — no pytest/ruff, runs under `gunicorn`, not `runserver`); `wanderes-worker` builds the same image but overrides the start command to run the Celery worker instead.
+6. Once `wanderes-web` is live, run migrations and load the destination dataset from Render's **Shell** tab (or a one-off job):
    ```bash
    python manage.py migrate
    python manage.py load_destinations
    ```
 7. Visit `https://<your-service>.onrender.com/health/` — it should return `{"status": "ok", "database": "ok"}`. `/chat/` should work the same as it does locally.
-7. Optional: add a custom domain in Render's dashboard, then set `DJANGO_ALLOWED_HOSTS` to that domain (it isn't set in `render.yaml` — `production.py` falls back to Render's own `RENDER_EXTERNAL_HOSTNAME` env var so the first deploy works before a custom domain exists).
+8. Re-attach the `wanderes.com` custom domain to the new `wanderes-web` service (it was previously pointed at `travelagent-web`) — Render's dashboard, service Settings → Custom Domains. `DJANGO_ALLOWED_HOSTS` is already set to `wanderes.com,www.wanderes.com` in `render.yaml`, so no settings change is needed for this step.
+9. Once the new deploy is confirmed healthy, delete the old `travelagent-web`/`travelagent-worker`/`travelagent-db`/`travelagent-redis` resources in the Render dashboard.
 

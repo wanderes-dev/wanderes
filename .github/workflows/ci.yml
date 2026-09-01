@@ -13,13 +13,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: travelagent
-          POSTGRES_USER: travelagent
-          POSTGRES_PASSWORD: travelagent
+          POSTGRES_DB: wanderes
+          POSTGRES_USER: wanderes
+          POSTGRES_PASSWORD: wanderes
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U travelagent"
+          --health-cmd "pg_isready -U wanderes"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
@@ -35,7 +35,7 @@ jobs:
 
     env:
       DJANGO_SETTINGS_MODULE: config.settings.test
-      DATABASE_URL: postgres://travelagent:travelagent@localhost:5432/travelagent
+      DATABASE_URL: postgres://wanderes:wanderes@localhost:5432/wanderes
       REDIS_URL: redis://localhost:6379/0
       DJANGO_SECRET_KEY: ci-test-secret-key
 
