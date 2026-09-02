@@ -609,6 +609,28 @@ class TripTypeAndExclusionTests(TestCase):
         slugs = {r.destination.slug for r in result.recommendations}
         self.assertEqual(slugs, {"warm-beach"})
 
+    def test_trip_type_alone_is_now_enough_signal_to_search(self):
+        # 2026-09-02, direct user feedback on a real transcript: "praia"
+        # (beach) with no other detail kept getting an open-ended
+        # gathering question forever instead of any real answer. Reopens
+        # the narrower 2026-08-31 restriction (trip_type required a
+        # co-stated month too) now that the catalog is large enough (384
+        # destinations) for trip_type alone to be real, differentiating
+        # signal rather than a near-unfiltered dump.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(trip_type="beach"),  # no month, no temp, no cost
+            reply_text="Here are some beach options!",
+        )
+
+        result = get_travel_recommendation(
+            "quero lugares de praia",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"warm-beach"})
+
     def test_excluded_place_name_removes_matching_destination(self):
         ai_provider = StubAIProvider(
             structured_response=_intent(

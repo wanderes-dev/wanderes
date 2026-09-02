@@ -411,18 +411,22 @@ def stream_travel_recommendation(
     # min_temp_c/max_cost_of_living are strong signals on their own - a
     # traveler rarely states an explicit temperature or budget without
     # real intent, so either one alone is enough to search immediately.
-    # trip_type alone is NOT enough (tightened 2026-08-31, direct user
-    # feedback: "gosto de praias" - I like beaches, nothing else - still
-    # jumped straight to general-knowledge suggestions; the app needs to
-    # keep gathering information before it has enough to actually
-    # differentiate destinations) - trip_type only counts once paired with
-    # an explicitly-stated month, which together are enough to run a real,
-    # meaningfully filtered search. A month alone (stated or defaulted) or
-    # an exclusion isn't enough either - direct user feedback, 2026-08-31:
-    # the AI kept "throwing destinations in the user's face" (e.g.
-    # suggesting Rio/Lisbon/Tokyo off a bare "help me plan a year-end
-    # trip"), because an earlier version treated a month alone as enough
-    # signal to skip straight to searching the full candidate list. Route
+    # trip_type alone now also counts on its own (2026-09-02, direct user
+    # feedback on a real transcript: asking for beach destinations with no
+    # other detail kept getting an endless gathering quiz instead of any
+    # answer - "a prioridade da IA deve ser sempre responder a pergunta do
+    # usuario quando for cabivel" / the AI's priority should always be to
+    # answer the user's question when feasible). This deliberately
+    # reopens a narrower 2026-08-31 decision (trip_type required a
+    # co-stated month too, reacting to "gosto de praias" jumping to
+    # suggestions when the 18-destination catalog gave almost nothing to
+    # differentiate by) - the catalog is 384 destinations now (2026-09-02
+    # expansion), so trip_type alone is real, meaningful signal again, not
+    # a near-unfiltered dump. A bare month (stated or defaulted) or an
+    # exclusion alone still isn't enough on its own - the 2026-08-31 fix
+    # for "throwing destinations in the user's face" off a bare "help me
+    # plan a year-end trip" still applies, since neither of those actually
+    # differentiates anything by itself the way a trip_type does. Route
     # through the same AI-judgment "ask a genuine follow-up, or suggest if
     # they've explicitly invited a guess" path used for a fully blank
     # opener, unless there's actually enough to differentiate on.
@@ -430,11 +434,7 @@ def stream_travel_recommendation(
         intent["min_temp_c"] is not None
         or intent["max_temp_c"] is not None
         or intent["max_cost_of_living"] is not None
-        or (
-            intent["trip_type"] is not None
-            and intent["month"]
-            and not intent["month_was_assumed"]
-        )
+        or intent["trip_type"] is not None
     )
     if not has_enough_signal:
         logger.info(
@@ -1135,8 +1135,10 @@ def _build_open_ended_messages(
 ) -> list[AIMessage]:
     """Built when a recommendation-type message doesn't yet give enough to
     actually differentiate destinations by (see has_enough_signal in
-    stream_travel_recommendation - trip_type alone, a bare month, or an
-    exclusion alone all land here too, not just a fully blank opener).
+    stream_travel_recommendation - a bare month or an exclusion alone
+    still land here, not just a fully blank opener; trip_type alone no
+    longer does as of 2026-09-02, now that it's real signal against a
+    384-destination catalog).
     2026-08-30/31, direct user feedback: jumping straight to specific
     destination suggestions here felt presumptuous, and kept happening
     even with very little actually known - a real travel consultant
