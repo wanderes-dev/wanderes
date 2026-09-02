@@ -62,7 +62,27 @@ def generate_recommendations(
     """
     climate_provider = climate_provider or get_climate_provider()
 
+    # trip_type/max_cost_of_living are applied as real DB-level filters
+    # BEFORE any climate lookups (2026-09-02 fix - previously these were
+    # checked in Python only after fetching climate for every remaining
+    # candidate, meaning a specific request like "beach" still made a real
+    # HTTP call to the climate provider for all ~380 non-beach destinations
+    # first, only to discard them a moment later). Each uncached lookup is
+    # a real synchronous HTTP call (up to REQUEST_TIMEOUT_SECONDS=5s) - at
+    # the current 384-destination catalog size, doing this for the whole
+    # catalog on every request was slow enough to cause real production
+    # timeouts (reported live, 2026-09-02: "quero neve fim do ano" - a
+    # trip_type=nature request - returned a generic error instead of an
+    # answer). min_temp_c/max_temp_c can't be pushed down this way since
+    # temperature isn't stored on Destination - it only exists once the
+    # climate provider is actually called, so those two stay as
+    # post-lookup checks below exactly as before.
     candidates = Destination.objects.exclude(slug__in=request.excluded_slugs)
+    if request.trip_type is not None:
+        candidates = candidates.filter(trip_type=request.trip_type)
+    if request.max_cost_of_living is not None:
+        candidates = candidates.filter(cost_of_living__lte=request.max_cost_of_living)
+
     preferred_trip_types = _preferred_trip_types(request.user)
     visited_slugs = _visited_destination_slugs(request.user)
 
@@ -83,13 +103,6 @@ def generate_recommendations(
         if request.min_temp_c is not None and climate.avg_high_c < request.min_temp_c:
             continue
         if request.max_temp_c is not None and climate.avg_high_c > request.max_temp_c:
-            continue
-        if (
-            request.max_cost_of_living is not None
-            and destination.cost_of_living > request.max_cost_of_living
-        ):
-            continue
-        if request.trip_type is not None and destination.trip_type != request.trip_type:
             continue
 
         preference_fit = (

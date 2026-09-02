@@ -21,6 +21,23 @@ class StubClimateProvider:
         return self._climate_by_coords[key]
 
 
+class CountingClimateProvider(StubClimateProvider):
+    """Wraps StubClimateProvider, recording every (lat, lon) actually
+    queried - lets a test assert the climate provider was never called for
+    a destination that a cheap DB-level filter should have ruled out
+    beforehand (2026-09-02 fix)."""
+
+    def __init__(self, climate_by_coords):
+        super().__init__(climate_by_coords)
+        self.queried_coords = []
+
+    def get_monthly_climate(self, *, latitude, longitude, month, year=None):
+        self.queried_coords.append((round(float(latitude), 2), round(float(longitude), 2)))
+        return super().get_monthly_climate(
+            latitude=latitude, longitude=longitude, month=month, year=year
+        )
+
+
 def _make_destination(slug, *, lat, lon, trip_type="beach", cost_of_living=3):
     return Destination.objects.create(
         slug=slug,
@@ -80,6 +97,47 @@ class GenerateRecommendationsTests(TestCase):
 
         slugs = {r.destination.slug for r in results}
         self.assertEqual(slugs, {"warm-expensive"})
+
+    def test_trip_type_filter_skips_climate_lookups_for_non_matching_destinations(self):
+        # 2026-09-02 fix: trip_type/max_cost_of_living are applied as real
+        # DB-level filters BEFORE any climate provider call, not just as a
+        # post-hoc Python check after fetching climate for everything. A
+        # real production timeout (reported live, 2026-09-02: "quero neve
+        # fim do ano" got a generic error) traced to the old order making
+        # an unnecessary real HTTP climate lookup for every non-matching
+        # destination first, at the current 384-destination catalog scale.
+        counting_climate = CountingClimateProvider(
+            {
+                (10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0),
+                (20.0, 20.0): MonthlyClimateSummary(2025, 10, 26.0, 18.0, 10.0),
+                (30.0, 30.0): MonthlyClimateSummary(2025, 10, 5.0, -2.0, 40.0),
+            }
+        )
+        request = RecommendationRequest(month=10, trip_type="city")
+
+        results = generate_recommendations(request, climate_provider=counting_climate)
+
+        self.assertEqual({r.destination.slug for r in results}, {"warm-expensive"})
+        self.assertEqual(counting_climate.queried_coords, [(20.0, 20.0)])
+
+    def test_max_cost_of_living_filter_skips_climate_lookups_for_expensive_destinations(self):
+        counting_climate = CountingClimateProvider(
+            {
+                (10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0),
+                (20.0, 20.0): MonthlyClimateSummary(2025, 10, 26.0, 18.0, 10.0),
+                (30.0, 30.0): MonthlyClimateSummary(2025, 10, 5.0, -2.0, 40.0),
+            }
+        )
+        request = RecommendationRequest(month=10, max_cost_of_living=3)
+
+        results = generate_recommendations(request, climate_provider=counting_climate)
+
+        self.assertEqual(
+            {r.destination.slug for r in results}, {"warm-cheap", "cold-cheap"}
+        )
+        self.assertEqual(
+            sorted(counting_climate.queried_coords), [(10.0, 10.0), (30.0, 30.0)]
+        )
 
     def test_excluded_slugs_are_removed_from_candidates(self):
         request = RecommendationRequest(month=10, excluded_slugs=frozenset({"warm-cheap"}))
