@@ -53,3 +53,26 @@ def clear_history(key: str) -> None:
     conversations feature), so a fresh thread doesn't silently inherit
     context from whatever was last discussed under the same key."""
     cache.delete(key)
+
+
+def _profile_confirmed_key(key: str) -> str:
+    return f"{key}:profile-confirmed"
+
+
+def is_profile_confirmed(key: str) -> bool:
+    """Whether ai.orchestration has already asked this conversation to
+    confirm its TravelerProfile-derived context at least once (2026-09-02,
+    "IA must always confirm this information... before suggest any
+    destination"). A separate cache key from the turn history above - it
+    needs to survive independently of history_override (a saved
+    conversation reads its messages from Postgres, not this cache, but
+    still needs this same once-per-conversation gate)."""
+    return bool(cache.get(_profile_confirmed_key(key)))
+
+
+def mark_profile_confirmed(key: str) -> None:
+    """Record that this conversation's one-time profile confirmation ask
+    has happened, so it isn't repeated on every later message. Same TTL as
+    the turn history - an abandoned conversation's gate resets along with
+    everything else about it once it goes stale."""
+    cache.set(_profile_confirmed_key(key), True, CONVERSATION_TTL_SECONDS)

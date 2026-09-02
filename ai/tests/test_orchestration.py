@@ -318,6 +318,11 @@ class TravelerProfileContextTests(TestCase):
             budget_currency="BRL",
             budget_period="day",
         )
+        # Bypasses the 2026-09-02 confirmation gate (its own dedicated
+        # tests are in ProfileConfirmationGateTests below) - this test is
+        # specifically about what the explanation prompt contains, not
+        # about the gate itself.
+        memory.mark_profile_confirmed(memory.conversation_key(user=self.user, session_key=None))
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
         )
@@ -402,6 +407,9 @@ class TravelerProfileContextTests(TestCase):
             visa_required_nationalities=["Brazil"],
             visa_notes="Apply online at least 30 days in advance.",
         )
+        # Bypasses the 2026-09-02 confirmation gate - see the comment on
+        # test_profile_budget_and_travelers_reach_the_explanation_prompt.
+        memory.mark_profile_confirmed(memory.conversation_key(user=self.user, session_key=None))
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
         )
@@ -434,6 +442,79 @@ class TravelerProfileContextTests(TestCase):
 
         explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertNotIn("Entry-requirement data", explanation_prompt)
+
+
+class ProfileConfirmationGateTests(TestCase):
+    """Tests the 2026-09-02 gate: "IA must always confirm this information
+    with the user before suggest any destination" - the first message in a
+    conversation that reaches enough signal to search must confirm
+    on-file TravelerProfile details first, with no destinations attached;
+    every later message in that same conversation proceeds straight to
+    real suggestions."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+        self.user = User.objects.create_user(email="traveler@example.com", password="testpass123")
+        TravelerProfile.objects.create(user=self.user, home_country="Brazil")
+
+    def test_first_message_confirms_profile_instead_of_suggesting(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0),
+            reply_text="Just to confirm, still traveling from Brazil?",
+        )
+
+        result = get_travel_recommendation(
+            "somewhere warm in October",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.recommendations, [])
+        confirmation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("traveling from Brazil", confirmation_prompt)
+        self.assertIn("Do not suggest or list any destinations", confirmation_prompt)
+
+    def test_second_message_in_the_conversation_proceeds_to_real_suggestions(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
+        )
+
+        get_travel_recommendation(  # first message: consumes the one-time gate
+            "somewhere warm in October",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+        result = get_travel_recommendation(
+            "how about now?",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(len(result.recommendations), 1)
+        self.assertEqual(result.recommendations[0].destination.slug, "warm-cheap")
+
+    def test_no_confirmable_profile_data_skips_the_gate_entirely(self):
+        user_no_profile = User.objects.create_user(
+            email="noprofile@example.com", password="testpass123"
+        )
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
+        )
+
+        result = get_travel_recommendation(
+            "somewhere warm in October",
+            user=user_no_profile,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(len(result.recommendations), 1)
 
 
 class StreamTravelRecommendationTests(TestCase):

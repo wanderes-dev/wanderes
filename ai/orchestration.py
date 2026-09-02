@@ -451,6 +451,29 @@ def stream_travel_recommendation(
         )
         return StreamingOrchestrationResult([], open_ended_reply)
 
+    # Confirm profile-derived context before suggesting anything (2026-09-02,
+    # direct user request: "IA must always confirm this information with the
+    # user before suggest any destination") - stored TravelerProfile details
+    # could be stale for THIS trip (a solo traveler last time, a group now;
+    # an old budget), so they're never used to shape a suggestion silently.
+    # Gated to once per conversation via a small Redis flag (separate from
+    # ai.memory's own turn history, and computed the same way regardless of
+    # history_override, so saved conversations get this exactly once too) -
+    # asking every single message would reintroduce the friction this
+    # module has deliberately removed everywhere else; the next message
+    # proceeds straight to real suggestions regardless of how the traveler
+    # answered, matching that same low-friction philosophy.
+    confirmation_key = memory.conversation_key(user=user, session_key=session_key)
+    if _has_confirmable_profile_data(profile) and not memory.is_profile_confirmed(
+        confirmation_key
+    ):
+        memory.mark_profile_confirmed(confirmation_key)
+        confirmation_messages = _build_profile_confirmation_messages(message, profile, history)
+        confirmation_reply = _stream_ai_reply(
+            confirmation_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult([], confirmation_reply)
+
     request = RecommendationRequest(
         month=intent["month"],
         min_temp_c=intent["min_temp_c"],
@@ -787,6 +810,21 @@ def _traveler_profile(user) -> TravelerProfile | None:
     return TravelerProfile.objects.filter(user=user).first()
 
 
+def _has_confirmable_profile_data(profile: TravelerProfile | None) -> bool:
+    """Whether there's anything on the traveler's profile worth confirming
+    before suggesting a destination (2026-09-02) - mirrors exactly which
+    fields _traveler_context_note below would actually mention, so the
+    confirmation gate in stream_travel_recommendation never fires for a
+    profile that has nothing to confirm in the first place."""
+    if profile is None:
+        return False
+    return bool(
+        profile.home_country
+        or profile.travelers_count
+        or (profile.budget_amount and profile.budget_period and profile.budget_currency)
+    )
+
+
 def _traveler_context_note(profile: TravelerProfile | None) -> str:
     """A short free-text note the AI can factor into its reasoning when
     relevant - never a hard constraint (recommendations.scoring's hard
@@ -967,6 +1005,45 @@ def _clean_string_list(value) -> list:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, str) and item.strip()]
+
+
+def _build_profile_confirmation_messages(
+    message: str, profile: TravelerProfile, history: list[dict] | None = None
+) -> list[AIMessage]:
+    """Built once per conversation, the first time there's enough signal to
+    actually suggest a destination and the traveler has relevant
+    TravelerProfile details on file (2026-09-02, direct user request: "IA
+    must always confirm this information with the user before suggest any
+    destination"). Asks the traveler to confirm or correct the
+    profile-derived context before anything gets suggested, rather than
+    silently trusting stored preferences might not still apply to this
+    trip. Only ever built once per conversation - see the
+    memory.is_profile_confirmed gate in stream_travel_recommendation - the
+    traveler's very next message proceeds straight to real suggestions no
+    matter how they answered, matching the low-friction "never block a
+    second time" philosophy the rest of this module already follows."""
+    traveler_note = _traveler_context_note(profile)
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler just said: "{message}" - this looks like enough to search for '
+                "real destinations. Before suggesting anything, first briefly confirm the "
+                "details already on file for this traveler still apply to this trip - ask "
+                "naturally, in one short warm message, not a form or a checklist."
+                f"{traveler_note}\n\n"
+                "Mention only the details actually listed above - never invent or ask about "
+                "one that isn't there. Do not suggest or list any destinations in this reply; "
+                "that comes next, right after they confirm or correct these details. Reply in "
+                "the same language the traveler has been using in this conversation (check the "
+                "history above, not just this message) - this applies just as much to English "
+                "as to any other language."
+            ),
+        )
+    )
+    return messages
 
 
 def _build_explanation_messages(
