@@ -14,7 +14,7 @@ from analytics.services import record_event
 from . import memory
 from .conversations import record_turn
 from .models import SavedConversation
-from .orchestration import FALLBACK_REPLY, MAX_EXPLAINED_CANDIDATES, stream_travel_recommendation
+from .orchestration import FALLBACK_REPLY, MAX_RECOMMENDATIONS, stream_travel_recommendation
 
 MAX_MESSAGE_LENGTH = 2000
 
@@ -152,9 +152,13 @@ def recommendations_stream(request):
         full_reply = "".join(collected)
 
         if result.recommendations:
+            # result.recommendations is already capped to MAX_RECOMMENDATIONS
+            # by ai.orchestration before it ever reaches this view - this
+            # slice is a defensive no-op for the current caller, kept so a
+            # future caller that doesn't pre-cap still can't flood the UI
+            # with cards.
             payload = [
-                _recommendation_card_data(r)
-                for r in result.recommendations[:MAX_EXPLAINED_CANDIDATES]
+                _recommendation_card_data(r) for r in result.recommendations[:MAX_RECOMMENDATIONS]
             ]
             yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)
 

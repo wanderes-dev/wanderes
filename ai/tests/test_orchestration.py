@@ -5,6 +5,7 @@ from django.test import TestCase
 from ai import memory
 from ai.orchestration import (
     FALLBACK_REPLY,
+    MAX_RECOMMENDATIONS,
     NEEDS_LOGIN_REPLY,
     get_travel_recommendation,
     stream_travel_recommendation,
@@ -661,6 +662,61 @@ class TripTypeAndExclusionTests(TestCase):
         )
 
         self.assertEqual(result.recommendations, [])
+
+
+class RecommendationCapTests(TestCase):
+    """2026-09-02, direct user request: cap recommendations at
+    MAX_RECOMMENDATIONS (10) regardless of how many real destinations
+    match a broad request, and tell the traveler honestly when there were
+    more than that on file - the trip_type-alone fix above (same day) can
+    now return dozens of real matches against the 384-destination
+    catalog."""
+
+    def _make_beach_destinations(self, count):
+        climate_by_coords = {}
+        for i in range(count):
+            lat, lon = float(i), float(i)
+            _make_destination(f"beach-{i}", lat=lat, lon=lon, trip_type="beach")
+            climate_by_coords[(lat, lon)] = MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)
+        return StubClimateProvider(climate_by_coords)
+
+    def test_recommendations_are_capped_at_max_recommendations(self):
+        climate = self._make_beach_destinations(12)
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, trip_type="beach"), reply_text="Here you go!"
+        )
+
+        result = get_travel_recommendation(
+            "praia", ai_provider=ai_provider, climate_provider=climate
+        )
+
+        self.assertEqual(len(result.recommendations), MAX_RECOMMENDATIONS)
+
+    def test_more_matches_note_appears_when_total_exceeds_the_cap(self):
+        climate = self._make_beach_destinations(12)
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, trip_type="beach"), reply_text="Here you go!"
+        )
+
+        get_travel_recommendation("praia", ai_provider=ai_provider, climate_provider=climate)
+
+        explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("matched 12 destinations", explanation_prompt)
+        self.assertIn(f"top {MAX_RECOMMENDATIONS}", explanation_prompt)
+
+    def test_no_more_matches_note_when_total_is_within_the_cap(self):
+        climate = self._make_beach_destinations(3)
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, trip_type="beach"), reply_text="Here you go!"
+        )
+
+        result = get_travel_recommendation(
+            "praia", ai_provider=ai_provider, climate_provider=climate
+        )
+
+        self.assertEqual(len(result.recommendations), 3)
+        explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertNotIn("matched", explanation_prompt)
 
 
 class UnhandledRequestLoggingTests(TestCase):

@@ -25,7 +25,16 @@ from .provider import AIMessage, AIProvider, AIProviderError, get_ai_provider
 
 logger = logging.getLogger(__name__)
 
-MAX_EXPLAINED_CANDIDATES = 5
+# Renamed from MAX_EXPLAINED_CANDIDATES and bumped 5 -> 10 (2026-09-02,
+# direct user request: cap recommendations at 10 "no maximo" so token
+# spend and the number of options a traveler has to sift through both
+# stay bounded, even against the 384-destination catalog now capable of
+# returning dozens of matches on a single broad trip_type). One constant
+# governs both how many candidates the AI ever sees/explains and how many
+# recommendation cards ever reach the UI, kept in sync deliberately - see
+# stream_travel_recommendation, which slices `results` to this exactly
+# once before either consumer sees them.
+MAX_RECOMMENDATIONS = 10
 FEEDBACK_TAG_KEYS = {key for key, _label in FEEDBACK_TAG_CHOICES}
 # Derived from travel.models rather than hardcoded here a second time -
 # these used to be an independent copy of the choices list, which could
@@ -509,6 +518,17 @@ def stream_travel_recommendation(
         )
         return StreamingOrchestrationResult([], no_match_reply)
 
+    # Capped once, here, before either consumer (the AI's own prompt and
+    # ai/views.py's recommendation cards) ever sees `results` - 2026-09-02,
+    # direct user request, since a broad trip_type-only match (the same-day
+    # fix a few entries above) can now return dozens of real candidates
+    # against the 384-destination catalog. total_matches (the real,
+    # uncapped count) is kept so the explanation can honestly tell the
+    # traveler there's more available if they narrow the request further,
+    # rather than silently presenting 10 as if that were the whole story.
+    total_matches = len(results)
+    results = results[:MAX_RECOMMENDATIONS]
+
     messages = _build_explanation_messages(
         message,
         results,
@@ -516,6 +536,7 @@ def stream_travel_recommendation(
         month_was_assumed=intent["month_was_assumed"],
         month=intent["month"],
         profile=profile,
+        total_matches=total_matches,
     )
     return StreamingOrchestrationResult(
         results,
@@ -1054,8 +1075,9 @@ def _build_explanation_messages(
     month_was_assumed: bool = False,
     month: int | None = None,
     profile: TravelerProfile | None = None,
+    total_matches: int | None = None,
 ) -> list[AIMessage]:
-    top_results = results[:MAX_EXPLAINED_CANDIDATES]
+    top_results = results[:MAX_RECOMMENDATIONS]
     candidates_summary = "\n".join(
         f"- {r.destination.name}, {r.destination.country}: avg high {r.avg_high_c}C, "
         f"cost tier {r.destination.cost_of_living}/5, trip type {r.destination.trip_type}"
@@ -1073,6 +1095,19 @@ def _build_explanation_messages(
     entry_requirements_note = _entry_requirements_note(
         profile, [r.destination for r in top_results]
     )
+    # 2026-09-02, direct user request: when the real match count exceeds
+    # what we ever show (MAX_RECOMMENDATIONS), say so honestly rather than
+    # silently presenting the capped list as if it were everything -
+    # naming the actual number instead of a vague "there are more".
+    more_matches_note = (
+        f"\n\nThis request actually matched {total_matches} destinations in our data - "
+        f"only the top {MAX_RECOMMENDATIONS} are listed above to keep this focused. "
+        "Mention briefly that there are more options beyond these, and that narrowing "
+        "the request further (dates, budget, a stronger preference) would help pick a "
+        "better-tailored set rather than just a longer list."
+        if total_matches is not None and total_matches > MAX_RECOMMENDATIONS
+        else ""
+    )
 
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
@@ -1087,7 +1122,8 @@ def _build_explanation_messages(
                 f"{candidates_summary}"
                 f"{assumed_month_note}"
                 f"{traveler_note}"
-                f"{entry_requirements_note}\n\n"
+                f"{entry_requirements_note}"
+                f"{more_matches_note}\n\n"
                 "Present the best 1-3 options as a compact Markdown table "
                 "(standard pipe syntax) comparing them side by side - pick "
                 "columns that actually matter here (e.g. destination, "
