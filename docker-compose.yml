@@ -48,7 +48,10 @@ services:
     build:
       context: .
       target: runtime
-    command: celery -A config worker -l info
+    # -B embeds the beat scheduler in this single worker process (2026-09-02,
+    # climate cache pre-warming - see config/settings/base.py's
+    # CELERY_BEAT_SCHEDULE) - correct only with exactly one worker instance.
+    command: celery -A config worker -l info -B
     volumes:
       - .:/app
     env_file:

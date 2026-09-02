@@ -10,6 +10,7 @@ from environment variables, never be hardcoded, and must never be committed
 to source control.
 """
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -110,6 +111,25 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
+
+# Climate cache pre-warming (2026-09-02, direct user request following a
+# real reported timeout - see integrations.tasks.warm_climate_cache for
+# the full reasoning). A plain timedelta schedule rather than a crontab -
+# "every 3 days" regardless of calendar day, comfortably inside the
+# climate provider's own 7-day cache TTL so a real user request should
+# never hit a cold cache in normal operation. Uses Celery's built-in
+# beat_schedule (no django-celery-beat dependency) since a single fixed
+# schedule needs no runtime-editable UI. Run via the worker process
+# itself (`celery worker -B`, see docker-compose.yml/render.yaml) rather
+# than a separate beat service - correct only as long as exactly one
+# worker instance is running; a second instance would double-schedule
+# this task. Revisit if the worker is ever scaled beyond one instance.
+CELERY_BEAT_SCHEDULE = {
+    "warm-climate-cache": {
+        "task": "integrations.tasks.warm_climate_cache",
+        "schedule": timedelta(days=3),
+    },
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

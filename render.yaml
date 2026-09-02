@@ -95,7 +95,14 @@ services:
     # app currently has exactly one lightweight, low-volume task
     # (trips.tasks.update_traveler_preferences_from_feedback) - it does
     # not need 16-way parallelism, or even close to it.
-    dockerCommand: celery -A config worker -l info --concurrency=2
+    # -B embeds the beat scheduler in this same process (2026-09-02,
+    # climate cache pre-warming - see config/settings/base.py's
+    # CELERY_BEAT_SCHEDULE) rather than a separate Render service, since
+    # this plan only ever runs a single worker instance - correct only as
+    # long as that stays true; a second instance would double-schedule
+    # the warming task. Revisit (move beat to its own service) if this
+    # worker is ever scaled beyond one instance.
+    dockerCommand: celery -A config worker -l info --concurrency=2 -B
     plan: 0.5c-512mb
     envVars:
       - key: DJANGO_SETTINGS_MODULE
