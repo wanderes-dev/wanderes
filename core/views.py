@@ -1,13 +1,29 @@
 import logging
 
+from django.conf import settings
 from django.db import connections
 from django.db.utils import OperationalError
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
+from django.urls import reverse
 
 from travel.models import Destination
 
 logger = logging.getLogger(__name__)
+
+# The full set of genuinely public, content-bearing pages worth telling
+# search engines about (2026-09-03, SEO prep) - drives sitemap.xml. Every
+# other route either needs a login (account/profile/trips - real SEO value
+# there is zero, and a crawler would just hit the login redirect), is an
+# API endpoint, or is /admin/ - none of those belong in a sitemap.
+# register/login are deliberately left out too: they're thin, duplicate-ish
+# form pages with no unique content to rank on, though nothing stops a
+# crawler that finds them via the nav from indexing them (robots.txt
+# doesn't disallow them, only the truly private paths below).
+_SITEMAP_ENTRIES = [
+    {"url_name": "core:landing", "changefreq": "weekly", "priority": "1.0"},
+    {"url_name": "ai:chat", "changefreq": "weekly", "priority": "0.9"},
+]
 
 
 def landing(request):
@@ -72,3 +88,47 @@ def _database_is_reachable():
         # previously only visible as a generic 503 in the access log.
         logger.error("Database health check failed.", exc_info=True)
         return False
+
+
+def robots_txt(request):
+    """Tells crawlers what's actually worth indexing (2026-09-03, SEO
+    prep). Disallows only genuinely private, login-gated, or non-content
+    paths - a crawler hitting one of these unauthenticated would just find
+    a login redirect or raw JSON, neither of which is worth indexing.
+    Points at sitemap.xml using SITE_DOMAIN, never request.get_host(), for
+    the same duplicate-hostname reason as everywhere else in this pass."""
+    lines = [
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /admin/",
+        "Disallow: /users/account/",
+        "Disallow: /users/profile/",
+        "Disallow: /trips/",
+        "Disallow: /api/",
+        "Disallow: /health/",
+        "",
+        f"Sitemap: https://{settings.SITE_DOMAIN}{reverse('core:sitemap')}",
+    ]
+    return HttpResponse("\n".join(lines), content_type="text/plain")
+
+
+def sitemap_xml(request):
+    """A hand-written sitemap rather than django.contrib.sitemaps
+    (2026-09-03, SEO prep) - with only two genuinely public pages right
+    now, the framework's extra moving parts (django.contrib.sites,
+    per-model Sitemap classes) aren't worth it, and its default URL
+    generation reads the domain off the incoming request/Site object -
+    exactly the duplicate-hostname problem SITE_DOMAIN exists to avoid.
+    Revisit if/when the app gains real per-destination pages worth
+    listing individually."""
+    urls = "".join(
+        f"<url><loc>https://{settings.SITE_DOMAIN}{reverse(entry['url_name'])}</loc>"
+        f"<changefreq>{entry['changefreq']}</changefreq>"
+        f"<priority>{entry['priority']}</priority></url>"
+        for entry in _SITEMAP_ENTRIES
+    )
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + urls + "</urlset>"
+    )
+    return HttpResponse(xml, content_type="application/xml")

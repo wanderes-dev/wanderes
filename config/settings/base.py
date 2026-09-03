@@ -26,6 +26,19 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", default="unsafe-development-key-change-me"
 DEBUG = env.bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
+# The one canonical hostname search engines and social previews should ever
+# see (2026-09-03, SEO prep) - used to build absolute canonical/Open Graph/
+# sitemap/robots.txt URLs from a fixed value, deliberately never from
+# request.get_host(). The live service is reachable under at least three
+# hostnames (wanderes.com, www.wanderes.com, and the legacy
+# travelagent-web.onrender.com - see PROJECT_STATE.md's Phase 18 entries) -
+# echoing back whatever host a crawler happened to use would hand Google
+# duplicate-content URLs for the same page instead of one consolidated
+# signal. See core.middleware.CanonicalDomainRedirectMiddleware for the
+# matching 301 redirect that keeps this true at the HTTP level too, not
+# just in generated links.
+SITE_DOMAIN = env("SITE_DOMAIN", default="wanderes.com")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -50,6 +63,14 @@ AUTH_USER_MODEL = "users.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Consolidates duplicate hostnames onto SITE_DOMAIN before anything else
+    # runs (2026-09-03, SEO prep) - deliberately placed first, right after
+    # SecurityMiddleware, so a redirect never does wasted work (session
+    # lookup, locale detection) for a request that's about to be redirected
+    # anyway. Only ever touches a small explicit allowlist of known legacy
+    # hostnames - never Render's own current healthcheck hostname - see the
+    # middleware's own docstring for why that distinction matters.
+    "core.middleware.CanonicalDomainRedirectMiddleware",
     # Serves collected static files directly from the app process (Phase 18
     # deploy prep, 2026-08-30) - simplest option for a small app on a
     # managed PaaS, no separate CDN/nginx needed (12_DEVELOPMENT_&_DEPLOYMENT.md
@@ -77,6 +98,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "core.context_processors.site_meta",
             ],
         },
     },

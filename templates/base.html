@@ -4,10 +4,28 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Wanderes{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}{% trans "Wanderes is an intelligent travel consultant. Tell it what you want from a trip and get real destination recommendations, grounded in real climate and cost data, with an honest explanation for every suggestion." %}{% endblock %}">
+    <meta name="robots" content="{% block robots %}index, follow{% endblock %}">
+    <link rel="canonical" href="{% block canonical_url %}{{ canonical_url }}{% endblock %}">
+
+    <meta property="og:site_name" content="Wanderes">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{% block og_url %}{{ canonical_url }}{% endblock %}">
+    <meta property="og:title" content="{% block og_title %}Wanderes{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}{% trans "Wanderes is an intelligent travel consultant. Tell it what you want from a trip and get real destination recommendations, grounded in real climate and cost data, with an honest explanation for every suggestion." %}{% endblock %}">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{% block twitter_title %}Wanderes{% endblock %}">
+    <meta name="twitter:description" content="{% block twitter_description %}{% trans "Wanderes is an intelligent travel consultant. Tell it what you want from a trip and get real destination recommendations, grounded in real climate and cost data, with an honest explanation for every suggestion." %}{% endblock %}">
+
+    <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon.svg' %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    {% block structured_data %}
+    <script type="application/ld+json">{{ organization_jsonld|safe }}</script>
+    {% endblock %}
 </head>
 <body>
     <header class="site-header">

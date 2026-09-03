@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}{% if is_edit %}Edit{% else %}Add{% endif %} travel history - Wanderes{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
 
 {% block content %}
 <h1>{% if is_edit %}Edit{% else %}Add{% endif %} a visited destination</h1>
