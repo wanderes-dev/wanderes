@@ -970,7 +970,9 @@ def _has_confirmable_profile_data(profile: TravelerProfile | None) -> bool:
     )
 
 
-def _traveler_context_note(profile: TravelerProfile | None) -> str:
+def _traveler_context_note(
+    profile: TravelerProfile | None, *, always_mention: bool = False
+) -> str:
     """A short free-text note the AI can factor into its reasoning when
     relevant - never a hard constraint (recommendations.scoring's hard
     filters stay message-only, per RecommendationRequest). budget_amount
@@ -981,7 +983,18 @@ def _traveler_context_note(profile: TravelerProfile | None) -> str:
     raw currency-ambiguous number, and always explicitly labeled as a
     rough estimate rather than a precise constraint, the same "let the AI
     reason from what's actually known, don't invent precision"
-    philosophy already applied to every other dimension in this module."""
+    philosophy already applied to every other dimension in this module.
+
+    always_mention=True (2026-09-03 QA re-test finding) is for the one
+    caller - _build_profile_confirmation_messages - whose entire purpose
+    is to state these details every time, not just when "relevant"; the
+    default phrasing's "don't force it in every time" caveat is correct
+    guidance for every other caller (explanation/no-matches/open-ended,
+    where mentioning the profile unprompted really can be intrusive) but
+    directly undercut the one caller instructing the model to confirm
+    them - a live reproduction showed the profile context being silently
+    dropped from a confirmation reply that existed specifically to state
+    it."""
     if profile is None:
         return ""
     bits = []
@@ -1021,6 +1034,11 @@ def _traveler_context_note(profile: TravelerProfile | None) -> str:
             )
     if not bits:
         return ""
+    if always_mention:
+        return (
+            "\n\nTraveler profile context to confirm (state all of this - confirming it is "
+            "the entire point of this reply, do not omit any of it): " + "; ".join(bits) + "."
+        )
     return (
         "\n\nTraveler profile context (use only when relevant to this reply, don't force it "
         "in every time): " + "; ".join(bits) + "."
@@ -1180,7 +1198,7 @@ def _build_profile_confirmation_messages(
     traveler's very next message proceeds straight to real suggestions no
     matter how they answered, matching the low-friction "never block a
     second time" philosophy the rest of this module already follows."""
-    traveler_note = _traveler_context_note(profile)
+    traveler_note = _traveler_context_note(profile, always_mention=True)
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
     messages.append(
@@ -1261,7 +1279,18 @@ def _build_explanation_messages(
                 f"{traveler_note}"
                 f"{entry_requirements_note}"
                 f"{more_matches_note}\n\n"
-                "Present the best 1-3 options as a compact Markdown table "
+                "This ranking is by climate/cost/trip-type fit only - it "
+                "does not filter by region or country. If the traveler's "
+                "message (check the conversation above too) names a "
+                "specific region, country, or place, first check whether "
+                "any of the candidates above are actually there (by their "
+                "listed country) - present those. If none of them are, say "
+                "so plainly rather than presenting the top candidates as if "
+                "they satisfy that request (2026-09-03 QA finding: a reply "
+                "presented destinations from unrelated countries as the "
+                "answer to a region-specific request, without flagging the "
+                "mismatch at all)."
+                "\n\nPresent the best 1-3 options as a compact Markdown table "
                 "(standard pipe syntax) comparing them side by side - pick "
                 "columns that actually matter here (e.g. destination, "
                 "climate, cost, a standout pro, a real downside or "
@@ -1569,7 +1598,10 @@ def _build_open_ended_messages(
                 "'tá bom, procura aí') when they aren't adding any new "
                 "specifics of their own - treat both the same way: "
                 "suggest 2-3 real destinations from your own general "
-                "travel knowledge instead, confidently. Every destination "
+                "travel knowledge instead, confidently - making sure they "
+                "actually satisfy anything specific the traveler stated "
+                "(a named region, country, or place in particular), not "
+                "just whatever's easiest to suggest. Every destination "
                 "you name must be a real, actual place you're genuinely "
                 "confident exists - never invent a plausible-sounding "
                 "name to satisfy the request, especially if some part of "
@@ -1635,7 +1667,20 @@ def _build_no_matches_messages(
                 f'The traveler asked: "{message}"\n\n'
                 "Our own curated destination data has no match for this "
                 f"({constraints_summary}) - taken together, these "
-                "constraints are too narrow for what we have on file."
+                "constraints are too narrow for what we have on file. Note "
+                "that this list only covers what our own structured data "
+                "tracks (month/trip-type/temperature/budget/exclusions) - "
+                "if the traveler's actual message (check the conversation "
+                "above too) also names something more specific we don't "
+                "track as a field, like a particular region, country, or "
+                "place, that still fully applies and must be honored in "
+                "what you suggest (2026-09-03 QA finding: a reply "
+                "correctly said we had no data for a named region, then "
+                "suggested destinations from elsewhere entirely without "
+                "flagging the mismatch - don't do that; either suggest "
+                "real places that actually satisfy it, or say plainly you "
+                "can't find a good match there instead of substituting "
+                "somewhere else silently)."
                 f"{traveler_note}\n\n"
                 "Suggest 1-3 real destinations from your own general "
                 "travel knowledge that fit the traveler's request as well "

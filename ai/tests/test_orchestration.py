@@ -491,6 +491,29 @@ class ProfileConfirmationGateTests(TestCase):
         self.assertIn("traveling from Brazil", confirmation_prompt)
         self.assertIn("Do not suggest or list any destinations", confirmation_prompt)
 
+    def test_confirmation_prompt_does_not_say_the_context_is_optional(self):
+        # 2026-09-03 QA re-test finding: _traveler_context_note()'s default
+        # "use only when relevant, don't force it in every time" caveat -
+        # correct for every other caller - directly undercut this one,
+        # whose entire purpose is to state the details every time. A live
+        # reproduction showed the profile context silently dropped from a
+        # confirmation reply because of it.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0),
+            reply_text="Just to confirm, still traveling from Brazil?",
+        )
+
+        get_travel_recommendation(
+            "somewhere warm in October",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        confirmation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertNotIn("don't force it in every time", confirmation_prompt)
+        self.assertIn("state all of this", confirmation_prompt)
+
     def test_second_message_in_the_conversation_proceeds_to_real_suggestions(self):
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
@@ -1088,6 +1111,55 @@ class PromptReinforcementTests(TestCase):
 
         prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertIn("must be a real, actual place", prompt)
+
+    def test_no_matches_prompt_requires_honoring_free_text_specifics(self):
+        # 2026-09-03 QA re-test finding (chaos-2): a no-matches reply
+        # correctly said there was no curated data for a named region,
+        # then suggested destinations from elsewhere entirely without
+        # flagging the mismatch. constraints_summary only ever covers
+        # structured fields (month/trip_type/temperature/budget/
+        # exclusions), so a free-text detail like a region name has to be
+        # separately reinforced.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=1000.0), reply_text="Sure!"
+        )
+
+        get_travel_recommendation(
+            "impossible request", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("still fully applies and must be honored", prompt)
+
+    def test_open_ended_prompt_also_requires_honoring_free_text_specifics(self):
+        ai_provider = StubAIProvider(structured_response=_intent(), reply_text="Sure!")
+
+        get_travel_recommendation(
+            "surpreenda-me", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("actually satisfy anything specific the traveler stated", prompt)
+
+    def test_explanation_prompt_requires_checking_candidates_against_a_named_region(self):
+        # 2026-09-03 QA re-test finding: the top-N candidates handed to
+        # this prompt are ranked by climate/cost/trip-type fit only, never
+        # filtered by region - a live reproduction showed destinations
+        # from unrelated countries presented as the answer to an
+        # explicit region request, with no mismatch flagged.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Sure!"
+        )
+
+        get_travel_recommendation(
+            "somewhere warm in October, specifically in South America",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("does not filter by region or country", prompt)
+        self.assertIn("say so plainly", prompt)
 
     def test_off_topic_prompt_warns_against_inventing_specifics(self):
         ai_provider = StubAIProvider(
