@@ -9,7 +9,12 @@ from recommendations.scoring import (
     ScoredDestination,
     generate_recommendations,
 )
-from travel.models import COST_OF_LIVING_CHOICES, TRIP_TYPE_CHOICES, Destination
+from travel.models import (
+    COST_OF_LIVING_CHOICES,
+    TRIP_TYPE_CHOICES,
+    CountryEntryRequirement,
+    Destination,
+)
 from travel.services import (
     ENTRY_REQUIREMENT_DISCLAIMER,
     find_destination_slugs_by_name,
@@ -227,7 +232,37 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "anything new. False for everything else, including a message that "
     "reuses a word from earlier but is actually asking for something new "
     "or different - 'me dá mais opções de praia' asks for MORE/NEW "
-    "options, not a recall of the old ones, so that stays false."
+    "options, not a recall of the old ones, so that stays false.\n\n"
+    "--- is_visa_or_entry_question (independent of message_type) ---\n"
+    "true when the traveler is asking about visa, vaccine, travel "
+    "insurance, or other entry requirements for one or more countries - "
+    "either a general question ('quais países não precisam de visto para "
+    "brasileiros', 'which countries require mandatory travel insurance') "
+    "or about one specific destination ('do I need a visa for Japan?'). "
+    "False for everything else, including a normal destination-"
+    "recommendation request that happens to also mention wanting to "
+    "avoid a visa (that stays 'recommendation' - only set this true when "
+    "the visa/entry question IS the point of the message, not an "
+    "incidental filter on a search).\n"
+    "visa_question_country: if the question names ONE specific "
+    "destination country, that country's name as written (e.g. "
+    "'Japão'). Null if the question is general/not about one specific "
+    "country, or if is_visa_or_entry_question is false.\n"
+    "visa_question_nationality: the traveler's own nationality/home "
+    "country, ONLY if explicitly stated in THIS message (e.g. 'sendo "
+    "brasileiro' -> 'Brazil', 'as a US citizen' -> 'United States'). "
+    "Null if not stated in this message - never guess a nationality that "
+    "wasn't actually mentioned here; the application checks the "
+    "traveler's saved profile separately as a fallback.\n\n"
+    "--- is_booking_request (independent of message_type) ---\n"
+    "true when the traveler is explicitly asking to book, reserve, or "
+    "purchase something concrete right now - a flight, a hotel, a "
+    "package, tickets (e.g. 'reserve um voo pra mim', 'book me a "
+    "hotel', 'quero comprar essas passagens'). False for a question "
+    "that's merely informational about flights/hotels/prices without "
+    "asking to actually book anything (e.g. 'how much does a flight "
+    "cost' or 'quais hotéis existem em Roma' is false - only an actual "
+    "request to book/reserve/purchase is true)."
 )
 
 INTENT_SCHEMA = {
@@ -255,6 +290,10 @@ INTENT_SCHEMA = {
             "feedback_comment": {"type": ["string", "null"]},
             "future_destination_name": {"type": ["string", "null"]},
             "is_recall_request": {"type": "boolean"},
+            "is_visa_or_entry_question": {"type": "boolean"},
+            "visa_question_country": {"type": ["string", "null"]},
+            "visa_question_nationality": {"type": ["string", "null"]},
+            "is_booking_request": {"type": "boolean"},
         },
         "required": [
             "message_type",
@@ -270,6 +309,10 @@ INTENT_SCHEMA = {
             "feedback_comment",
             "future_destination_name",
             "is_recall_request",
+            "is_visa_or_entry_question",
+            "visa_question_country",
+            "visa_question_nationality",
+            "is_booking_request",
         ],
         "additionalProperties": False,
     },
@@ -376,6 +419,33 @@ def stream_travel_recommendation(
             recall_messages, message, ai_provider=ai_provider, remember=_remember
         )
         return StreamingOrchestrationResult([], recall_reply)
+
+    # Checked next, also before message_type branching (2026-09-03 QA
+    # finding: a bare informational visa question got a self-contradicting
+    # answer from pure general knowledge - the real CountryEntryRequirement
+    # data was never consulted outside the recommendation-explanation
+    # path). Takes priority over message_type the same way is_recall_request
+    # does, since the question IS the point of the message regardless of
+    # how the classifier's message_type field happened to land.
+    if intent["is_visa_or_entry_question"]:
+        visa_messages = _build_visa_question_messages(message, intent, profile, history)
+        visa_reply = _stream_ai_reply(
+            visa_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult([], visa_reply)
+
+    # Checked next (2026-09-03 QA finding: 9 of 10 flight/hotel booking
+    # tests never mentioned that booking isn't an actual feature, only 1
+    # did - inconsistent rather than reliably honest). Forces the
+    # disclosure to always happen for an explicit booking request, instead
+    # of leaving it to whichever path the message would otherwise fall
+    # into (which had no instruction to mention it at all).
+    if intent["is_booking_request"]:
+        booking_messages = _build_booking_request_messages(message, history)
+        booking_reply = _stream_ai_reply(
+            booking_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult([], booking_reply)
 
     message_type = intent["message_type"]
 
@@ -653,8 +723,15 @@ def _localize_reply(
                 "Say exactly this, in your own natural words, in the same "
                 "language the traveler has been using in this conversation "
                 "(check the history above if this message alone is short "
-                "or ambiguous, e.g. just a name) - this applies just as "
-                f"much to English as to any other language: {fact}"
+                "or ambiguous, e.g. just a name) - preserve the exact "
+                "meaning, not just the general idea (in particular, if the "
+                "fact says something was ALREADY saved before now, not "
+                "just added this moment, your phrasing must make that "
+                "clear too - 2026-09-03 QA finding: a paraphrase that "
+                "dropped this distinction read like a brand new addition "
+                "instead of a reminder that it was already there) - "
+                "this applies just as much to English as to any other "
+                f"language: {fact}"
             ),
         )
     )
@@ -1050,6 +1127,17 @@ def _validate_intent(data: dict) -> dict:
 
     data["is_recall_request"] = bool(data.get("is_recall_request"))
 
+    data["is_visa_or_entry_question"] = bool(data.get("is_visa_or_entry_question"))
+    visa_country = data.get("visa_question_country")
+    data["visa_question_country"] = (
+        visa_country if isinstance(visa_country, str) and visa_country.strip() else None
+    )
+    visa_nationality = data.get("visa_question_nationality")
+    data["visa_question_nationality"] = (
+        visa_nationality if isinstance(visa_nationality, str) and visa_nationality.strip() else None
+    )
+    data["is_booking_request"] = bool(data.get("is_booking_request"))
+
     return data
 
 
@@ -1205,6 +1293,147 @@ def _build_recall_messages(message: str, history: list[dict] | None = None) -> l
                 "they're referring to from the history, say so honestly and "
                 "ask them to clarify, rather than guessing. Reply in the same "
                 "language the traveler has been using in this conversation."
+            ),
+        )
+    )
+    return messages
+
+
+def _visa_verified_data_note(intent: dict, profile: TravelerProfile | None) -> str:
+    """Real, verified visa/vaccine/insurance data for a visa/entry
+    question - deterministic database lookups, not AI general knowledge,
+    per 05_AI_DESIGN.md §7 (2026-09-03 QA finding: a bare informational
+    visa question previously got zero access to travel.CountryEntryRequirement
+    at all, answering entirely from the model's own general knowledge -
+    demonstrably unreliable, since the exact same underlying fact about
+    Japan got contradictory answers depending only on how the question
+    was phrased). Falls back to an empty string (letting the caller's
+    prompt reason from general knowledge instead, with a disclaimer) when
+    the traveler's nationality genuinely isn't known from anywhere -
+    there's no verified per-nationality answer to give without it."""
+    nationality = intent.get("visa_question_nationality") or (
+        profile.home_country if profile else None
+    )
+    if not nationality:
+        return ""
+
+    country = intent.get("visa_question_country")
+    if country:
+        requirement = get_entry_requirements(country)
+        if requirement is None:
+            return ""
+        needs_visa = any(
+            nationality.strip().lower() == n.strip().lower()
+            for n in requirement.visa_required_nationalities
+        )
+        visa_bit = (
+            "a visa IS required"
+            if needs_visa
+            else "a visa is generally NOT required (see notes for exceptions/programs)"
+        )
+        return (
+            f"\n\nVerified data on file for {country} (from our own dataset, not "
+            f"general knowledge) - use this instead of guessing: for a traveler "
+            f"from {nationality}, {visa_bit}. Visa notes: "
+            f"{requirement.visa_notes or 'none on file'}. Vaccine requirements: "
+            f"{', '.join(requirement.vaccine_requirements) or 'none on file'}. "
+            f"Insurance required: {'yes' if requirement.insurance_required else 'no'}"
+            f"{' - ' + requirement.insurance_notes if requirement.insurance_notes else ''}. "
+            f"Other requirements: "
+            f"{', '.join(requirement.other_requirements) or 'none on file'}. Always "
+            f'include this disclaimer if you use this data: "{ENTRY_REQUIREMENT_DISCLAIMER}"'
+        )
+
+    # No single country named - a general "which countries..." question.
+    # Summarize every country we actually have verified data for, rather
+    # than letting the model enumerate an unverified list from memory
+    # (the exact failure mode found live: a general list confidently
+    # named Japan as visa-free, contradicting the correct, specific
+    # answer given one message later).
+    lines = []
+    for req in CountryEntryRequirement.objects.all():
+        needs_visa = any(
+            nationality.strip().lower() == n.strip().lower()
+            for n in req.visa_required_nationalities
+        )
+        status = "visa required" if needs_visa else "visa generally not required"
+        lines.append(f"- {req.country}: {status}")
+    if not lines:
+        return ""
+    return (
+        f"\n\nVerified data on file for a traveler from {nationality}, covering "
+        f"{len(lines)} countries (from our own dataset - this list is NOT "
+        "exhaustive, only what we actually have verified data for; many other "
+        "countries simply aren't listed here) - use this instead of guessing for "
+        "any country below:\n" + "\n".join(lines) + "\nIf the traveler asks about "
+        "a country not in this list, general knowledge is fine but must be "
+        "clearly flagged as unverified, separately from the list above. Always "
+        f'include this disclaimer if you use the list above: "{ENTRY_REQUIREMENT_DISCLAIMER}"'
+    )
+
+
+def _build_visa_question_messages(
+    message: str,
+    intent: dict,
+    profile: TravelerProfile | None,
+    history: list[dict] | None = None,
+) -> list[AIMessage]:
+    """Built when intent extraction detects is_visa_or_entry_question -
+    hands the model real, verified travel.CountryEntryRequirement data
+    when the traveler's nationality is known (from the message itself or
+    their saved profile), rather than leaving a legally-consequential
+    question entirely to unverified general knowledge (2026-09-03 QA
+    finding, see _visa_verified_data_note's docstring for the specific
+    self-contradiction that motivated this)."""
+    verified_note = _visa_verified_data_note(intent, profile)
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler asked: "{message}" - a question about visa, '
+                "vaccine, insurance, or other entry requirements."
+                f"{verified_note}\n\n"
+                "Answer helpfully and directly. If no verified data was given "
+                "to you above, answer from your own general knowledge but be "
+                "honest that it isn't independently verified and could be "
+                "outdated - recommend the traveler confirm with an official "
+                "government or embassy source before booking or traveling, "
+                "rather than stating anything as certain. Reply in the same "
+                "language the traveler has been using in this conversation."
+            ),
+        )
+    )
+    return messages
+
+
+def _build_booking_request_messages(
+    message: str, history: list[dict] | None = None
+) -> list[AIMessage]:
+    """Built when intent extraction detects is_booking_request - a
+    traveler explicitly asking to book/reserve/purchase a flight, hotel,
+    or similar. 2026-09-03 QA finding: only 1 of 10 flight/hotel tests
+    ever mentioned that booking isn't an actual feature - the other 9
+    just launched into the normal recommendation flow with no
+    disclosure at all. Forces the honest disclosure every time instead
+    of leaving it to chance."""
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler just said: "{message}" - asking to book, reserve, '
+                "or purchase something directly (a flight, hotel, package, or "
+                "similar). You cannot actually make bookings or purchases - be "
+                "upfront and clear about that near the start of your reply, in "
+                "your own natural words (not a canned sentence), without over-"
+                "apologizing. Then pivot to being genuinely helpful with what "
+                "you CAN do instead - e.g. help them think through "
+                "destinations, timing, or general travel planning. Reply in "
+                "the same language the traveler has been using in this "
+                "conversation."
             ),
         )
     )

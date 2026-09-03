@@ -109,6 +109,10 @@ def _intent(
     feedback_comment=None,
     future_destination_name=None,
     is_recall_request=False,
+    is_visa_or_entry_question=False,
+    visa_question_country=None,
+    visa_question_nationality=None,
+    is_booking_request=False,
 ):
     return {
         "message_type": message_type,
@@ -124,6 +128,10 @@ def _intent(
         "feedback_comment": feedback_comment,
         "future_destination_name": future_destination_name,
         "is_recall_request": is_recall_request,
+        "is_visa_or_entry_question": is_visa_or_entry_question,
+        "visa_question_country": visa_question_country,
+        "visa_question_nationality": visa_question_nationality,
+        "is_booking_request": is_booking_request,
     }
 
 
@@ -771,6 +779,236 @@ class RecallRequestTests(TestCase):
     def test_not_a_recall_request_still_searches_normally(self):
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=20.0, is_recall_request=False),
+            reply_text="Here you go!",
+        )
+
+        result = get_travel_recommendation(
+            "somewhere warm in October", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        self.assertEqual(len(result.recommendations), 1)
+
+
+class VisaQuestionTests(TestCase):
+    """2026-09-03 QA finding: a bare informational visa question got zero
+    access to travel.CountryEntryRequirement, answering entirely from the
+    model's own general knowledge - the same underlying fact about Japan
+    got contradictory answers depending only on how the question was
+    phrased. Fixed with a new is_visa_or_entry_question intent field that
+    routes to a dedicated handler carrying real, verified data."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+        self.requirement = CountryEntryRequirement.objects.create(
+            country="Japan",
+            visa_required_nationalities=["Brazil"],
+            visa_notes="e-visa available for most nationalities.",
+            vaccine_requirements=[],
+            insurance_required=False,
+        )
+
+    def test_visa_question_skips_a_new_search(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_visa_or_entry_question=True,
+                visa_question_country="Japan",
+                visa_question_nationality="Brazil",
+            ),
+            reply_text="Yes, Brazilians need a visa for Japan.",
+        )
+
+        result = get_travel_recommendation(
+            "do Brazilians need a visa for Japan?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.recommendations, [])
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_visa_question_takes_priority_over_message_type(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="off_topic",
+                is_visa_or_entry_question=True,
+                visa_question_country="Japan",
+                visa_question_nationality="Brazil",
+            ),
+            reply_text="Yes, a visa is required.",
+        )
+
+        get_travel_recommendation(
+            "do Brazilians need a visa for Japan?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_verified_data_included_for_a_specific_country_needing_visa(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_visa_or_entry_question=True,
+                visa_question_country="Japan",
+                visa_question_nationality="Brazil",
+            ),
+            reply_text="Yes, a visa is required.",
+        )
+
+        get_travel_recommendation(
+            "do Brazilians need a visa for Japan?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("Verified data on file for Japan", prompt)
+        self.assertIn("a visa IS required", prompt)
+        self.assertIn(ENTRY_REQUIREMENT_DISCLAIMER, prompt)
+
+    def test_verified_data_reflects_no_visa_needed_for_other_nationality(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_visa_or_entry_question=True,
+                visa_question_country="Japan",
+                visa_question_nationality="Portugal",
+            ),
+            reply_text="No visa needed.",
+        )
+
+        get_travel_recommendation(
+            "do Portuguese travelers need a visa for Japan?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("a visa is generally NOT required", prompt)
+
+    def test_no_country_named_summarizes_every_country_on_file(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_visa_or_entry_question=True,
+                visa_question_country=None,
+                visa_question_nationality="Brazil",
+            ),
+            reply_text="Here's what I know.",
+        )
+
+        get_travel_recommendation(
+            "which countries need a visa for Brazilians?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("Japan: visa required", prompt)
+        self.assertIn("NOT exhaustive", prompt)
+
+    def test_falls_back_to_profile_nationality_when_message_has_none(self):
+        user = User.objects.create_user(email="visa-test@example.com", password="pw")
+        TravelerProfile.objects.create(user=user, home_country="Brazil")
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_visa_or_entry_question=True,
+                visa_question_country="Japan",
+                visa_question_nationality=None,
+            ),
+            reply_text="Yes, a visa is required.",
+        )
+
+        get_travel_recommendation(
+            "do I need a visa for Japan?",
+            user=user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("Verified data on file for Japan", prompt)
+        self.assertIn("for a traveler from Brazil", prompt)
+
+    def test_no_known_nationality_falls_back_to_general_knowledge_disclosure(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_visa_or_entry_question=True,
+                visa_question_country="Japan",
+                visa_question_nationality=None,
+            ),
+            reply_text="I'm not entirely sure, but generally...",
+        )
+
+        get_travel_recommendation(
+            "do I need a visa for Japan?", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertNotIn("Verified data on file", prompt)
+        self.assertIn("isn't independently verified", prompt)
+
+
+class BookingRequestTests(TestCase):
+    """2026-09-03 QA finding: only 1 of 10 flight/hotel booking-style
+    requests ever disclosed that Wanderes can't actually make a booking -
+    the other 9 launched straight into the normal recommendation flow.
+    Fixed with a new is_booking_request intent field that forces the
+    disclosure every time."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+
+    def test_booking_request_skips_a_new_search(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_booking_request=True),
+            reply_text="I can't book flights directly, but I can help you plan.",
+        )
+
+        result = get_travel_recommendation(
+            "book me a flight to Lisbon", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        self.assertEqual(result.recommendations, [])
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_booking_request_takes_priority_over_message_type(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(message_type="recommendation", is_booking_request=True),
+            reply_text="I can't book that for you directly.",
+        )
+
+        get_travel_recommendation(
+            "reserve a hotel in Lisbon for me",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_prompt_requires_upfront_booking_disclosure(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_booking_request=True),
+            reply_text="Sure!",
+        )
+
+        get_travel_recommendation(
+            "book me a flight to Lisbon", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("cannot actually make bookings or purchases", prompt)
+        self.assertIn("near the start of your reply", prompt)
+
+    def test_not_a_booking_request_still_searches_normally(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                month=10, min_temp_c=20.0, is_booking_request=False
+            ),
             reply_text="Here you go!",
         )
 
