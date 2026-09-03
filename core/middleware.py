@@ -12,9 +12,21 @@ from django.http import HttpResponsePermanentRedirect
 # redirecting that health check too, which Render would read as the
 # service being down. Add a new alias here only once it's confirmed to be
 # a public-facing duplicate, never Render's own current service hostname.
+#
+# www.wanderes.com is deliberately NOT in this list, even though it looks
+# like the obvious "other" alias to consolidate (2026-09-03 production
+# incident, same day as this file's introduction): something outside this
+# app - Render's own domain config or DNS, confirmed empirically since
+# nothing in this codebase does it - already redirects the bare apex
+# wanderes.com to www.wanderes.com. Adding www.wanderes.com here on top of
+# that created an infinite apex->www->apex redirect loop, taking the
+# entire public site down (ERR_TOO_MANY_REDIRECTS) for several minutes
+# before being caught and reverted. SITE_DOMAIN is now www.wanderes.com to
+# match that reality instead of fighting it - never re-add www.wanderes.com
+# here without first confirming, live, that nothing upstream still
+# redirects apex to www.
 CANONICAL_REDIRECT_HOSTS = frozenset(
     {
-        "www.wanderes.com",
         "travelagent-web.onrender.com",
     }
 )

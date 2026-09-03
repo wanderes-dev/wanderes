@@ -14,33 +14,32 @@ _TEST_ALLOWED_HOSTS = [
 ]
 
 
-@override_settings(ALLOWED_HOSTS=_TEST_ALLOWED_HOSTS, SITE_DOMAIN="wanderes.com")
+@override_settings(ALLOWED_HOSTS=_TEST_ALLOWED_HOSTS, SITE_DOMAIN="www.wanderes.com")
 class CanonicalDomainRedirectMiddlewareTests(TestCase):
-    def test_www_redirects_to_the_canonical_apex_domain(self):
+    def test_www_is_never_redirected(self):
+        # 2026-09-03 production incident: something outside this app
+        # (confirmed live) already redirects the bare apex wanderes.com to
+        # www.wanderes.com. This app must never redirect www anywhere -
+        # doing so once created an infinite loop with that external
+        # redirect and took the entire public site down.
         response = self.client.get("/chat/", HTTP_HOST="www.wanderes.com")
 
-        self.assertEqual(response.status_code, 301)
-        self.assertEqual(response["Location"], "https://wanderes.com/chat/")
+        self.assertEqual(response.status_code, 200)
 
     def test_legacy_onrender_hostname_redirects_and_preserves_query_string(self):
         response = self.client.get("/chat/?foo=bar", HTTP_HOST="travelagent-web.onrender.com")
 
         self.assertEqual(response.status_code, 301)
-        self.assertEqual(response["Location"], "https://wanderes.com/chat/?foo=bar")
-
-    def test_canonical_host_itself_is_never_redirected(self):
-        response = self.client.get("/", HTTP_HOST="wanderes.com")
-
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Location"], "https://www.wanderes.com/chat/?foo=bar")
 
     def test_health_check_is_never_redirected_even_on_a_duplicate_host(self):
         # The most important case here: Render's own health check almost
         # certainly hits the service on its own current onrender.com
-        # hostname, not wanderes.com - if that host were ever added to the
-        # redirect allowlist (or the allowlist logic were ever loosened to
-        # "any non-canonical host"), a redirect here instead of a 200 would
-        # make Render treat the whole service as down.
-        response = self.client.get("/health/", HTTP_HOST="www.wanderes.com")
+        # hostname, not www.wanderes.com - if that host were ever added to
+        # the redirect allowlist (or the allowlist logic were ever loosened
+        # to "any non-canonical host"), a redirect here instead of a 200
+        # would make Render treat the whole service as down.
+        response = self.client.get("/health/", HTTP_HOST="travelagent-web.onrender.com")
 
         self.assertEqual(response.status_code, 200)
 
@@ -50,5 +49,13 @@ class CanonicalDomainRedirectMiddlewareTests(TestCase):
         # the live service, since that's the same hostname its health
         # check almost certainly uses.
         response = self.client.get("/health/", HTTP_HOST="wanderes-web.onrender.com")
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_bare_apex_is_not_in_the_redirect_allowlist(self):
+        # This app deliberately does not redirect wanderes.com itself -
+        # something outside this codebase already does, and duplicating
+        # that here is exactly what caused the 2026-09-03 outage.
+        response = self.client.get("/", HTTP_HOST="wanderes.com")
 
         self.assertEqual(response.status_code, 200)

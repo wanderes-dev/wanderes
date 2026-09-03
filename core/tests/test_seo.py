@@ -16,7 +16,7 @@ class RobotsTxtTests(TestCase):
     def test_points_to_the_canonical_sitemap_url(self):
         response = self.client.get("/robots.txt")
 
-        self.assertIn("Sitemap: https://wanderes.com/sitemap.xml", response.content.decode())
+        self.assertIn("Sitemap: https://www.wanderes.com/sitemap.xml", response.content.decode())
 
 
 class SitemapXmlTests(TestCase):
@@ -26,8 +26,8 @@ class SitemapXmlTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/xml")
         content = response.content.decode()
-        self.assertIn("<loc>https://wanderes.com/</loc>", content)
-        self.assertIn("<loc>https://wanderes.com/chat/</loc>", content)
+        self.assertIn("<loc>https://www.wanderes.com/</loc>", content)
+        self.assertIn("<loc>https://www.wanderes.com/chat/</loc>", content)
 
     def test_never_lists_login_gated_pages(self):
         response = self.client.get("/sitemap.xml")
@@ -46,13 +46,13 @@ class CanonicalUrlTests(TestCase):
     def test_canonical_link_matches_site_domain_setting(self):
         response = self.client.get("/")
 
-        self.assertContains(response, '<link rel="canonical" href="https://wanderes.com/">')
+        self.assertContains(response, '<link rel="canonical" href="https://www.wanderes.com/">')
 
     def test_chat_page_canonical_link_includes_its_own_path(self):
         response = self.client.get("/chat/")
 
         self.assertContains(
-            response, '<link rel="canonical" href="https://wanderes.com/chat/">'
+            response, '<link rel="canonical" href="https://www.wanderes.com/chat/">'
         )
 
 
@@ -84,7 +84,7 @@ class StructuredDataTests(TestCase):
 
         self.assertContains(response, '"@type": "Organization"')
         self.assertContains(response, '"name": "Wanderes"')
-        self.assertContains(response, '"url": "https://wanderes.com/"')
+        self.assertContains(response, '"url": "https://www.wanderes.com/"')
 
 
 @override_settings(SITE_DOMAIN="example-alias.test")

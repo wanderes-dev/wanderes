@@ -37,7 +37,17 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 # signal. See core.middleware.CanonicalDomainRedirectMiddleware for the
 # matching 301 redirect that keeps this true at the HTTP level too, not
 # just in generated links.
-SITE_DOMAIN = env("SITE_DOMAIN", default="wanderes.com")
+#
+# www.wanderes.com, not the bare apex (2026-09-03 production incident,
+# same day this setting was introduced): something outside this app -
+# confirmed live, not something in this codebase - already redirects
+# wanderes.com to www.wanderes.com. The first version of this setting
+# used the apex, and the matching middleware redirected www back to the
+# apex - an infinite loop between that external redirect and this app's
+# own, which took the entire public site down for several minutes. Do not
+# change this back to the apex without first confirming, live, that
+# nothing upstream still redirects apex to www.
+SITE_DOMAIN = env("SITE_DOMAIN", default="www.wanderes.com")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
