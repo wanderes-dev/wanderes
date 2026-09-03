@@ -7,3 +7,11 @@ gunicorn>=23.0,<24.0
 whitenoise>=6.7,<7.0
 requests>=2.32,<3.0
 openai>=1.50,<2.0
+
+# Google OAuth login (2026-09-03, direct user request - "prepare para
+# podermos fazer login atraves do google"). django-allauth's
+# settings-driven SOCIALACCOUNT_PROVIDERS config (see base.py) avoids
+# needing a DB-stored SocialApp row via the admin, matching this
+# project's existing pattern of provider config through env vars
+# (OPENAI_API_KEY, etc.) rather than database rows.
+django-allauth>=65.0,<66.0

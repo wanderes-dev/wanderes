@@ -18,7 +18,14 @@ def register(request):
         form = UserRegistrationForm(request.POST)
         if form.is_valid():
             user = form.save()
-            login(request, user)
+            # Explicit backend required as of 2026-09-03 (Google OAuth
+            # login added a second AUTHENTICATION_BACKENDS entry,
+            # allauth's own) - login() can no longer guess which backend
+            # authenticated this user, since form.save() creates the row
+            # directly rather than calling authenticate(). Always
+            # ModelBackend here - this is the email/password registration
+            # form, never a social signup.
+            login(request, user, backend="django.contrib.auth.backends.ModelBackend")
             record_event("user_registered", user=user)
             return redirect("users:account")
     else:

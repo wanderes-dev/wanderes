@@ -56,6 +56,9 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Required by django-allauth (SITE_ID below) - not otherwise used by
+    # this app, which has never needed multi-site support.
+    "django.contrib.sites",
     "core",
     "users",
     "travel",
@@ -64,12 +67,27 @@ INSTALLED_APPS = [
     "ai",
     "recommendations",
     "analytics",
+    # Google OAuth login (2026-09-03, direct user request). allauth is
+    # additive to the existing email/password login (users.forms.
+    # UserRegistrationForm, users.views.register/login) - it does not
+    # replace it. See the ACCOUNT_*/SOCIALACCOUNT_* settings below for how
+    # it's wired to the custom email-only User model.
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.google",
 ]
 
 # Custom user model (email login, no username field) — see users/models.py.
 # Must be set before the first migration; do not change once real user
 # data exists without a data migration plan.
 AUTH_USER_MODEL = "users.User"
+
+# django.contrib.sites requires this; only one site ever exists here. The
+# Site row's own `domain` field is kept in sync with SITE_DOMAIN by a data
+# migration (users/migrations - see its own comment for why it lives
+# there rather than in a new app just for this).
+SITE_ID = 1
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -93,7 +111,69 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Required by django-allauth as of its 0.65 series (2026-09-03).
+    "allauth.account.middleware.AccountMiddleware",
 ]
+
+# django.contrib.auth's default ModelBackend still handles the existing
+# email/password login (users.forms.UserRegistrationForm) unchanged;
+# allauth's backend is additive, only ever consulted for social logins.
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+
+# django-allauth configuration (2026-09-03, Google OAuth login).
+#
+# The User model (users.models.User) has no username field at all - login
+# is email-only, matching how users:login/users:register already work.
+# LOGIN_URL/LOGIN_REDIRECT_URL (defined once, further below) already point
+# at users:login/users:account - allauth reads and honors both of those
+# same settings, no separate ACCOUNT_LOGIN_REDIRECT_URL needed.
+ACCOUNT_LOGIN_METHODS = {"email"}
+ACCOUNT_SIGNUP_FIELDS = ["email*"]
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_EMAIL_VERIFICATION = "none"
+# Skips allauth's own intermediate "confirm your email/finish signup" page
+# entirely for a first-time Google sign-in - the account is created
+# straight from the verified email Google already provided, matching the
+# low-friction "never make the traveler do more than necessary" pattern
+# already used elsewhere in this app (e.g. the chat's conversational
+# feedback/future-intent capture). Safe specifically because Google
+# itself only ever hands back a verified email for the "email" scope.
+SOCIALACCOUNT_AUTO_SIGNUP = True
+# Skips allauth's own intermediate "you are about to sign in with Google"
+# landing page - the Google button goes straight to Google's consent
+# screen, the only screen with real content the traveler needs to see.
+SOCIALACCOUNT_LOGIN_ON_GET = True
+# A traveler who already registered with email/password and later clicks
+# "Sign in with Google" using the same address should land in their
+# existing account, not hit a "this email is already in use" dead end or
+# silently create a second, disconnected account - safe to trust here
+# specifically because Google only ever returns a verified email for this
+# scope (the same reasoning as SOCIALACCOUNT_AUTO_SIGNUP above).
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
+SOCIALACCOUNT_PROVIDERS = {
+    "google": {
+        "SCOPE": ["profile", "email"],
+        "AUTH_PARAMS": {"access_type": "online"},
+        # Configured entirely from settings/env vars, never a DB-stored
+        # SocialApp row via the admin - matches this project's existing
+        # pattern for every other external provider (OPENAI_API_KEY,
+        # CLIMATE_PROVIDER, etc.). Both real values are a manual step tied
+        # to the user's own Google Cloud Console project - see
+        # DECISIONS_PENDING.md and .env.example for what's needed and
+        # where to get it. Left blank, Google login simply isn't offered
+        # as a working option yet; nothing else about the app depends on
+        # these being set.
+        "APP": {
+            "client_id": env("GOOGLE_OAUTH_CLIENT_ID", default=""),
+            "secret": env("GOOGLE_OAUTH_CLIENT_SECRET", default=""),
+            "key": "",
+        },
+    }
+}
 
 ROOT_URLCONF = "config.urls"
 

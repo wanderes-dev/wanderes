@@ -79,6 +79,16 @@ services:
       # subdomain, not a custom domain.
       - key: DJANGO_ALLOWED_HOSTS
         value: wanderes.com,www.wanderes.com
+      # Google OAuth login (2026-09-03) - web service only, never the
+      # worker, since OAuth only ever happens over an HTTP request/
+      # redirect, something the worker process never handles. Blank until
+      # entered manually here (see .env.example for where to get real
+      # values) - the "Continue with Google" button stays hidden until
+      # both are set (core.context_processors.site_meta).
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
 
   - type: worker
     name: wanderes-worker

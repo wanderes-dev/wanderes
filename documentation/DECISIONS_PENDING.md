@@ -165,6 +165,33 @@ Design and implement the `FlightProvider`/`HotelProvider` internal interfaces de
 
 ---
 
+## 5. Google OAuth Login — 🟢 CODE READY, real Google Cloud credentials needed (not a Claude Code decision - account creation only)
+
+**2026-09-03, direct user request: "prepare para podermos fazer login atraves do google."** Unlike the other entries above, there's no product/architecture decision left to make here - the user already decided to add Google login (also referenced back on 2026-08-29's account docs). This entry exists only to record the one remaining step that genuinely can't be done from source code: creating real OAuth credentials, which requires the user's own Google account.
+
+**What's built and working** (`django-allauth`, additive to the existing email/password login - never a replacement): the Google provider is fully wired (`INSTALLED_APPS`, `AUTHENTICATION_BACKENDS`, `SOCIALACCOUNT_PROVIDERS`, `/accounts/google/login/` routing), a data migration keeps `django.contrib.sites`'s `Site` row in sync with `SITE_DOMAIN`, and a "Continue with Google" button was added to both the login and register pages. Verified live in a browser with a fake client ID: clicking the button correctly reaches Google's own OAuth endpoint and gets Google's own "invalid_client" rejection - proof the integration itself is wired correctly, only real credentials are missing.
+
+**Deliberately safe in the meantime**: with `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` unset (both default to `""`), the button doesn't render at all (`core.context_processors.site_meta`'s `google_oauth_configured` flag) - real visitors never see a broken "Continue with Google" button that would otherwise redirect to Google with an empty client ID.
+
+### What you need to do (Google Cloud Console, your own account)
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com/) → create or select a project → **APIs & Services → OAuth consent screen** → configure it (app name "Wanderes", support email, etc.) - Google will likely require this before letting you create credentials.
+2. **APIs & Services → Credentials → Create Credentials → OAuth client ID → Web application.**
+3. Add these **Authorized redirect URIs** exactly (trailing slash matters):
+   - `https://www.wanderes.com/accounts/google/login/callback/` (production)
+   - `http://localhost:8000/accounts/google/login/callback/` (local dev, optional)
+4. Copy the generated **Client ID** and **Client Secret**.
+5. On Render: `wanderes-web` service → Environment → add `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` with those values (these were added to `render.yaml` as `sync: false`, same pattern as `OPENAI_API_KEY` - but since the Blueprint was already created before this change, Render won't auto-prompt for them the way it did during initial setup; they need to be entered manually in the dashboard once).
+6. Redeploy (or Render may pick up the env var change automatically depending on plan/settings) - the button appears on `/users/login/` and `/users/register/` as soon as both values are set, no further code changes needed.
+
+### What Claude Code cannot do
+
+Create the Google Cloud project, agree to Google's terms, or generate real credentials - this is tied to the user's own Google account, the same boundary already documented for KAYAK's business-approval requirement above.
+
+**Reference:** `users/apps.py`, `users/signals.py` (analytics parity with the manual registration path), `users/tests/test_google_oauth.py`, `config/settings/base.py`'s `ACCOUNT_*`/`SOCIALACCOUNT_*` settings.
+
+---
+
 ## How to unblock
 
 Reply with your decision(s) — even a partial one (e.g., "let's start with just a destination dataset and Anthropic Claude, defer flights/hotels") is enough to resume work. Claude Code will then:

@@ -41,8 +41,19 @@ def site_meta(request):
     organization_jsonld = (
         organization_jsonld.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     )
+    # 2026-09-03, Google OAuth login prep: SOCIALACCOUNT_PROVIDERS always
+    # registers the google provider (see settings/base.py), but with no
+    # real GOOGLE_OAUTH_CLIENT_ID/SECRET set yet, allauth's own
+    # {% get_providers %} tag still lists it - the button would render and
+    # redirect to Google with an empty client_id, which Google rejects
+    # with its own error page. This flag lets templates show the button
+    # only once real credentials actually exist, rather than shipping a
+    # visibly broken button in the meantime.
+    google_app = settings.SOCIALACCOUNT_PROVIDERS.get("google", {}).get("APP", {})
+    google_oauth_configured = bool(google_app.get("client_id"))
     return {
         "site_domain": settings.SITE_DOMAIN,
         "canonical_url": f"https://{settings.SITE_DOMAIN}{request.path}",
         "organization_jsonld": organization_jsonld,
+        "google_oauth_configured": google_oauth_configured,
     }
