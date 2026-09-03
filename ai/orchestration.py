@@ -429,8 +429,15 @@ def stream_travel_recommendation(
     # how the classifier's message_type field happened to land.
     if intent["is_visa_or_entry_question"]:
         visa_messages = _build_visa_question_messages(message, intent, profile, history)
+        # temperature=0 (2026-09-03 QA re-test finding): with the provider's
+        # default temperature, this call sometimes contradicted its own
+        # verified CountryEntryRequirement data handed to it in the prompt
+        # (e.g. stating a visa was required for a nationality the dataset
+        # explicitly excludes) - a faithful-transcription task, not a
+        # creative one, so unlike every other _stream_ai_reply call here,
+        # variety is actively undesirable.
         visa_reply = _stream_ai_reply(
-            visa_messages, message, ai_provider=ai_provider, remember=_remember
+            visa_messages, message, ai_provider=ai_provider, remember=_remember, temperature=0
         )
         return StreamingOrchestrationResult([], visa_reply)
 
@@ -644,15 +651,26 @@ def stream_travel_recommendation(
 
 
 def _stream_ai_reply(
-    messages: list[AIMessage], message: str, *, ai_provider: AIProvider, remember
+    messages: list[AIMessage],
+    message: str,
+    *,
+    ai_provider: AIProvider,
+    remember,
+    temperature: float | None = None,
 ) -> Iterator[str]:
     """Stream one AI reply, saving the full text to conversation memory once
     fully produced (or on a mid-stream failure) - shared by both the normal
     recommendation-explanation path and the no-matches path above, since
-    both need the same streaming/fallback/memory behavior."""
+    both need the same streaming/fallback/memory behavior.
+
+    temperature defaults to None (the provider's own default) for every
+    existing caller - variety is fine, sometimes preferred, in a normal
+    explanation or open-ended suggestion. Pass 0 only for a call whose job
+    is to faithfully relay already-verified facts rather than write
+    creatively (see the visa-question caller)."""
     collected = []
     try:
-        for chunk in ai_provider.stream_reply(messages):
+        for chunk in ai_provider.stream_reply(messages, temperature=temperature):
             collected.append(chunk)
             yield chunk
     except AIProviderError:

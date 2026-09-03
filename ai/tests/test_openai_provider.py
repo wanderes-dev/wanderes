@@ -136,6 +136,22 @@ class OpenAIProviderTests(TestCase):
         self.assertEqual(chunks, ["Hello", " there", "!"])
         _, kwargs = mock_client.chat.completions.create.call_args
         self.assertTrue(kwargs["stream"])
+        self.assertNotIn("temperature", kwargs)
+
+    @patch("ai.provider.openai_provider.OpenAI")
+    def test_stream_reply_passes_temperature_when_given(self, mock_openai_class):
+        # 2026-09-03 QA finding: the visa-question reply needs temperature=0
+        # to faithfully relay already-verified data rather than write
+        # creatively - confirms it actually reaches the provider.
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = _fake_stream_chunks(["Hi"])
+        mock_openai_class.return_value = mock_client
+
+        provider = OpenAIProvider()
+        list(provider.stream_reply([AIMessage(role="user", content="hi")], temperature=0))
+
+        _, kwargs = mock_client.chat.completions.create.call_args
+        self.assertEqual(kwargs["temperature"], 0)
 
     @patch("ai.provider.openai_provider.OpenAI")
     def test_stream_reply_raises_on_error_before_streaming(self, mock_openai_class):

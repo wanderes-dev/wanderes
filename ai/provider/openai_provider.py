@@ -51,15 +51,23 @@ class OpenAIProvider(AIProvider):
             raise AIProviderError("AI provider returned invalid JSON.") from exc
 
     def stream_reply(
-        self, messages: list[AIMessage], *, max_tokens: int | None = None
+        self,
+        messages: list[AIMessage],
+        *,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
     ) -> Iterator[str]:
         payload = [{"role": message.role, "content": message.content} for message in messages]
         try:
+            kwargs = {}
+            if temperature is not None:
+                kwargs["temperature"] = temperature
             stream = self._client.chat.completions.create(
                 model=settings.AI_MODEL,
                 messages=payload,
                 max_tokens=max_tokens or DEFAULT_MAX_TOKENS,
                 stream=True,
+                **kwargs,
             )
             for chunk in stream:
                 if not chunk.choices:

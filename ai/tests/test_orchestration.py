@@ -36,6 +36,7 @@ class StubAIProvider:
         self.structured_response = structured_response
         self.reply_text = reply_text
         self.stream_reply_calls = []
+        self.stream_reply_temperatures = []
         self.generate_structured_reply_calls = []
         self.generate_reply_calls = []
 
@@ -59,8 +60,9 @@ class StubAIProvider:
         content = last_content[idx + len(marker) :] if idx != -1 else last_content
         return AIResponse(content=content, model="stub", prompt_tokens=0, completion_tokens=0)
 
-    def stream_reply(self, messages, *, max_tokens=None):
+    def stream_reply(self, messages, *, max_tokens=None, temperature=None):
         self.stream_reply_calls.append(messages)
+        self.stream_reply_temperatures.append(temperature)
         for word in self.reply_text.split(" "):
             yield word + " "
 
@@ -74,7 +76,7 @@ class FailingAIProvider:
     def generate_reply(self, messages, *, max_tokens=None):
         raise AIProviderError("boom")
 
-    def stream_reply(self, messages, *, max_tokens=None):
+    def stream_reply(self, messages, *, max_tokens=None, temperature=None):
         raise AIProviderError("boom")
 
 
@@ -559,7 +561,7 @@ class StreamTravelRecommendationTests(TestCase):
             ):
                 return _intent(month=10, min_temp_c=20.0)
 
-            def stream_reply(self, messages, *, max_tokens=None):
+            def stream_reply(self, messages, *, max_tokens=None, temperature=None):
                 yield "Partial reply... "
                 raise AIProviderError("connection dropped")
 
@@ -930,6 +932,29 @@ class VisaQuestionTests(TestCase):
         prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertIn("Verified data on file for Japan", prompt)
         self.assertIn("for a traveler from Brazil", prompt)
+
+    def test_visa_reply_uses_temperature_zero(self):
+        # 2026-09-03 QA re-test finding: the default (non-zero) temperature
+        # occasionally contradicted the verified data handed to the model
+        # (e.g. claiming a visa was required for a nationality the dataset
+        # explicitly excludes) - this is a faithful-transcription task, not
+        # a creative one.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_visa_or_entry_question=True,
+                visa_question_country="Japan",
+                visa_question_nationality="Brazil",
+            ),
+            reply_text="Yes, a visa is required.",
+        )
+
+        get_travel_recommendation(
+            "do Brazilians need a visa for Japan?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(ai_provider.stream_reply_temperatures, [0])
 
     def test_no_known_nationality_falls_back_to_general_knowledge_disclosure(self):
         ai_provider = StubAIProvider(

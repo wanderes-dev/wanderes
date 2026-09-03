@@ -82,11 +82,23 @@ class AIProvider(ABC):
 
     @abstractmethod
     def stream_reply(
-        self, messages: list[AIMessage], *, max_tokens: int | None = None
+        self,
+        messages: list[AIMessage],
+        *,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
     ) -> Iterator[str]:
         """Send a conversation to the provider and yield its reply incrementally.
 
         Each yielded string is one content chunk, in order - used for the
         progressive chat UI response (09_AI_ORCHESTRATION.md §8). Raises
         AIProviderError if the request fails before or during streaming.
+
+        temperature is None by default (provider's own default, deliberately
+        high-variety for most callers - see orchestration.py's per-call
+        choices); pass 0 only for a call whose output must faithfully
+        transcribe already-verified facts rather than write creatively
+        (2026-09-03 QA finding: the visa-question reply occasionally
+        contradicted its own verified CountryEntryRequirement data when
+        left at the default temperature).
         """
