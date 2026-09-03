@@ -215,7 +215,19 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "or null.\n\n"
     "--- Fields for message_type = 'future_intent' ---\n"
     "future_destination_name: the name of the place they want to visit "
-    "someday, as written. Null if unclear."
+    "someday, as written. Null if unclear.\n\n"
+    "--- is_recall_request (independent of message_type, check this for "
+    "any message) ---\n"
+    "true when the traveler is asking you to repeat, recall, or remind "
+    "them what YOU (the assistant) already said earlier in this same "
+    "conversation - e.g. 'quais praias você tinha sugerido?', 'what were "
+    "those options again?', 'lembra o que você falou antes?', 'voltando, "
+    "quais eram mesmo?'. This is specifically about recalling your own "
+    "prior replies from the history above, never about looking up "
+    "anything new. False for everything else, including a message that "
+    "reuses a word from earlier but is actually asking for something new "
+    "or different - 'me dá mais opções de praia' asks for MORE/NEW "
+    "options, not a recall of the old ones, so that stays false."
 )
 
 INTENT_SCHEMA = {
@@ -242,6 +254,7 @@ INTENT_SCHEMA = {
             "feedback_tags": {"type": "array", "items": {"type": "string"}},
             "feedback_comment": {"type": ["string", "null"]},
             "future_destination_name": {"type": ["string", "null"]},
+            "is_recall_request": {"type": "boolean"},
         },
         "required": [
             "message_type",
@@ -256,6 +269,7 @@ INTENT_SCHEMA = {
             "feedback_tags",
             "feedback_comment",
             "future_destination_name",
+            "is_recall_request",
         ],
         "additionalProperties": False,
     },
@@ -347,6 +361,21 @@ def stream_travel_recommendation(
         logger.warning("Could not extract intent - AI provider failure. message=%r", message)
         _remember(FALLBACK_REPLY)
         return StreamingOrchestrationResult([], iter([FALLBACK_REPLY]))
+
+    # Checked before message_type branching - a request to recall what was
+    # already said (2026-09-03, QA finding: "voltando, quais praias você
+    # tinha sugerido?" got a freshly re-run search sharing only 1 of 3
+    # destinations with what was actually suggested earlier, instead of
+    # actually recalling it) is orthogonal to message_type and takes
+    # priority over it, since re-running generate_recommendations() here
+    # would defeat the point - the traveler is asking about what's already
+    # in the conversation, not asking for anything new.
+    if intent["is_recall_request"]:
+        recall_messages = _build_recall_messages(message, history)
+        recall_reply = _stream_ai_reply(
+            recall_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult([], recall_reply)
 
     message_type = intent["message_type"]
 
@@ -1019,6 +1048,8 @@ def _validate_intent(data: dict) -> dict:
     cleaned_tags = _clean_string_list(data.get("feedback_tags"))
     data["feedback_tags"] = [tag for tag in cleaned_tags if tag in FEEDBACK_TAG_KEYS]
 
+    data["is_recall_request"] = bool(data.get("is_recall_request"))
+
     return data
 
 
@@ -1147,6 +1178,39 @@ def _build_explanation_messages(
     return messages
 
 
+def _build_recall_messages(message: str, history: list[dict] | None = None) -> list[AIMessage]:
+    """Built when intent extraction detects is_recall_request - the
+    traveler is asking to hear what the assistant already said, not
+    asking for anything new (2026-09-03 QA finding: "voltando, quais
+    praias você tinha sugerido?" previously fell through to a normal
+    fresh search, which - since generate_recommendations() re-ranks
+    independently and the explanation call isn't deterministic about
+    which 1-3 it features - came back sharing only 1 of the original 3
+    destinations, not an actual recollection of what was said). No
+    database search happens here at all; the only source of truth handed
+    to the model is the conversation history itself."""
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler just said: "{message}" - they are asking you to '
+                "recall or repeat something you already told them earlier in "
+                "this conversation. Look at your own previous replies above and "
+                "accurately restate what you actually said - the same "
+                "destinations, facts, or options, not a fresh or different "
+                "set. Do not run a new search or invent anything not already "
+                "in the conversation above. If you genuinely can't tell what "
+                "they're referring to from the history, say so honestly and "
+                "ask them to clarify, rather than guessing. Reply in the same "
+                "language the traveler has been using in this conversation."
+            ),
+        )
+    )
+    return messages
+
+
 def _build_off_topic_messages(message: str, history: list[dict] | None = None) -> list[AIMessage]:
     """Built when the message isn't about travel at all. SYSTEM_PROMPT
     already tells the model how to handle this naturally - briefly and
@@ -1156,10 +1220,33 @@ def _build_off_topic_messages(message: str, history: list[dict] | None = None) -
     just hands it the real message rather than returning a canned reply -
     2026-08-30, direct user feedback: always returning the identical
     sentence, even for something as mundane as "are you an AI?", was the
-    clearest sign this "doesn't feel like an AI, just an if/else"."""
+    clearest sign this "doesn't feel like an AI, just an if/else".
+
+    The short reminder appended after the message (2026-09-03 QA finding)
+    is new: a genuinely travel-related but informational question routes
+    here too (e.g. "quais companhias aéreas voam para Bali?"), and without
+    it the model answered confidently with a specific, invented airline
+    route table - SYSTEM_PROMPT already says never to invent specifics,
+    but that rule stated once at a distance was measurably less reliable
+    than reinforcing it right where the reply actually gets generated,
+    the same pattern already used for the language-matching instruction
+    elsewhere in this module."""
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
-    messages.append(AIMessage(role="user", content=message))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f"{message}\n\n"
+                "(Answer naturally, per your instructions. If a good answer "
+                "would need a specific real-world fact you're not actually "
+                "confident about - an exact current price, a specific company "
+                "or airline name and route, live availability or a schedule - "
+                "say so plainly and keep the answer general, rather than "
+                "stating an invented specific as if it were verified.)"
+            ),
+        )
+    )
     return messages
 
 
@@ -1228,10 +1315,22 @@ def _build_open_ended_messages(
                 "anything already known from the conversation. Do not "
                 "list destinations yet in this case. If instead the "
                 "message already explicitly invites you to just pick "
-                "something (e.g. 'surprise me', 'you decide', 'anywhere "
-                "is fine'), suggest 2-3 real destinations from your own "
-                "general travel knowledge instead, confidently - present "
-                "them as a compact Markdown table (standard pipe syntax) "
+                "something or proceed - either a direct invitation (e.g. "
+                "'surprise me', 'you decide', 'anywhere is fine') OR an "
+                "affirmative reply to a gathering question YOU yourself "
+                "just asked (e.g. 'sim', 'yes', 'pode buscar', 'go ahead', "
+                "'tá bom, procura aí') when they aren't adding any new "
+                "specifics of their own - treat both the same way: "
+                "suggest 2-3 real destinations from your own general "
+                "travel knowledge instead, confidently. Every destination "
+                "you name must be a real, actual place you're genuinely "
+                "confident exists - never invent a plausible-sounding "
+                "name to satisfy the request, especially if some part of "
+                "it doesn't actually make physical sense (say so honestly "
+                "in a sentence and suggest real places that get as close "
+                "as a real destination can, rather than inventing one "
+                "that supposedly matches exactly). Present them "
+                "as a compact Markdown table (standard pipe syntax) "
                 "comparing them side by side rather than paragraphs of "
                 "prose, and mention in passing that these come from your "
                 "own knowledge rather than verified data, without opening "
@@ -1295,7 +1394,16 @@ def _build_no_matches_messages(
                 "travel knowledge that fit the traveler's request as well "
                 "as possible, relaxing whichever constraint seems least "
                 "essential to what they actually care about (never ask "
-                "them to do this for you). Present them as a compact "
+                "them to do this for you). Every destination you name "
+                "must be a real, actual place you're genuinely confident "
+                "exists - never invent a plausible-sounding name to "
+                "satisfy a constraint literally, especially when the "
+                "constraint itself doesn't make physical sense for the "
+                "trip type (e.g. no beach is ever anywhere near freezing) "
+                "- in that case, say so honestly in a sentence and then "
+                "suggest real places that get as close as an actual "
+                "destination realistically can, rather than inventing "
+                "one that supposedly matches exactly. Present them as a compact "
                 "Markdown table (standard pipe syntax) comparing them "
                 "side by side - pick columns that actually matter here "
                 "(e.g. destination, climate, cost, a standout pro, a real "

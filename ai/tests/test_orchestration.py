@@ -108,6 +108,7 @@ def _intent(
     feedback_tags=None,
     feedback_comment=None,
     future_destination_name=None,
+    is_recall_request=False,
 ):
     return {
         "message_type": message_type,
@@ -122,6 +123,7 @@ def _intent(
         "feedback_tags": feedback_tags or [],
         "feedback_comment": feedback_comment,
         "future_destination_name": future_destination_name,
+        "is_recall_request": is_recall_request,
     }
 
 
@@ -717,6 +719,127 @@ class RecommendationCapTests(TestCase):
         self.assertEqual(len(result.recommendations), 3)
         explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertNotIn("matched", explanation_prompt)
+
+
+class RecallRequestTests(TestCase):
+    """2026-09-03 QA finding: "voltando, quais praias você tinha
+    sugerido?" fell through to a fresh generate_recommendations() call,
+    which shared only 1 of 3 destinations with what was actually
+    suggested earlier - the AI re-searched instead of recalling. Fixed
+    with a new is_recall_request intent field that skips search entirely
+    and hands the model only its own conversation history."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+
+    def test_recall_request_skips_a_new_search(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_recall_request=True),
+            reply_text="Earlier I suggested warm-cheap.",
+        )
+
+        result = get_travel_recommendation(
+            "voltando, quais praias você tinha sugerido?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.recommendations, [])
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+        recall_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("recall or repeat", recall_prompt)
+        self.assertIn("Do not run a new search", recall_prompt)
+
+    def test_recall_request_takes_priority_over_message_type(self):
+        # Even a message_type the model got wrong shouldn't matter -
+        # is_recall_request is checked first, before any branching on it.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(message_type="off_topic", is_recall_request=True),
+            reply_text="Sure, earlier I mentioned...",
+        )
+
+        result = get_travel_recommendation(
+            "what did you say again?", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        self.assertEqual(result.recommendations, [])
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_not_a_recall_request_still_searches_normally(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0, is_recall_request=False),
+            reply_text="Here you go!",
+        )
+
+        result = get_travel_recommendation(
+            "somewhere warm in October", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        self.assertEqual(len(result.recommendations), 1)
+
+
+class PromptReinforcementTests(TestCase):
+    """2026-09-03 QA-driven prompt reinforcements. These lock in that the
+    strengthened instructions actually reach the model's prompt - whether
+    a live model reliably follows them is a live-only concern, per this
+    project's established verification pattern (see DEVELOPMENT_LOG.md)."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+
+    def test_open_ended_prompt_recognizes_affirmative_go_ahead(self):
+        ai_provider = StubAIProvider(structured_response=_intent(), reply_text="Sure!")
+
+        get_travel_recommendation(
+            "sim, pode buscar", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("affirmative reply", prompt)
+        self.assertIn("pode buscar", prompt)
+
+    def test_open_ended_prompt_requires_real_destinations(self):
+        ai_provider = StubAIProvider(structured_response=_intent(), reply_text="Sure!")
+
+        get_travel_recommendation(
+            "surpreenda-me", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("must be a real, actual place", prompt)
+
+    def test_no_matches_prompt_requires_real_destinations(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=1000.0), reply_text="Sure!"
+        )
+
+        get_travel_recommendation(
+            "impossible request", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("must be a real, actual place", prompt)
+
+    def test_off_topic_prompt_warns_against_inventing_specifics(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(message_type="off_topic"), reply_text="Sure!"
+        )
+
+        get_travel_recommendation(
+            "quais companhias aéreas voam para Bali?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("exact current price", prompt)
+        self.assertIn("keep the answer general", prompt)
 
 
 class UnhandledRequestLoggingTests(TestCase):
