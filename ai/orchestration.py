@@ -977,15 +977,20 @@ def _traveler_profile(user) -> TravelerProfile | None:
 
 def _has_confirmable_profile_data(profile: TravelerProfile | None) -> bool:
     """Whether there's anything on the traveler's profile worth confirming
-    before suggesting a destination (2026-09-02) - mirrors exactly which
-    fields _traveler_context_note below would actually mention, so the
-    confirmation gate in stream_travel_recommendation never fires for a
-    profile that has nothing to confirm in the first place."""
+    before suggesting a destination (2026-09-02, extended 2026-09-05 to
+    also count preferred_trip_types/preferred_cost_of_living - see
+    _traveler_context_note's matching extension for why) - mirrors
+    exactly which fields _traveler_context_note below would actually
+    mention, so the confirmation gate in stream_travel_recommendation
+    never fires for a profile that has nothing to confirm in the first
+    place."""
     if profile is None:
         return False
     return bool(
         profile.home_country
         or profile.travelers_count
+        or profile.preferred_trip_types
+        or profile.preferred_cost_of_living
         or (profile.budget_amount and profile.budget_period and profile.budget_currency)
     )
 
@@ -1018,6 +1023,30 @@ def _traveler_context_note(
     if profile is None:
         return ""
     bits = []
+    if profile.preferred_trip_types:
+        # 2026-09-05, direct user feedback: the AI claimed it had no
+        # access to the traveler's profile at all when asked, even though
+        # this exact field already existed and already influenced
+        # recommendations.scoring's deterministic preference_fit bonus -
+        # it just was never actually told to the AI itself, so it had
+        # nothing true to say about it. TRIP_TYPE_CHOICES's labels are
+        # capitalized for form display ("Beach") - lowercased here for
+        # the same reason budget_period's period_phrase below is a
+        # separate mid-sentence mapping, not the raw choice label.
+        trip_type_labels = dict(TRIP_TYPE_CHOICES)
+        preferred = [
+            str(trip_type_labels.get(code, code)).lower() for code in profile.preferred_trip_types
+        ]
+        joined = (
+            preferred[0]
+            if len(preferred) == 1
+            else f"{', '.join(preferred[:-1])} and {preferred[-1]}"
+        )
+        bits.append(f"generally prefers {joined} trips")
+    if profile.preferred_cost_of_living:
+        cost_label = dict(COST_OF_LIVING_CHOICES).get(profile.preferred_cost_of_living)
+        if cost_label:
+            bits.append(f"generally prefers a {str(cost_label).lower()} cost of living")
     if profile.home_country:
         bits.append(f"traveling from {profile.home_country}")
     if profile.travelers_count:

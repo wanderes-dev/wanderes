@@ -22,6 +22,18 @@ class TravelerProfileViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(TravelerProfile.objects.filter(user=self.user).exists())
 
+    def test_page_uses_the_widened_profile_content_container(self):
+        # 2026-09-05 direct request: the 3-column budget row
+        # (.field-row.field-row-3) overflowed the site-wide .site-content
+        # container - fixed with a page-specific, 10%-wider container
+        # class (static/css/main.css's .profile-content) instead of
+        # widening every page's default container.
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("users:profile"))
+
+        self.assertContains(response, '<main class="profile-content">')
+
     def test_post_updates_profile(self):
         self.client.force_login(self.user)
 

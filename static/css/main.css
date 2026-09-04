@@ -1003,6 +1003,18 @@ button:focus-visible, .btn:focus-visible {
 
 /* Traveler profile page */
 
+/* 2026-09-05, direct request: 10% wider than the site-wide .site-content
+   default (760px), giving the 3-column budget row (.field-row-3) more
+   breathing room - this page's own <main> class instead of the shared
+   one, so no other page is affected. */
+.profile-content {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: 836px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 2.5rem;
+}
+
 .page-subtitle {
     color: var(--color-text-muted);
     margin: -0.35rem 0 1.5rem;
@@ -1036,6 +1048,20 @@ button:focus-visible, .btn:focus-visible {
     flex-direction: column;
     gap: 0.3rem;
     margin-bottom: 1rem;
+    /* min-width: 0 overrides the browser default of min-width: auto on a
+       grid/flex item (2026-09-05 fix) - without it, a .field-row-3 cell
+       refuses to shrink narrower than its <select>'s intrinsic content
+       width (budget_currency's option text in particular), which is what
+       pushed the row past .card's/.profile-content's right edge instead
+       of wrapping the input inside its column. Harmless outside a grid -
+       .field-block is also used standalone (home_country, travelers_count
+       above), where this has no visible effect. */
+    min-width: 0;
+}
+
+.field-block input,
+.field-block select {
+    width: 100%;
 }
 
 .field-block label {

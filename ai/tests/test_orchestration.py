@@ -313,7 +313,8 @@ class GetTravelRecommendationTests(TestCase):
 
 class TravelerProfileContextTests(TestCase):
     """Tests that TravelerProfile's home_country/travelers_count/budget
-    (2026-09-02) reach the AI's reasoning prompts as context, and that
+    (2026-09-02) and preferred_trip_types/preferred_cost_of_living
+    (2026-09-05) reach the AI's reasoning prompts as context, and that
     CountryEntryRequirement data is looked up (not invented) when a home
     country is known."""
 
@@ -362,6 +363,47 @@ class TravelerProfileContextTests(TestCase):
         self.assertIn(f"${expected_usd:.0f} USD", explanation_prompt)
         self.assertIn("150.00 BRL", explanation_prompt)
         self.assertIn("per day", explanation_prompt)
+
+    def test_preferred_trip_types_reach_the_explanation_prompt(self):
+        # 2026-09-05, direct user feedback: the AI claimed it had no
+        # access to the traveler's profile at all when asked, even though
+        # preferred_trip_types already existed and already influenced
+        # recommendations.scoring's deterministic preference_fit bonus -
+        # it just was never actually told to the AI itself.
+        TravelerProfile.objects.create(
+            user=self.user, preferred_trip_types=["beach", "culture"]
+        )
+        memory.mark_profile_confirmed(memory.conversation_key(user=self.user, session_key=None))
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
+        )
+
+        get_travel_recommendation(
+            "somewhere warm in October",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("generally prefers beach and culture trips", explanation_prompt)
+
+    def test_preferred_cost_of_living_reaches_the_explanation_prompt(self):
+        TravelerProfile.objects.create(user=self.user, preferred_cost_of_living=2)
+        memory.mark_profile_confirmed(memory.conversation_key(user=self.user, session_key=None))
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
+        )
+
+        get_travel_recommendation(
+            "somewhere warm in October",
+            user=self.user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("generally prefers a low cost of living", explanation_prompt)
 
     def test_anonymous_user_gets_no_traveler_context(self):
         ai_provider = StubAIProvider(
@@ -515,6 +557,30 @@ class ProfileConfirmationGateTests(TestCase):
         confirmation_prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertNotIn("don't force it in every time", confirmation_prompt)
         self.assertIn("state all of this", confirmation_prompt)
+
+    def test_trip_type_preference_alone_triggers_the_gate(self):
+        # 2026-09-05: preferred_trip_types/preferred_cost_of_living are
+        # now confirmable too, not just home_country/travelers_count/
+        # budget - a profile with only a trip-type preference set (no
+        # travel-details fields) previously got no confirmation at all,
+        # even though it already silently influenced scoring.
+        user = User.objects.create_user(email="other@example.com", password="testpass123")
+        TravelerProfile.objects.create(user=user, preferred_trip_types=["beach"])
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0),
+            reply_text="Just to confirm, still into beach trips?",
+        )
+
+        result = get_travel_recommendation(
+            "somewhere warm in October",
+            user=user,
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.recommendations, [])
+        confirmation_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("generally prefers beach trips", confirmation_prompt)
 
     def test_second_message_in_the_conversation_proceeds_to_real_suggestions(self):
         ai_provider = StubAIProvider(
