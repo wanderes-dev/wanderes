@@ -313,6 +313,16 @@ OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 # tries to use this before it's set.
 FLIGHT_PROVIDER = env("FLIGHT_PROVIDER", default="")
 
+# Which hotel provider adapter backs integrations.hotels.get_hotel_provider().
+# 2026-09-04: interface scaffolded ahead of a concrete adapter (see
+# DECISIONS_PENDING.md §4) - default blank on purpose, since
+# integrations/hotels/booking_com.py is a deliberate skeleton, not a
+# working adapter yet (Booking.com's Affiliate Partner Program is
+# application-reviewed and its real feed format isn't public until
+# approved). get_hotel_provider() raises a clear, friendly error if
+# something tries to use this before it's set.
+HOTEL_PROVIDER = env("HOTEL_PROVIDER", default="")
+
 # Email (2026-09-04, password reset via emailed token) - deliberately
 # provider-agnostic, the same pattern as every other external service in
 # this project: settings/env vars, never a specific vendor hardcoded, so
