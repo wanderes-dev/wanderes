@@ -1,14 +1,15 @@
 {% extends "base.html" %}
+{% load i18n %}
 
-{% block title %}Delete trip - Wanderes{% endblock %}
+{% block title %}{% trans "Delete trip" %} - Wanderes{% endblock %}
 {% block robots %}noindex, nofollow{% endblock %}
 
 {% block content %}
-<h1>Delete this trip?</h1>
+<h1>{% trans "Delete this trip?" %}</h1>
 <p>{{ trip.name|default:trip.destination.name }} - {{ trip.destination.name }}, {{ trip.destination.country }}</p>
 <form method="post" class="actions">
     {% csrf_token %}
-    <button type="submit" class="btn btn-danger">Delete</button>
-    <a href="{% url 'trips:trip-detail' trip.pk %}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-danger">{% trans "Delete" %}</button>
+    <a href="{% url 'trips:trip-detail' trip.pk %}" class="btn btn-secondary">{% trans "Cancel" %}</a>
 </form>
 {% endblock %}

@@ -13,7 +13,10 @@ class UserRegistrationForm(UserCreationForm):
 
 class TravelerProfileForm(forms.ModelForm):
     preferred_trip_types = forms.MultipleChoiceField(
-        choices=TRIP_TYPE_CHOICES, required=False, widget=forms.CheckboxSelectMultiple
+        choices=TRIP_TYPE_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        label=_("Preferred trip types"),
     )
 
     class Meta:
@@ -33,6 +36,7 @@ class TravelerProfileForm(forms.ModelForm):
             "budget_amount": forms.NumberInput(attrs={"min": 0, "step": "0.01"}),
         }
         labels = {
+            "preferred_cost_of_living": _("Preferred cost of living"),
             "home_country": _("Country of origin"),
             "travelers_count": _("Number of travelers"),
             "budget_amount": _("Budget amount"),

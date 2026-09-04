@@ -7,6 +7,7 @@ from django.http import (
     StreamingHttpResponse,
 )
 from django.shortcuts import get_object_or_404, render
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from analytics.services import record_event
@@ -33,11 +34,51 @@ RECOMMENDATIONS_DELIMITER = "\n<<<WANDERES_RECOMMENDATIONS>>>\n"
 CONVERSATION_DELIMITER = "\n<<<WANDERES_CONVERSATION>>>\n"
 
 
+def _chat_i18n_json() -> str:
+    """Translated strings the chat page's own JS needs at runtime
+    (2026-09-04, translation rollout) - loading messages, dynamically
+    built recommendation cards, and error bubbles, none of which a
+    template-level {% trans %} tag can reach directly. Serialized with
+    json.dumps rather than hand-quoted inside JS string literals in the
+    template - several of these strings contain an apostrophe (e.g.
+    "Couldn't load that conversation."), which would silently break a
+    naively single-quoted JS literal the moment it was translated into a
+    language whose translation also happens to contain one. Same
+    <>&-escaping as core.context_processors.site_meta's JSON-LD, for the
+    same reason (safe to embed in a <script> tag)."""
+    data = json.dumps(
+        {
+            "loadingMessages": [
+                _("Finding destinations that fit your preferences..."),
+                _("Thinking about the best options for your trip..."),
+                _("Comparing possibilities..."),
+                _("Looking at climate and costs for you..."),
+            ],
+            "whyThisFitsYou": _("Why this fits you"),
+            "avgTempSuffix": _("avg"),
+            "saveThisTrip": _("Save this trip"),
+            "notSaving": _("(not saving)"),
+            "deleteConversation": _("Delete conversation"),
+            "noSavedConversationsYet": _("No saved conversations yet."),
+            "couldntLoadConversation": _("Couldn't load that conversation."),
+            "newConversation": _("New conversation"),
+            "couldntReachServer": _(
+                "Couldn't reach the server. Check your connection and try again."
+            ),
+            "somethingWentWrong": _("Something went wrong on our end. Please try again."),
+        }
+    )
+    return data.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
 def chat_page(request):
     return render(
         request,
         "ai/chat.html",
-        {"max_saved_conversations": SavedConversation.MAX_CONVERSATIONS_PER_USER},
+        {
+            "max_saved_conversations": SavedConversation.MAX_CONVERSATIONS_PER_USER,
+            "chat_i18n_json": _chat_i18n_json(),
+        },
     )
 
 

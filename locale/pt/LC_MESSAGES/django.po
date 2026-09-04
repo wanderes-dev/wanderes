@@ -1,0 +1,950 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-04 00:06+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+#: ai/templates/ai/chat.html:5 ai/templates/ai/chat.html:7
+#: ai/templates/ai/chat.html:9
+msgid ""
+"Chat with Wander, Wanderes's travel consultant. Describe your ideal trip - "
+"budget, climate, pace, vibe - and get real destination recommendations with "
+"an honest explanation for each one."
+msgstr "Converse com o Wander, o consultor de viagens da Wanderes. Descreva sua viagem ideal - orçamento, clima, ritmo, estilo - e receba recomendações reais de destinos com uma explicação honesta para cada uma."
+
+#: ai/templates/ai/chat.html:6 ai/templates/ai/chat.html:8
+msgid "Chat with Wander - Wanderes"
+msgstr "Converse com o Wander - Wanderes"
+
+#: ai/templates/ai/chat.html:335
+msgid "Save your trips as you go"
+msgstr "Salve suas viagens à medida que avança"
+
+#: ai/templates/ai/chat.html:336
+msgid ""
+"Log in to keep your recommendations, save trips, and get better suggestions "
+"over time."
+msgstr "Faça login para manter suas recomendações, salvar viagens e receber sugestões cada vez melhores."
+
+#: ai/templates/ai/chat.html:338 templates/base.html:51
+#: users/templates/users/login.html:4 users/templates/users/login.html:16
+#: users/templates/users/register.html:24
+msgid "Log in"
+msgstr "Entrar"
+
+#: ai/templates/ai/chat.html:339 users/templates/users/login.html:24
+msgid "Create an account"
+msgstr "Criar uma conta"
+
+#: ai/templates/ai/chat.html:340
+msgid "Continue without an account"
+msgstr "Continuar sem uma conta"
+
+#: ai/templates/ai/chat.html:356
+msgid "Saved conversation limit reached"
+msgstr "Limite de conversas salvas atingido"
+
+#: ai/templates/ai/chat.html:357
+#, python-format
+msgid ""
+"You already have %(max_saved_conversations)s saved conversations, the Free "
+"plan limit. Delete an older one from the sidebar to save this one instead - "
+"or just keep chatting, this conversation simply won't be saved. Premium "
+"plans with room for more are coming soon."
+msgstr "Você já tem %(max_saved_conversations)s conversas salvas, o limite do plano Gratuito. Exclua uma mais antiga na barra lateral para salvar esta em vez dela - ou simplesmente continue conversando, esta conversa só não será salva. Planos Premium com mais espaço estão chegando em breve."
+
+#: ai/templates/ai/chat.html:359 ai/templates/ai/chat.html:368
+msgid "Got it, keep chatting"
+msgstr "Entendi, continuar conversando"
+
+#: ai/templates/ai/chat.html:365
+msgid "This conversation reached its saved size limit"
+msgstr "Esta conversa atingiu seu limite de tamanho salvo"
+
+#: ai/templates/ai/chat.html:366
+msgid ""
+"This conversation hit the Free plan's saved-conversation size limit, so "
+"messages from here on won't be added to it - but you can keep chatting "
+"normally. Premium plans with higher limits are coming soon."
+msgstr "Esta conversa atingiu o limite de tamanho de conversas salvas do plano Gratuito, então as mensagens a partir daqui não serão mais adicionadas a ela - mas você pode continuar conversando normalmente. Planos Premium com limites maiores estão chegando em breve."
+
+#: ai/templates/ai/chat.html:372
+msgid "History"
+msgstr "Histórico"
+
+#: ai/templates/ai/chat.html:379 ai/views.py:64
+msgid "New conversation"
+msgstr "Nova conversa"
+
+#: ai/templates/ai/chat.html:382
+msgid "Save this conversation"
+msgstr "Salvar esta conversa"
+
+#: ai/templates/ai/chat.html:385 ai/views.py:62
+msgid "No saved conversations yet."
+msgstr "Nenhuma conversa salva ainda."
+
+#: ai/templates/ai/chat.html:392
+msgid "Chat with Wander"
+msgstr "Converse com o Wander"
+
+#: ai/templates/ai/chat.html:393
+msgid ""
+"Tell me what kind of trip you're thinking about - dates, budget, climate, "
+"anything."
+msgstr "Me conte que tipo de viagem você está pensando - datas, orçamento, clima, qualquer coisa."
+
+#: ai/templates/ai/chat.html:398
+msgid "Where should we send you? A few ideas to get going:"
+msgstr "Para onde devemos te enviar? Algumas ideias para começar:"
+
+#: ai/templates/ai/chat.html:400
+msgid "Somewhere warm in October, not too expensive"
+msgstr "Algum lugar quente em outubro, não muito caro"
+
+#: ai/templates/ai/chat.html:401
+msgid "A relaxing beach trip with great food"
+msgstr "Uma viagem relaxante à praia com ótima comida"
+
+#: ai/templates/ai/chat.html:402
+msgid "Somewhere I can hike and explore nature"
+msgstr "Algum lugar para fazer trilhas e explorar a natureza"
+
+#: ai/templates/ai/chat.html:411
+msgid "e.g. Somewhere warm in October, not too expensive"
+msgstr "ex.: Algum lugar quente em outubro, não muito caro"
+
+#: ai/templates/ai/chat.html:413
+msgid "Message"
+msgstr "Mensagem"
+
+#: ai/templates/ai/chat.html:416
+msgid "Send"
+msgstr "Enviar"
+
+#: ai/views.py:52
+msgid "Finding destinations that fit your preferences..."
+msgstr "Encontrando destinos que combinam com suas preferências..."
+
+#: ai/views.py:53
+msgid "Thinking about the best options for your trip..."
+msgstr "Pensando nas melhores opções para sua viagem..."
+
+#: ai/views.py:54
+msgid "Comparing possibilities..."
+msgstr "Comparando possibilidades..."
+
+#: ai/views.py:55
+msgid "Looking at climate and costs for you..."
+msgstr "Verificando clima e custos para você..."
+
+#: ai/views.py:57 core/templates/core/landing.html:44
+msgid "Why this fits you"
+msgstr "Por que isso combina com você"
+
+#: ai/views.py:58
+msgid "avg"
+msgstr "méd."
+
+#: ai/views.py:59 core/templates/core/landing.html:49
+msgid "Save this trip"
+msgstr "Salvar esta viagem"
+
+#: ai/views.py:60
+msgid "(not saving)"
+msgstr "(não salvando)"
+
+#: ai/views.py:61
+msgid "Delete conversation"
+msgstr "Excluir conversa"
+
+#: ai/views.py:63
+msgid "Couldn't load that conversation."
+msgstr "Não foi possível carregar essa conversa."
+
+#: ai/views.py:66
+msgid "Couldn't reach the server. Check your connection and try again."
+msgstr "Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente."
+
+#: ai/views.py:68
+msgid "Something went wrong on our end. Please try again."
+msgstr "Algo deu errado do nosso lado. Por favor, tente novamente."
+
+#: core/context_processors.py:47
+msgid ""
+"Wanderes is an intelligent travel consultant that recommends real "
+"destinations based on what travelers actually want."
+msgstr "A Wanderes é uma consultora de viagens inteligente que recomenda destinos reais com base no que os viajantes realmente querem."
+
+#: core/templates/core/landing.html:6 core/templates/core/landing.html:8
+#: core/templates/core/landing.html:10
+msgid ""
+"Wanderes gets to know what you actually want from a trip - budget, climate, "
+"pace, vibe - then recommends real destinations that genuinely fit, and "
+"explains exactly why. No account needed to get started."
+msgstr "A Wanderes conhece o que você realmente quer de uma viagem - orçamento, clima, ritmo, estilo - e então recomenda destinos reais que realmente combinam, explicando exatamente o porquê. Não é preciso ter conta para começar."
+
+#: core/templates/core/landing.html:9
+msgid "Wanderes - Your personal travel advisor"
+msgstr "Wanderes - Seu consultor de viagens pessoal"
+
+#: core/templates/core/landing.html:17
+msgid "Your travel advisor"
+msgstr "Seu consultor de viagens"
+
+#: core/templates/core/landing.html:18
+msgid "Tell us what you're looking for. We'll tell you where to go."
+msgstr "Diga-nos o que você procura. Nós dizemos para onde ir."
+
+#: core/templates/core/landing.html:20
+msgid ""
+"Wanderes gets to know what you actually want from a trip - budget, climate, "
+"pace, vibe - then recommends destinations that genuinely fit, and explains "
+"exactly why."
+msgstr "A Wanderes conhece o que você realmente quer de uma viagem - orçamento, clima, ritmo, estilo - e então recomenda destinos que realmente combinam, explicando exatamente o porquê."
+
+#: core/templates/core/landing.html:23
+msgid "Start planning your trip"
+msgstr "Comece a planejar sua viagem"
+
+#: core/templates/core/landing.html:24
+msgid "No account needed to get started"
+msgstr "Não é preciso ter conta para começar"
+
+#: core/templates/core/landing.html:32
+msgid "See it in action"
+msgstr "Veja em ação"
+
+#: core/templates/core/landing.html:33
+msgid "A real example of what a conversation with Wanderes looks like."
+msgstr "Um exemplo real de como é uma conversa com a Wanderes."
+
+#: core/templates/core/landing.html:35
+msgid "I want somewhere warm, good food, nature, and not too crowded."
+msgstr "Quero um lugar quente, com boa comida, natureza e sem muita gente."
+
+#: core/templates/core/landing.html:46
+msgid "Matches your travel style"
+msgstr "Combina com seu estilo de viagem"
+
+#: core/templates/core/landing.html:47
+msgid "Within your budget"
+msgstr "Dentro do seu orçamento"
+
+#: core/templates/core/landing.html:58
+msgid "How it works"
+msgstr "Como funciona"
+
+#: core/templates/core/landing.html:62
+msgid "Tell Wanderes what you want"
+msgstr "Diga à Wanderes o que você quer"
+
+#: core/templates/core/landing.html:63
+msgid ""
+"Describe your ideal trip in your own words - budget, climate, pace, who's "
+"coming. No forms, no filters to configure."
+msgstr "Descreva sua viagem ideal com suas próprias palavras - orçamento, clima, ritmo, quem vai junto. Sem formulários, sem filtros para configurar."
+
+#: core/templates/core/landing.html:67
+msgid "Get destinations that fit"
+msgstr "Receba destinos que combinam"
+
+#: core/templates/core/landing.html:68
+msgid ""
+"Real recommendations grounded in real climate and cost data - not a generic "
+"list of trending places."
+msgstr "Recomendações reais baseadas em dados reais de clima e custo - não uma lista genérica de lugares da moda."
+
+#: core/templates/core/landing.html:72
+msgid "See exactly why"
+msgstr "Veja exatamente o porquê"
+
+#: core/templates/core/landing.html:73
+msgid ""
+"Every suggestion comes with a clear, honest explanation of why it matches "
+"what you asked for."
+msgstr "Cada sugestão vem com uma explicação clara e honesta de por que ela combina com o que você pediu."
+
+#: core/templates/core/landing.html:81
+msgid "A few places Wanderes already knows well"
+msgstr "Alguns lugares que a Wanderes já conhece bem"
+
+#: core/templates/core/landing.html:99
+msgid "Ready to find your next trip?"
+msgstr "Pronto para encontrar sua próxima viagem?"
+
+#: core/templates/core/landing.html:100
+msgid "Start planning"
+msgstr "Começar a planejar"
+
+#: templates/base.html:9 templates/base.html:17 templates/base.html:21
+msgid ""
+"Wanderes is an intelligent travel consultant. Tell it what you want from a "
+"trip and get real destination recommendations, grounded in real climate and "
+"cost data, with an honest explanation for every suggestion."
+msgstr "A Wanderes é uma consultora de viagens inteligente. Diga a ela o que você quer de uma viagem e receba recomendações reais de destinos, baseadas em dados reais de clima e custo, com uma explicação honesta para cada sugestão."
+
+#: templates/base.html:40
+msgid "Chat"
+msgstr "Chat"
+
+#: templates/base.html:42 trips/templates/trips/trip_list.html:4
+#: trips/templates/trips/trip_list.html:8 users/templates/users/account.html:37
+msgid "My trips"
+msgstr "Minhas viagens"
+
+#: templates/base.html:43
+msgid "My history"
+msgstr "Meu histórico"
+
+#: templates/base.html:44
+msgid "Profile"
+msgstr "Perfil"
+
+#: templates/base.html:45
+msgid "Account"
+msgstr "Conta"
+
+#: templates/base.html:48 users/templates/users/account.html:45
+msgid "Log out"
+msgstr "Sair"
+
+#: templates/base.html:52 users/templates/users/register.html:4
+#: users/templates/users/register.html:16
+msgid "Register"
+msgstr "Registrar"
+
+#: templates/base.html:57
+msgid "Language"
+msgstr "Idioma"
+
+#: templates/base.html:81
+msgid ""
+"We collect anonymized usage data (such as which features are used) to "
+"improve our recommendations. We never store your message text or share this "
+"data with third parties."
+msgstr "Coletamos dados de uso anonimizados (como quais recursos são usados) para melhorar nossas recomendações. Nunca armazenamos o texto das suas mensagens nem compartilhamos esses dados com terceiros."
+
+#: travel/models.py:18
+msgid "Very low"
+msgstr "Muito baixo"
+
+#: travel/models.py:19
+msgid "Low"
+msgstr "Baixo"
+
+#: travel/models.py:20
+msgid "Medium"
+msgstr "Médio"
+
+#: travel/models.py:21
+msgid "High"
+msgstr "Alto"
+
+#: travel/models.py:22
+msgid "Very high"
+msgstr "Muito alto"
+
+#: travel/models.py:26
+msgid "Beach"
+msgstr "Praia"
+
+#: travel/models.py:27
+msgid "City"
+msgstr "Cidade"
+
+#: travel/models.py:28
+msgid "Nature"
+msgstr "Natureza"
+
+#: travel/models.py:29
+msgid "Culture"
+msgstr "Cultura"
+
+#: trips/models.py:9
+msgid "Much cheaper than usual"
+msgstr "Muito mais barato que o normal"
+
+#: trips/models.py:10
+msgid "Cheaper than usual"
+msgstr "Mais barato que o normal"
+
+#: trips/models.py:11
+msgid "Typical price"
+msgstr "Preço típico"
+
+#: trips/models.py:12
+msgid "More expensive than usual"
+msgstr "Mais caro que o normal"
+
+#: trips/models.py:13
+msgid "Much more expensive than usual"
+msgstr "Muito mais caro que o normal"
+
+#: trips/models.py:17
+msgid "Planned"
+msgstr "Planejada"
+
+#: trips/models.py:18
+msgid "Completed"
+msgstr "Concluída"
+
+#: trips/models.py:19
+msgid "Cancelled"
+msgstr "Cancelada"
+
+#: trips/models.py:28
+msgid "Excellent food"
+msgstr "Comida excelente"
+
+#: trips/models.py:29
+msgid "Great value"
+msgstr "Ótimo custo-benefício"
+
+#: trips/models.py:30
+msgid "Friendly locals"
+msgstr "Moradores acolhedores"
+
+#: trips/models.py:31
+msgid "Beautiful scenery"
+msgstr "Paisagens lindas"
+
+#: trips/models.py:32
+msgid "Too crowded"
+msgstr "Muito lotado"
+
+#: trips/models.py:33
+msgid "Overpriced"
+msgstr "Preço abusivo"
+
+#: trips/models.py:34
+msgid "Poor weather"
+msgstr "Clima ruim"
+
+#: trips/models.py:35
+msgid "Hard to get around"
+msgstr "Difícil de se locomover"
+
+#: trips/models.py:57
+msgid "name"
+msgstr "nome"
+
+#: trips/models.py:58
+msgid "A short nickname, e.g. 'Summer in Lisbon'."
+msgstr "Um apelido curto, ex.: 'Verão em Lisboa'."
+
+#: trips/models.py:64 trips/models.py:149
+msgid "destination"
+msgstr "destino"
+
+#: trips/models.py:66
+msgid "start date"
+msgstr "data de início"
+
+#: trips/models.py:67
+msgid "end date"
+msgstr "data de término"
+
+#: trips/models.py:69
+msgid "status"
+msgstr "status"
+
+#: trips/models.py:92
+msgid "Order of this leg within the trip's itinerary (1, 2, 3...)."
+msgstr "Ordem deste trecho no itinerário da viagem (1, 2, 3...)."
+
+#: trips/models.py:96
+msgid "True if this leg is a connecting flight, not the first/only leg."
+msgstr "Verdadeiro se este trecho for um voo de conexão, não o primeiro/único trecho."
+
+#: trips/models.py:101
+msgid "How this price compares to the historical price for this route."
+msgstr "Como este preço se compara ao preço histórico desta rota."
+
+#: trips/models.py:121
+msgid "How this price compares to the historical price for this stay."
+msgstr "Como este preço se compara ao preço histórico desta hospedagem."
+
+#: trips/models.py:154
+msgid "visited year"
+msgstr "ano da visita"
+
+#: trips/models.py:155
+msgid "Approximate year of the visit, if known."
+msgstr "Ano aproximado da visita, se conhecido."
+
+#: trips/models.py:162
+msgid "travel history entries"
+msgstr "registros de histórico de viagens"
+
+#: trips/models.py:190
+msgid "rating"
+msgstr "avaliação"
+
+#: trips/models.py:195
+msgid "tags"
+msgstr "marcadores"
+
+#: trips/models.py:196
+msgid "List of positive/negative tags."
+msgstr "Lista de marcadores positivos/negativos."
+
+#: trips/models.py:198
+msgid "comment"
+msgstr "comentário"
+
+#: trips/templates/trips/travel_history_confirm_delete.html:4
+msgid "Remove from travel history"
+msgstr "Remover do histórico de viagens"
+
+#: trips/templates/trips/travel_history_confirm_delete.html:8
+msgid "Remove from your travel history?"
+msgstr "Remover do seu histórico de viagens?"
+
+#: trips/templates/trips/travel_history_confirm_delete.html:12
+msgid "Remove"
+msgstr "Remover"
+
+#: trips/templates/trips/travel_history_confirm_delete.html:13
+#: trips/templates/trips/trip_confirm_delete.html:13
+msgid "Cancel"
+msgstr "Cancelar"
+
+#: trips/templates/trips/travel_history_form.html:4
+#: trips/templates/trips/travel_history_list.html:20
+#: trips/templates/trips/trip_detail.html:34
+#: trips/templates/trips/trip_form.html:4
+msgid "Edit"
+msgstr "Editar"
+
+#: trips/templates/trips/travel_history_form.html:4
+msgid "Add"
+msgstr "Adicionar"
+
+#: trips/templates/trips/travel_history_form.html:8
+msgid "Edit a visited destination"
+msgstr "Editar um destino visitado"
+
+#: trips/templates/trips/travel_history_form.html:8
+msgid "Add a visited destination"
+msgstr "Adicionar um destino visitado"
+
+#: trips/templates/trips/travel_history_form.html:12
+#: trips/templates/trips/trip_form.html:12
+#: users/templates/users/profile.html:68
+msgid "Save"
+msgstr "Salvar"
+
+#: trips/templates/trips/travel_history_form.html:14
+msgid "Back to my travel history"
+msgstr "Voltar ao meu histórico de viagens"
+
+#: trips/templates/trips/travel_history_list.html:4
+#: trips/templates/trips/travel_history_list.html:8
+msgid "My travel history"
+msgstr "Meu histórico de viagens"
+
+#: trips/templates/trips/travel_history_list.html:9
+msgid "Add a destination I've visited"
+msgstr "Adicionar um destino que visitei"
+
+#: trips/templates/trips/travel_history_list.html:21
+#: trips/templates/trips/trip_confirm_delete.html:12
+#: trips/templates/trips/trip_detail.html:35
+msgid "Delete"
+msgstr "Excluir"
+
+#: trips/templates/trips/travel_history_list.html:27
+msgid "You haven't recorded any past destinations yet."
+msgstr "Você ainda não registrou nenhum destino visitado."
+
+#: trips/templates/trips/travel_history_list.html:30
+#: trips/templates/trips/trip_list.html:26
+#: users/templates/users/profile.html:69
+msgid "Back to my account"
+msgstr "Voltar à minha conta"
+
+#: trips/templates/trips/trip_confirm_delete.html:4
+msgid "Delete trip"
+msgstr "Excluir viagem"
+
+#: trips/templates/trips/trip_confirm_delete.html:8
+msgid "Delete this trip?"
+msgstr "Excluir esta viagem?"
+
+#: trips/templates/trips/trip_detail.html:10
+#, python-format
+msgid "Destination: %(name)s, %(country)s"
+msgstr "Destino: %(name)s, %(country)s"
+
+#: trips/templates/trips/trip_detail.html:11
+#, python-format
+msgid "Status: %(status)s"
+msgstr "Status: %(status)s"
+
+#: trips/templates/trips/trip_detail.html:13
+#, python-format
+msgid "Dates: %(start)s - %(end)s"
+msgstr "Datas: %(start)s - %(end)s"
+
+#: trips/templates/trips/trip_detail.html:17
+#: trips/templates/trips/trip_feedback_form.html:4
+msgid "Feedback"
+msgstr "Feedback"
+
+#: trips/templates/trips/trip_detail.html:20
+#, python-format
+msgid "Rating: %(rating)s/10"
+msgstr "Avaliação: %(rating)s/10"
+
+#: trips/templates/trips/trip_detail.html:22
+#, python-format
+msgid "Tags: %(tags)s"
+msgstr "Marcadores: %(tags)s"
+
+#: trips/templates/trips/trip_detail.html:25
+#, python-format
+msgid "Comment: %(comment)s"
+msgstr "Comentário: %(comment)s"
+
+#: trips/templates/trips/trip_detail.html:27
+msgid "Edit feedback"
+msgstr "Editar feedback"
+
+#: trips/templates/trips/trip_detail.html:29
+msgid "Leave feedback"
+msgstr "Deixar feedback"
+
+#: trips/templates/trips/trip_detail.html:37
+#: trips/templates/trips/trip_form.html:14
+msgid "Back to my trips"
+msgstr "Voltar às minhas viagens"
+
+#: trips/templates/trips/trip_feedback_form.html:8
+#, python-format
+msgid "Feedback for %(name)s"
+msgstr "Feedback para %(name)s"
+
+#: trips/templates/trips/trip_feedback_form.html:12
+msgid "Save feedback"
+msgstr "Salvar feedback"
+
+#: trips/templates/trips/trip_feedback_form.html:14
+msgid "Back to trip"
+msgstr "Voltar à viagem"
+
+#: trips/templates/trips/trip_form.html:4
+msgid "Create"
+msgstr "Criar"
+
+#: trips/templates/trips/trip_form.html:8
+msgid "Edit trip"
+msgstr "Editar viagem"
+
+#: trips/templates/trips/trip_form.html:8
+msgid "Create a trip"
+msgstr "Criar uma viagem"
+
+#: trips/templates/trips/trip_list.html:9
+msgid "Create a new trip"
+msgstr "Criar uma nova viagem"
+
+#: trips/templates/trips/trip_list.html:23
+msgid "You haven't saved any trips yet."
+msgstr "Você ainda não salvou nenhuma viagem."
+
+#: trips/views.py:29
+msgid "Added to your travel history."
+msgstr "Adicionado ao seu histórico de viagens."
+
+#: trips/views.py:44
+msgid "Updated."
+msgstr "Atualizado."
+
+#: trips/views.py:56
+msgid "Removed from your travel history."
+msgstr "Removido do seu histórico de viagens."
+
+#: trips/views.py:93
+msgid "Trip saved."
+msgstr "Viagem salva."
+
+#: trips/views.py:121
+msgid "Trip updated."
+msgstr "Viagem atualizada."
+
+#: trips/views.py:133
+msgid "Trip deleted."
+msgstr "Viagem excluída."
+
+#: trips/views.py:162
+msgid "Thanks for your feedback!"
+msgstr "Obrigado pelo seu feedback!"
+
+#: users/currency.py:54
+msgid "US Dollar (USD)"
+msgstr "Dólar americano (USD)"
+
+#: users/currency.py:55
+msgid "Euro (EUR)"
+msgstr "Euro (EUR)"
+
+#: users/currency.py:56
+msgid "British Pound (GBP)"
+msgstr "Libra esterlina (GBP)"
+
+#: users/currency.py:57
+msgid "Brazilian Real (BRL)"
+msgstr "Real brasileiro (BRL)"
+
+#: users/currency.py:58
+msgid "Japanese Yen (JPY)"
+msgstr "Iene japonês (JPY)"
+
+#: users/currency.py:59
+msgid "Chinese Yuan (CNY)"
+msgstr "Yuan chinês (CNY)"
+
+#: users/currency.py:60
+msgid "Indian Rupee (INR)"
+msgstr "Rupia indiana (INR)"
+
+#: users/currency.py:61
+msgid "Canadian Dollar (CAD)"
+msgstr "Dólar canadense (CAD)"
+
+#: users/currency.py:62
+msgid "Australian Dollar (AUD)"
+msgstr "Dólar australiano (AUD)"
+
+#: users/currency.py:63
+msgid "Swiss Franc (CHF)"
+msgstr "Franco suíço (CHF)"
+
+#: users/currency.py:64
+msgid "Mexican Peso (MXN)"
+msgstr "Peso mexicano (MXN)"
+
+#: users/currency.py:65
+msgid "Argentine Peso (ARS)"
+msgstr "Peso argentino (ARS)"
+
+#: users/currency.py:66
+msgid "Chilean Peso (CLP)"
+msgstr "Peso chileno (CLP)"
+
+#: users/currency.py:67
+msgid "Colombian Peso (COP)"
+msgstr "Peso colombiano (COP)"
+
+#: users/currency.py:68
+msgid "South African Rand (ZAR)"
+msgstr "Rand sul-africano (ZAR)"
+
+#: users/currency.py:69
+msgid "UAE Dirham (AED)"
+msgstr "Dirham dos Emirados Árabes (AED)"
+
+#: users/currency.py:70
+msgid "Singapore Dollar (SGD)"
+msgstr "Dólar de Singapura (SGD)"
+
+#: users/currency.py:71
+msgid "South Korean Won (KRW)"
+msgstr "Won sul-coreano (KRW)"
+
+#: users/currency.py:72
+msgid "Thai Baht (THB)"
+msgstr "Baht tailandês (THB)"
+
+#: users/currency.py:73
+msgid "Swedish Krona (SEK)"
+msgstr "Coroa sueca (SEK)"
+
+#: users/currency.py:74
+msgid "Norwegian Krone (NOK)"
+msgstr "Coroa norueguesa (NOK)"
+
+#: users/currency.py:75
+msgid "Polish Zloty (PLN)"
+msgstr "Zloti polonês (PLN)"
+
+#: users/currency.py:76
+msgid "Turkish Lira (TRY)"
+msgstr "Lira turca (TRY)"
+
+#: users/currency.py:77
+msgid "New Zealand Dollar (NZD)"
+msgstr "Dólar neozelandês (NZD)"
+
+#: users/forms.py:19
+msgid "Preferred trip types"
+msgstr "Tipos de viagem preferidos"
+
+#: users/forms.py:34
+msgid "e.g. Brazil"
+msgstr "ex.: Brasil"
+
+#: users/forms.py:39
+msgid "Preferred cost of living"
+msgstr "Custo de vida preferido"
+
+#: users/forms.py:40
+msgid "Country of origin"
+msgstr "País de origem"
+
+#: users/forms.py:41
+msgid "Number of travelers"
+msgstr "Número de viajantes"
+
+#: users/forms.py:42
+msgid "Budget amount"
+msgstr "Valor do orçamento"
+
+#: users/forms.py:43
+msgid "Currency"
+msgstr "Moeda"
+
+#: users/forms.py:44
+msgid "Budget period"
+msgstr "Período do orçamento"
+
+#: users/forms.py:56
+msgid ""
+"Please provide a budget amount, currency, and period together, or leave all "
+"three blank."
+msgstr "Informe o valor do orçamento, a moeda e o período juntos, ou deixe os três em branco."
+
+#: users/models.py:71
+msgid "Per day"
+msgstr "Por dia"
+
+#: users/models.py:72
+msgid "Per week"
+msgstr "Por semana"
+
+#: users/models.py:73
+msgid "Per month"
+msgstr "Por mês"
+
+#: users/models.py:100
+msgid "List of preferred trip type codes, e.g. ['beach', 'culture']."
+msgstr "Lista de códigos de tipos de viagem preferidos, ex.: ['beach', 'culture']."
+
+#: users/models.py:108
+msgid "Where you usually travel from, e.g. 'Brazil'."
+msgstr "De onde você costuma viajar, ex.: 'Brasil'."
+
+#: users/models.py:113
+msgid "How many people you usually travel with, including yourself."
+msgstr "Com quantas pessoas você costuma viajar, incluindo você mesmo."
+
+#: users/models.py:120
+msgid "Typical travel budget, paired with budget_period."
+msgstr "Orçamento de viagem típico, associado ao budget_period."
+
+#: users/models.py:129
+msgid "The currency budget_amount is stated in - required alongside it."
+msgstr "A moeda em que budget_amount é informado - obrigatória junto com ele."
+
+#: users/templates/users/account.html:4 users/templates/users/account.html:11
+msgid "My account"
+msgstr "Minha conta"
+
+#: users/templates/users/account.html:14
+#, python-format
+msgid "Member since %(date)s"
+msgstr "Membro desde %(date)s"
+
+#: users/templates/users/account.html:23
+msgid "Traveler profile"
+msgstr "Perfil de viajante"
+
+#: users/templates/users/account.html:24
+msgid "Preferences that shape your recommendations"
+msgstr "Preferências que moldam suas recomendações"
+
+#: users/templates/users/account.html:30
+msgid "Travel history"
+msgstr "Histórico de viagens"
+
+#: users/templates/users/account.html:31
+msgid "Places you've already been"
+msgstr "Lugares onde você já esteve"
+
+#: users/templates/users/account.html:38
+msgid "Plans you're building or have saved"
+msgstr "Planos que você está montando ou salvou"
+
+#: users/templates/users/login.html:11
+msgid "Welcome back"
+msgstr "Bem-vindo de volta"
+
+#: users/templates/users/login.html:12
+msgid "Log in to pick up your trip planning where you left off."
+msgstr "Faça login para continuar o planejamento da sua viagem de onde parou."
+
+#: users/templates/users/login.html:19 users/templates/users/register.html:19
+msgid "or"
+msgstr "ou"
+
+#: users/templates/users/login.html:20 users/templates/users/register.html:20
+msgid "Continue with Google"
+msgstr "Continuar com o Google"
+
+#: users/templates/users/login.html:23
+msgid "New to Wanderes?"
+msgstr "Novo na Wanderes?"
+
+#: users/templates/users/profile.html:4 users/templates/users/profile.html:8
+msgid "My traveler profile"
+msgstr "Meu perfil de viajante"
+
+#: users/templates/users/profile.html:10
+msgid ""
+"Tell Wander more about how you like to travel - this shapes every "
+"recommendation."
+msgstr "Conte mais ao Wander sobre como você gosta de viajar - isso molda cada recomendação."
+
+#: users/templates/users/profile.html:20
+msgid "Trip preferences"
+msgstr "Preferências de viagem"
+
+#: users/templates/users/profile.html:34
+msgid "Travel details"
+msgstr "Detalhes da viagem"
+
+#: users/templates/users/profile.html:36
+msgid ""
+"Helps Wander tailor suggestions to your trips - optional, fill in what "
+"applies."
+msgstr "Ajuda o Wander a personalizar sugestões para suas viagens - opcional, preencha o que se aplicar."
+
+#: users/templates/users/register.html:11
+msgid "Create your account"
+msgstr "Crie sua conta"
+
+#: users/templates/users/register.html:12
+msgid ""
+"Save trips, track feedback, and get recommendations that improve over time."
+msgstr "Salve viagens, acompanhe feedback e receba recomendações que melhoram com o tempo."
+
+#: users/templates/users/register.html:23
+msgid "Already have an account?"
+msgstr "Já tem uma conta?"
+
+#: users/views.py:67
+msgid "Your traveler profile was updated."
+msgstr "Seu perfil de viajante foi atualizado."

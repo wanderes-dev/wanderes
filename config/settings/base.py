@@ -250,15 +250,26 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# English is the only shipped language for now (product decision, 2026-08-29).
-# USE_I18N + LOCALE_PATHS + LocaleMiddleware are already wired up so that
-# adding another language later is a translation/config task, not a
-# refactor: wrap user-facing strings in gettext/gettext_lazy (Python) or
-# {% trans %}/{% blocktrans %} (templates) as they're written, and add the
-# language to LANGUAGES + provide its .po files under locale/ when needed.
+# 2026-09-04, direct user request: "quero que vc coloque traduçao na
+# pagina para EN / PT / ES / DE / IT / FR" - the product was built
+# translation-ready from day one (2026-08-29 decision) specifically so
+# this would be a translation/config task, not a refactor. English stays
+# the default (LANGUAGE_CODE, and what an unrecognized Accept-Language
+# falls back to) - LocaleMiddleware then picks a language per request
+# from the switcher's cookie or the browser's Accept-Language header.
+#
+# Names are each language's own native name, not translated into
+# whichever language happens to be active - a Portuguese speaker landing
+# on an English page needs to recognize "Português" in the switcher
+# without first being able to read English.
 LANGUAGE_CODE = "en-us"
 LANGUAGES = [
     ("en", "English"),
+    ("pt", "Português"),
+    ("es", "Español"),
+    ("de", "Deutsch"),
+    ("it", "Italiano"),
+    ("fr", "Français"),
 ]
 LOCALE_PATHS = [BASE_DIR / "locale"]
 TIME_ZONE = "UTC"

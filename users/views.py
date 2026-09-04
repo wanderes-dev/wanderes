@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
+from django.utils.translation import gettext as _
 
 from analytics.models import Event
 from analytics.services import record_event
@@ -44,7 +45,7 @@ def profile(request):
     # Always operates on request.user's own profile - never accepts a
     # profile id from the URL, so there is no cross-user access to guard
     # against by construction.
-    traveler_profile, _ = TravelerProfile.objects.get_or_create(user=request.user)
+    traveler_profile, _created = TravelerProfile.objects.get_or_create(user=request.user)
 
     if request.method == "POST":
         form = TravelerProfileForm(request.POST, instance=traveler_profile)
@@ -63,7 +64,7 @@ def profile(request):
                 # Fired once, the first time the profile has real content -
                 # not on every subsequent edit.
                 record_event("profile_completed", user=request.user)
-            messages.success(request, "Your traveler profile was updated.")
+            messages.success(request, _("Your traveler profile was updated."))
             return redirect("users:profile")
     else:
         form = TravelerProfileForm(instance=traveler_profile)

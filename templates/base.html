@@ -1,5 +1,7 @@
-{% load i18n static %}<!doctype html>
-<html lang="en">
+{% load i18n static %}
+{% get_current_language as LANGUAGE_CODE %}
+<!doctype html>
+<html lang="{{ LANGUAGE_CODE }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,7 +15,7 @@
     <meta property="og:url" content="{% block og_url %}{{ canonical_url }}{% endblock %}">
     <meta property="og:title" content="{% block og_title %}Wanderes{% endblock %}">
     <meta property="og:description" content="{% block og_description %}{% trans "Wanderes is an intelligent travel consultant. Tell it what you want from a trip and get real destination recommendations, grounded in real climate and cost data, with an honest explanation for every suggestion." %}{% endblock %}">
-    <meta property="og:locale" content="en_US">
+    <meta property="og:locale" content="{{ og_locale }}">
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="{% block twitter_title %}Wanderes{% endblock %}">
     <meta name="twitter:description" content="{% block twitter_description %}{% trans "Wanderes is an intelligent travel consultant. Tell it what you want from a trip and get real destination recommendations, grounded in real climate and cost data, with an honest explanation for every suggestion." %}{% endblock %}">
@@ -35,20 +37,29 @@
             </button>
             <a class="brand" href="{% url 'core:landing' %}">Wanderes</a>
             <nav class="site-nav" id="site-nav">
-                <a href="{% url 'ai:chat' %}">Chat</a>
+                <a href="{% url 'ai:chat' %}">{% trans "Chat" %}</a>
                 {% if user.is_authenticated %}
-                <a href="{% url 'trips:trip-list' %}">My trips</a>
-                <a href="{% url 'trips:history-list' %}">My history</a>
-                <a href="{% url 'users:profile' %}">Profile</a>
-                <a href="{% url 'users:account' %}">Account</a>
+                <a href="{% url 'trips:trip-list' %}">{% trans "My trips" %}</a>
+                <a href="{% url 'trips:history-list' %}">{% trans "My history" %}</a>
+                <a href="{% url 'users:profile' %}">{% trans "Profile" %}</a>
+                <a href="{% url 'users:account' %}">{% trans "Account" %}</a>
                 <form method="post" action="{% url 'users:logout' %}" class="nav-logout-form">
                     {% csrf_token %}
-                    <button type="submit" class="link-button">Log out</button>
+                    <button type="submit" class="link-button">{% trans "Log out" %}</button>
                 </form>
                 {% else %}
-                <a href="{% url 'users:login' %}">Log in</a>
-                <a href="{% url 'users:register' %}">Register</a>
+                <a href="{% url 'users:login' %}">{% trans "Log in" %}</a>
+                <a href="{% url 'users:register' %}">{% trans "Register" %}</a>
                 {% endif %}
+                <form action="{% url 'set_language' %}" method="post" class="lang-switcher">
+                    {% csrf_token %}
+                    <input name="next" type="hidden" value="{{ request.path }}">
+                    <select name="language" onchange="this.form.submit()" aria-label="{% trans "Language" %}">
+                        {% for code, name in available_languages %}
+                        <option value="{{ code }}" {% if code == LANGUAGE_CODE %}selected{% endif %}>{{ name }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
             </nav>
         </div>
     </header>

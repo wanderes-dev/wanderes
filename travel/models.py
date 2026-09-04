@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 # Canonical source for both choice lists (2026-09-02 - previously
 # duplicated byte-for-byte in users.models, and a third time as a
@@ -8,19 +9,24 @@ from django.db import models
 # imports and re-exports COST_OF_LIVING_CHOICES from here, and
 # ai.orchestration derives its intent-extraction schema's trip_type enum
 # from TRIP_TYPE_CHOICES directly instead of hardcoding its own copy.
+#
+# Only the labels are wrapped in gettext_lazy, never the stored codes
+# (1-5, "beach"/"city"/etc.) - ai.orchestration.TRIP_TYPE_CODES extracts
+# just the code half of each tuple, so translating the label can never
+# affect the AI's own intent-extraction schema or any stored DB value.
 COST_OF_LIVING_CHOICES = [
-    (1, "Very low"),
-    (2, "Low"),
-    (3, "Medium"),
-    (4, "High"),
-    (5, "Very high"),
+    (1, _("Very low")),
+    (2, _("Low")),
+    (3, _("Medium")),
+    (4, _("High")),
+    (5, _("Very high")),
 ]
 
 TRIP_TYPE_CHOICES = [
-    ("beach", "Beach"),
-    ("city", "City"),
-    ("nature", "Nature"),
-    ("culture", "Culture"),
+    ("beach", _("Beach")),
+    ("city", _("City")),
+    ("nature", _("Nature")),
+    ("culture", _("Culture")),
 ]
 
 

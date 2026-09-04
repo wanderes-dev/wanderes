@@ -1,14 +1,15 @@
 {% extends "base.html" %}
+{% load i18n %}
 
-{% block title %}Feedback - {{ trip.name|default:trip.destination.name }} - Wanderes{% endblock %}
+{% block title %}{% trans "Feedback" %} - {{ trip.name|default:trip.destination.name }} - Wanderes{% endblock %}
 {% block robots %}noindex, nofollow{% endblock %}
 
 {% block content %}
-<h1>Feedback for {{ trip.name|default:trip.destination.name }}</h1>
+<h1>{% blocktrans with name=trip.name|default:trip.destination.name %}Feedback for {{ name }}{% endblocktrans %}</h1>
 <form method="post">
     {% csrf_token %}
     {{ form.as_p }}
-    <button type="submit" class="btn">Save feedback</button>
+    <button type="submit" class="btn">{% trans "Save feedback" %}</button>
 </form>
-<p><a href="{% url 'trips:trip-detail' trip.pk %}">Back to trip</a></p>
+<p><a href="{% url 'trips:trip-detail' trip.pk %}">{% trans "Back to trip" %}</a></p>
 {% endblock %}

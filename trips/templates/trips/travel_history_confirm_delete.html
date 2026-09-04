@@ -1,14 +1,15 @@
 {% extends "base.html" %}
+{% load i18n %}
 
-{% block title %}Remove from travel history - Wanderes{% endblock %}
+{% block title %}{% trans "Remove from travel history" %} - Wanderes{% endblock %}
 {% block robots %}noindex, nofollow{% endblock %}
 
 {% block content %}
-<h1>Remove from your travel history?</h1>
+<h1>{% trans "Remove from your travel history?" %}</h1>
 <p>{{ entry.destination.name }}, {{ entry.destination.country }}{% if entry.visited_year %} ({{ entry.visited_year }}){% endif %}</p>
 <form method="post" class="actions">
     {% csrf_token %}
-    <button type="submit" class="btn btn-danger">Remove</button>
-    <a href="{% url 'trips:history-list' %}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-danger">{% trans "Remove" %}</button>
+    <a href="{% url 'trips:history-list' %}" class="btn btn-secondary">{% trans "Cancel" %}</a>
 </form>
 {% endblock %}

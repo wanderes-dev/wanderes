@@ -140,6 +140,26 @@ a:hover {
     margin: 0;
 }
 
+.lang-switcher {
+    margin: 0;
+}
+
+.lang-switcher select {
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 0.3rem 0.5rem;
+    cursor: pointer;
+}
+
+.lang-switcher select:hover {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+}
+
 .link-button {
     background: none;
     border: none;

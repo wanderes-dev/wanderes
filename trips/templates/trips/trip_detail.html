@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load i18n %}
 
 {% block title %}{{ trip.name|default:trip.destination.name }} - Wanderes{% endblock %}
 {% block robots %}noindex, nofollow{% endblock %}
@@ -6,32 +7,32 @@
 {% block content %}
 <h1>{{ trip.name|default:trip.destination.name }}</h1>
 <div class="card">
-    <p>Destination: {{ trip.destination.name }}, {{ trip.destination.country }}</p>
-    <p>Status: {{ trip.get_status_display }}</p>
+    <p>{% blocktrans with name=trip.destination.name country=trip.destination.country %}Destination: {{ name }}, {{ country }}{% endblocktrans %}</p>
+    <p>{% blocktrans with status=trip.get_status_display %}Status: {{ status }}{% endblocktrans %}</p>
     {% if trip.start_date or trip.end_date %}
-    <p>Dates: {{ trip.start_date|default:"?" }} - {{ trip.end_date|default:"?" }}</p>
+    <p>{% blocktrans with start=trip.start_date|default:"?" end=trip.end_date|default:"?" %}Dates: {{ start }} - {{ end }}{% endblocktrans %}</p>
     {% endif %}
 </div>
 
-<h2>Feedback</h2>
+<h2>{% trans "Feedback" %}</h2>
 <div class="card">
     {% if feedback %}
-    <p>Rating: {{ feedback.rating }}/10</p>
+    <p>{% blocktrans with rating=feedback.rating %}Rating: {{ rating }}/10{% endblocktrans %}</p>
     {% if feedback_tag_labels %}
-    <p>Tags: {{ feedback_tag_labels|join:", " }}</p>
+    <p>{% blocktrans with tags=feedback_tag_labels|join:", " %}Tags: {{ tags }}{% endblocktrans %}</p>
     {% endif %}
     {% if feedback.comment %}
-    <p>Comment: {{ feedback.comment }}</p>
+    <p>{% blocktrans with comment=feedback.comment %}Comment: {{ comment }}{% endblocktrans %}</p>
     {% endif %}
-    <p><a href="{% url 'trips:trip-feedback' trip.pk %}">Edit feedback</a></p>
+    <p><a href="{% url 'trips:trip-feedback' trip.pk %}">{% trans "Edit feedback" %}</a></p>
     {% else %}
-    <p><a href="{% url 'trips:trip-feedback' trip.pk %}">Leave feedback</a></p>
+    <p><a href="{% url 'trips:trip-feedback' trip.pk %}">{% trans "Leave feedback" %}</a></p>
     {% endif %}
 </div>
 
 <p class="actions">
-    <a href="{% url 'trips:trip-edit' trip.pk %}" class="btn btn-secondary">Edit</a>
-    <a href="{% url 'trips:trip-delete' trip.pk %}" class="btn btn-danger">Delete</a>
+    <a href="{% url 'trips:trip-edit' trip.pk %}" class="btn btn-secondary">{% trans "Edit" %}</a>
+    <a href="{% url 'trips:trip-delete' trip.pk %}" class="btn btn-danger">{% trans "Delete" %}</a>
 </p>
-<p><a href="{% url 'trips:trip-list' %}">Back to my trips</a></p>
+<p><a href="{% url 'trips:trip-list' %}">{% trans "Back to my trips" %}</a></p>
 {% endblock %}

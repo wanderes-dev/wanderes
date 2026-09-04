@@ -332,12 +332,12 @@
 {% if not user.is_authenticated %}
 <dialog id="login-prompt-modal" class="simple-modal">
     <div class="simple-modal-body">
-        <h2>Save your trips as you go</h2>
-        <p>Log in to keep your recommendations, save trips, and get better suggestions over time.</p>
+        <h2>{% trans "Save your trips as you go" %}</h2>
+        <p>{% trans "Log in to keep your recommendations, save trips, and get better suggestions over time." %}</p>
         <div class="simple-modal-actions">
-            <a href="{% url 'users:login' %}" class="btn">Log in</a>
-            <a href="{% url 'users:register' %}" class="btn btn-secondary">Create an account</a>
-            <button type="button" id="login-prompt-skip" class="simple-modal-dismiss">Continue without an account</button>
+            <a href="{% url 'users:login' %}" class="btn">{% trans "Log in" %}</a>
+            <a href="{% url 'users:register' %}" class="btn btn-secondary">{% trans "Create an account" %}</a>
+            <button type="button" id="login-prompt-skip" class="simple-modal-dismiss">{% trans "Continue without an account" %}</button>
         </div>
     </div>
 </dialog>
@@ -353,53 +353,53 @@
      instead of linking to something that doesn't work. -->
 <dialog id="conversation-limit-modal" class="simple-modal">
     <div class="simple-modal-body">
-        <h2>Saved conversation limit reached</h2>
-        <p>You already have {{ max_saved_conversations }} saved conversations, the Free plan limit. Delete an older one from the sidebar to save this one instead - or just keep chatting, this conversation simply won't be saved. Premium plans with room for more are coming soon.</p>
+        <h2>{% trans "Saved conversation limit reached" %}</h2>
+        <p>{% blocktrans %}You already have {{ max_saved_conversations }} saved conversations, the Free plan limit. Delete an older one from the sidebar to save this one instead - or just keep chatting, this conversation simply won't be saved. Premium plans with room for more are coming soon.{% endblocktrans %}</p>
         <div class="simple-modal-actions">
-            <button type="button" id="conversation-limit-dismiss" class="btn">Got it, keep chatting</button>
+            <button type="button" id="conversation-limit-dismiss" class="btn">{% trans "Got it, keep chatting" %}</button>
         </div>
     </div>
 </dialog>
 <dialog id="conversation-size-limit-modal" class="simple-modal">
     <div class="simple-modal-body">
-        <h2>This conversation reached its saved size limit</h2>
-        <p>This conversation hit the Free plan's saved-conversation size limit, so messages from here on won't be added to it - but you can keep chatting normally. Premium plans with higher limits are coming soon.</p>
+        <h2>{% trans "This conversation reached its saved size limit" %}</h2>
+        <p>{% trans "This conversation hit the Free plan's saved-conversation size limit, so messages from here on won't be added to it - but you can keep chatting normally. Premium plans with higher limits are coming soon." %}</p>
         <div class="simple-modal-actions">
-            <button type="button" id="conversation-size-limit-dismiss" class="btn">Got it, keep chatting</button>
+            <button type="button" id="conversation-size-limit-dismiss" class="btn">{% trans "Got it, keep chatting" %}</button>
         </div>
     </div>
 </dialog>
-<button type="button" id="sidebar-toggle" class="btn btn-secondary chat-sidebar-toggle" aria-expanded="false" aria-controls="chat-sidebar">History</button>
+<button type="button" id="sidebar-toggle" class="btn btn-secondary chat-sidebar-toggle" aria-expanded="false" aria-controls="chat-sidebar">{% trans "History" %}</button>
 <div id="chat-sidebar-backdrop" class="chat-sidebar-backdrop"></div>
 {% endif %}
 
 <div class="chat-layout">
     {% if user.is_authenticated %}
     <aside id="chat-sidebar" class="chat-sidebar">
-        <button type="button" id="new-conversation-btn" class="btn chat-sidebar-new-btn">+ New conversation</button>
+        <button type="button" id="new-conversation-btn" class="btn chat-sidebar-new-btn">+ {% trans "New conversation" %}</button>
         <label class="chat-sidebar-save-toggle">
             <input type="checkbox" id="save-conversation-checkbox" checked>
-            Save this conversation
+            {% trans "Save this conversation" %}
         </label>
         <div id="chat-sidebar-list" class="chat-sidebar-list">
-            <p class="chat-sidebar-empty">No saved conversations yet.</p>
+            <p class="chat-sidebar-empty">{% trans "No saved conversations yet." %}</p>
         </div>
     </aside>
     {% endif %}
 
     <div class="chat-page chat-empty" id="chat-page">
         <div class="chat-header">
-            <h1>Chat with Wander<span id="save-status-indicator" class="save-status-indicator"></span></h1>
-            <p>Tell me what kind of trip you're thinking about - dates, budget, climate, anything.</p>
+            <h1>{% trans "Chat with Wander" %}<span id="save-status-indicator" class="save-status-indicator"></span></h1>
+            <p>{% trans "Tell me what kind of trip you're thinking about - dates, budget, climate, anything." %}</p>
         </div>
 
         <div id="chat-messages" class="chat-messages">
             <div id="chat-empty-state" class="chat-empty-state">
-                <p class="chat-empty-hint">Where should we send you? A few ideas to get going:</p>
+                <p class="chat-empty-hint">{% trans "Where should we send you? A few ideas to get going:" %}</p>
                 <div class="chat-suggestions">
-                    <button type="button" class="chat-suggestion-chip">Somewhere warm in October, not too expensive</button>
-                    <button type="button" class="chat-suggestion-chip">A relaxing beach trip with great food</button>
-                    <button type="button" class="chat-suggestion-chip">Somewhere I can hike and explore nature</button>
+                    <button type="button" class="chat-suggestion-chip">{% trans "Somewhere warm in October, not too expensive" %}</button>
+                    <button type="button" class="chat-suggestion-chip">{% trans "A relaxing beach trip with great food" %}</button>
+                    <button type="button" class="chat-suggestion-chip">{% trans "Somewhere I can hike and explore nature" %}</button>
                 </div>
             </div>
         </div>
@@ -408,18 +408,20 @@
             <input
                 type="text"
                 id="message-input"
-                placeholder="e.g. Somewhere warm in October, not too expensive"
+                placeholder="{% trans "e.g. Somewhere warm in October, not too expensive" %}"
                 autocomplete="off"
-                aria-label="Message"
+                aria-label="{% trans "Message" %}"
                 required
             >
-            <button type="submit" id="send-button">Send</button>
+            <button type="submit" id="send-button">{% trans "Send" %}</button>
         </form>
     </div>
 </div>
 
+<script type="application/json" id="chat-i18n-data">{{ chat_i18n_json|safe }}</script>
 <script>
 (function () {
+    const CHAT_I18N = JSON.parse(document.getElementById("chat-i18n-data").textContent);
     const form = document.getElementById("chat-form");
     const input = document.getElementById("message-input");
     const sendButton = document.getElementById("send-button");
@@ -545,15 +547,9 @@
     // Contextual loading copy instead of a generic "thinking..." spinner
     // (2026-09-01 UX pass, direct request) - picked at random each send so
     // it doesn't feel like a fixed, repeated label.
-    const LOADING_MESSAGES = [
-        "Finding destinations that fit your preferences...",
-        "Thinking about the best options for your trip...",
-        "Comparing possibilities...",
-        "Looking at climate and costs for you...",
-    ];
-
     function randomLoadingMessage() {
-        return LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)];
+        const loadingMessages = CHAT_I18N.loadingMessages;
+        return loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
     }
 
     function addRecommendationCards(destinations) {
@@ -593,7 +589,7 @@
             if (typeof destination.avg_high_c === "number") {
                 const tag = document.createElement("span");
                 tag.className = "tag";
-                tag.textContent = Math.round(destination.avg_high_c) + "°C avg";
+                tag.textContent = Math.round(destination.avg_high_c) + "°C " + CHAT_I18N.avgTempSuffix;
                 tagGroup.appendChild(tag);
             }
             if (tagGroup.children.length) {
@@ -603,7 +599,7 @@
             if (destination.fit_reasons && destination.fit_reasons.length) {
                 const label = document.createElement("div");
                 label.className = "fit-reasons-label";
-                label.textContent = "Why this fits you";
+                label.textContent = CHAT_I18N.whyThisFitsYou;
                 card.appendChild(label);
 
                 const list = document.createElement("ul");
@@ -619,7 +615,7 @@
             const link = document.createElement("a");
             link.className = "btn btn-secondary";
             link.href = "/trips/create/?destination=" + encodeURIComponent(destination.slug);
-            link.textContent = "Save this trip";
+            link.textContent = CHAT_I18N.saveThisTrip;
             card.appendChild(link);
 
             container.appendChild(card);
@@ -679,7 +675,7 @@
             return;
         }
         const willSave = saveCheckbox.checked && !saveBlockedForThread && !currentConversationIsFull;
-        saveStatusIndicator.textContent = willSave ? "" : "(not saving)";
+        saveStatusIndicator.textContent = willSave ? "" : CHAT_I18N.notSaving;
     }
     if (saveCheckbox) {
         saveCheckbox.addEventListener("change", updateSaveStatusIndicator);
@@ -730,7 +726,7 @@
         const deleteBtn = document.createElement("button");
         deleteBtn.type = "button";
         deleteBtn.className = "chat-sidebar-item-delete";
-        deleteBtn.setAttribute("aria-label", "Delete conversation");
+        deleteBtn.setAttribute("aria-label", CHAT_I18N.deleteConversation);
         deleteBtn.textContent = "✕";
         deleteBtn.addEventListener("click", function (event) {
             event.stopPropagation();
@@ -760,7 +756,7 @@
         if (!conversations.length) {
             const empty = document.createElement("p");
             empty.className = "chat-sidebar-empty";
-            empty.textContent = "No saved conversations yet.";
+            empty.textContent = CHAT_I18N.noSavedConversationsYet;
             sidebarList.appendChild(empty);
             return;
         }
@@ -813,7 +809,7 @@
                 closeSidebar();
             })
             .catch(function () {
-                addBubble("Couldn't load that conversation.", "error");
+                addBubble(CHAT_I18N.couldntLoadConversation, "error");
             });
     }
 
@@ -879,7 +875,7 @@
                 sidebarList.insertBefore(
                     buildSidebarItem({
                         id: status.conversation_id,
-                        subject: status.subject || "New conversation",
+                        subject: status.subject || CHAT_I18N.newConversation,
                         updated_at: new Date().toISOString(),
                     }),
                     sidebarList.firstChild
@@ -1017,14 +1013,14 @@
             });
         } catch (networkError) {
             loadingBubble.remove();
-            addBubble("Couldn't reach the server. Check your connection and try again.", "error");
+            addBubble(CHAT_I18N.couldntReachServer, "error");
             setLoading(false);
             return;
         }
 
         if (!response.ok || !response.body) {
             loadingBubble.remove();
-            addBubble("Something went wrong on our end. Please try again.", "error");
+            addBubble(CHAT_I18N.somethingWentWrong, "error");
             setLoading(false);
             return;
         }

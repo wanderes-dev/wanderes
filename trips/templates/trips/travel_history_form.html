@@ -1,14 +1,15 @@
 {% extends "base.html" %}
+{% load i18n %}
 
-{% block title %}{% if is_edit %}Edit{% else %}Add{% endif %} travel history - Wanderes{% endblock %}
+{% block title %}{% if is_edit %}{% trans "Edit" %}{% else %}{% trans "Add" %}{% endif %} travel history - Wanderes{% endblock %}
 {% block robots %}noindex, nofollow{% endblock %}
 
 {% block content %}
-<h1>{% if is_edit %}Edit{% else %}Add{% endif %} a visited destination</h1>
+<h1>{% if is_edit %}{% trans "Edit a visited destination" %}{% else %}{% trans "Add a visited destination" %}{% endif %}</h1>
 <form method="post">
     {% csrf_token %}
     {{ form.as_p }}
-    <button type="submit" class="btn">Save</button>
+    <button type="submit" class="btn">{% trans "Save" %}</button>
 </form>
-<p><a href="{% url 'trips:history-list' %}">Back to my travel history</a></p>
+<p><a href="{% url 'trips:history-list' %}">{% trans "Back to my travel history" %}</a></p>
 {% endblock %}

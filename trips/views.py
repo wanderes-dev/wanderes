@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.translation import gettext as _
 
 from analytics.services import record_event
 from travel.models import Destination
@@ -25,7 +26,7 @@ def travel_history_add(request):
             entry = form.save(commit=False)
             entry.user = request.user
             entry.save()
-            messages.success(request, "Added to your travel history.")
+            messages.success(request, _("Added to your travel history."))
             return redirect("trips:history-list")
     else:
         form = TravelHistoryEntryForm()
@@ -40,7 +41,7 @@ def travel_history_edit(request, pk):
         form = TravelHistoryEntryForm(request.POST, instance=entry)
         if form.is_valid():
             form.save()
-            messages.success(request, "Updated.")
+            messages.success(request, _("Updated."))
             return redirect("trips:history-list")
     else:
         form = TravelHistoryEntryForm(instance=entry)
@@ -52,7 +53,7 @@ def travel_history_delete(request, pk):
     entry = get_object_or_404(TravelHistoryEntry, pk=pk, user=request.user)
     if request.method == "POST":
         entry.delete()
-        messages.success(request, "Removed from your travel history.")
+        messages.success(request, _("Removed from your travel history."))
         return redirect("trips:history-list")
     return render(request, "trips/travel_history_confirm_delete.html", {"entry": entry})
 
@@ -89,7 +90,7 @@ def trip_create(request):
                     "source": "form",
                 },
             )
-            messages.success(request, "Trip saved.")
+            messages.success(request, _("Trip saved."))
             return redirect("trips:trip-detail", pk=trip.pk)
     else:
         form = TripForm(initial=initial)
@@ -117,7 +118,7 @@ def trip_edit(request, pk):
         form = TripForm(request.POST, instance=trip)
         if form.is_valid():
             form.save()
-            messages.success(request, "Trip updated.")
+            messages.success(request, _("Trip updated."))
             return redirect("trips:trip-detail", pk=trip.pk)
     else:
         form = TripForm(instance=trip)
@@ -129,7 +130,7 @@ def trip_delete(request, pk):
     trip = get_object_or_404(Trip, pk=pk, user=request.user)
     if request.method == "POST":
         trip.delete()
-        messages.success(request, "Trip deleted.")
+        messages.success(request, _("Trip deleted."))
         return redirect("trips:trip-list")
     return render(request, "trips/trip_confirm_delete.html", {"trip": trip})
 
@@ -158,7 +159,7 @@ def trip_feedback(request, pk):
                     "source": "form",
                 },
             )
-            messages.success(request, "Thanks for your feedback!")
+            messages.success(request, _("Thanks for your feedback!"))
             return redirect("trips:trip-detail", pk=trip.pk)
     else:
         form = FeedbackForm(instance=instance)

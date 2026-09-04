@@ -18,4 +18,9 @@ urlpatterns = [
     # come along with this include but aren't linked from anywhere in the
     # UI - users.urls's own forms still own that.
     path("accounts/", include("allauth.urls")),
+    # django.conf.urls.i18n's set_language view (2026-09-04, translation
+    # rollout) - what templates/base.html's language switcher POSTs to.
+    # Sets a cookie and redirects back to the "next" page; no URL-prefix
+    # i18n_patterns() involved, language is entirely cookie/header-based.
+    path("i18n/", include("django.conf.urls.i18n")),
 ]

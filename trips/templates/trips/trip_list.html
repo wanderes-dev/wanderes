@@ -1,11 +1,12 @@
 {% extends "base.html" %}
+{% load i18n %}
 
-{% block title %}My trips - Wanderes{% endblock %}
+{% block title %}{% trans "My trips" %} - Wanderes{% endblock %}
 {% block robots %}noindex, nofollow{% endblock %}
 
 {% block content %}
-<h1>My trips</h1>
-<p class="actions"><a href="{% url 'trips:trip-create' %}" class="btn">Create a new trip</a></p>
+<h1>{% trans "My trips" %}</h1>
+<p class="actions"><a href="{% url 'trips:trip-create' %}" class="btn">{% trans "Create a new trip" %}</a></p>
 
 {% if trips %}
 <ul class="item-list">
@@ -19,8 +20,8 @@
     {% endfor %}
 </ul>
 {% else %}
-<p class="empty-state">You haven't saved any trips yet.</p>
+<p class="empty-state">{% trans "You haven't saved any trips yet." %}</p>
 {% endif %}
 
-<p><a href="{% url 'users:account' %}">Back to my account</a></p>
+<p><a href="{% url 'users:account' %}">{% trans "Back to my account" %}</a></p>
 {% endblock %}

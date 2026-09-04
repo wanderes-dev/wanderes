@@ -97,7 +97,7 @@ class TravelerProfile(models.Model):
     preferred_trip_types = models.JSONField(
         default=list,
         blank=True,
-        help_text="List of preferred trip type codes, e.g. ['beach', 'culture'].",
+        help_text=_("List of preferred trip type codes, e.g. ['beach', 'culture']."),
     )
     preferred_cost_of_living = models.PositiveSmallIntegerField(
         choices=COST_OF_LIVING_CHOICES, null=True, blank=True
@@ -105,19 +105,19 @@ class TravelerProfile(models.Model):
     home_country = models.CharField(
         max_length=200,
         blank=True,
-        help_text="Where you usually travel from, e.g. 'Brazil'.",
+        help_text=_("Where you usually travel from, e.g. 'Brazil'."),
     )
     travelers_count = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
-        help_text="How many people you usually travel with, including yourself.",
+        help_text=_("How many people you usually travel with, including yourself."),
     )
     budget_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         null=True,
         blank=True,
-        help_text="Typical travel budget, paired with budget_period.",
+        help_text=_("Typical travel budget, paired with budget_period."),
     )
     budget_period = models.CharField(
         max_length=10, choices=BUDGET_PERIOD_CHOICES, blank=True
@@ -126,7 +126,7 @@ class TravelerProfile(models.Model):
         max_length=3,
         choices=CURRENCY_CHOICES,
         blank=True,
-        help_text="The currency budget_amount is stated in - required alongside it.",
+        help_text=_("The currency budget_amount is stated in - required alongside it."),
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

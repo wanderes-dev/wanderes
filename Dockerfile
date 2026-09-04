@@ -5,8 +5,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# gettext (2026-09-04, translation rollout) - provides msgfmt/msguniq,
+# needed to run `manage.py compilemessages`/`makemessages` locally. Not
+# needed at runtime by the deployed app itself - compiled .mo catalogs
+# are committed to the repo alongside their .po sources (see locale/),
+# generated once here rather than as a new production build step, given
+# this same day's earlier lesson about untested deploy-time assumptions.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 \
+    && apt-get install -y --no-install-recommends libpq5 gettext \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS builder
