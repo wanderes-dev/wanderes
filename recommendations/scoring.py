@@ -3,6 +3,7 @@ import time
 from dataclasses import dataclass
 
 from integrations.climate import ClimateProviderError, get_climate_provider
+from travel.geography import countries_in_continent
 from travel.models import Destination
 from trips.models import TravelHistoryEntry, Trip
 from users.models import TravelerProfile
@@ -65,6 +66,12 @@ class RecommendationRequest:
     max_temp_c: float | None = None
     max_cost_of_living: int | None = None
     trip_type: str | None = None  # one of travel.models.TRIP_TYPE_CHOICES, or None for any
+    # One of travel.geography.CONTINENT_CHOICES, or None for any continent
+    # (2026-09-04, real production bug: "Eurotrip" recommendation cards
+    # included Bali/Marrakech/Chiang Mai alongside the genuinely European
+    # options - nothing here could express "Europe" as a hard constraint
+    # at all before this field existed).
+    continent: str | None = None
     excluded_slugs: frozenset = frozenset()
     user: object | None = None  # users.models.User or AnonymousUser; None for a bare request
 
@@ -117,6 +124,14 @@ def generate_recommendations(
         candidates = candidates.filter(trip_type=request.trip_type)
     if request.max_cost_of_living is not None:
         candidates = candidates.filter(cost_of_living__lte=request.max_cost_of_living)
+    if request.continent is not None:
+        # Same DB-level-filter-before-any-climate-lookup treatment as
+        # trip_type/max_cost_of_living above, for the same reason -
+        # skipping this would mean "Europe" narrows nothing at all, and
+        # every non-European destination gets a real climate lookup only
+        # to be silently included anyway (2026-09-04 bug: a "Eurotrip"
+        # request's cards included Bali, Marrakech, Chiang Mai).
+        candidates = candidates.filter(country__in=countries_in_continent(request.continent))
 
     preferred_trip_types = _preferred_trip_types(request.user)
     visited_slugs = _visited_destination_slugs(request.user)

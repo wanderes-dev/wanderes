@@ -2,7 +2,7 @@
 
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
-**Last updated:** 2026-09-04 (fixed a real production timeout - a broad "5-day Eurotrip" chat request with no trip_type/cost constraint killed a gunicorn worker; hotel/accommodation provider interface scaffolded ahead of Booking.com access, no migrations, safe as-is; automatic language detection built, then HOTFIX-reverted after a production incident - see the pinned note right below before doing anything else; real logo/favicon wired in; Google icon on the login button; password reset via emailed token, code ready)
+**Last updated:** 2026-09-04 (fixed a real bug where "Eurotrip" recommendation cards included Bali/Marrakech/Chiang Mai - added a `continent` constraint, DB-level-filtered before climate lookups, same pattern as trip_type; fixed a related production timeout on broad "Eurotrip"-style requests; hotel/accommodation provider interface scaffolded ahead of Booking.com access, no migrations, safe as-is; automatic language detection built, then HOTFIX-reverted after a production incident - see the pinned note right below before doing anything else; real logo/favicon wired in; Google icon on the login button; password reset via emailed token, code ready)
 
 ## ⚠️ PENDING MANUAL ACTION — five independent items, none blocks other work (read item 3 first - it's the one that just caused an outage)
 

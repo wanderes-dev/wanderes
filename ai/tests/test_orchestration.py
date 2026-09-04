@@ -80,11 +80,11 @@ class FailingAIProvider:
         raise AIProviderError("boom")
 
 
-def _make_destination(slug, *, lat, lon, trip_type="beach", cost_of_living=1):
+def _make_destination(slug, *, lat, lon, trip_type="beach", cost_of_living=1, country="Testland"):
     return Destination.objects.create(
         slug=slug,
         name=slug,
-        country="Testland",
+        country=country,
         latitude=lat,
         longitude=lon,
         trip_type=trip_type,
@@ -104,6 +104,7 @@ def _intent(
     max_temp_c=None,
     max_cost_of_living=None,
     trip_type=None,
+    continent=None,
     excluded_place_names=None,
     feedback_destination_name=None,
     feedback_rating=None,
@@ -123,6 +124,7 @@ def _intent(
         "max_temp_c": max_temp_c,
         "max_cost_of_living": max_cost_of_living,
         "trip_type": trip_type,
+        "continent": continent,
         "excluded_place_names": excluded_place_names or [],
         "feedback_destination_name": feedback_destination_name,
         "feedback_rating": feedback_rating,
@@ -697,6 +699,60 @@ class TripTypeAndExclusionTests(TestCase):
         )
 
         self.assertEqual(result.recommendations, [])
+
+
+class ContinentTests(TestCase):
+    """2026-09-04, real production bug reported live: a "Eurotrip"
+    request's recommendation cards included Bali, Marrakech, Chiang Mai,
+    Hoi An, and Ayutthaya alongside the genuinely European options -
+    nothing extracted or filtered by continent at all before this field
+    existed, even though the AI's own free-text reply correctly talked
+    about "Europe" the whole time."""
+
+    def setUp(self):
+        self.lisbon = _make_destination(
+            "lisbon", lat=40.0, lon=-9.0, trip_type="city", country="Portugal"
+        )
+        self.bangkok = _make_destination(
+            "bangkok", lat=13.0, lon=100.0, trip_type="city", country="Tailândia"
+        )
+        self.climate = StubClimateProvider(
+            {
+                (40.0, -9.0): MonthlyClimateSummary(2025, 10, 22.0, 15.0, 5.0),
+                (13.0, 100.0): MonthlyClimateSummary(2025, 10, 32.0, 24.0, 20.0),
+            }
+        )
+
+    def test_continent_filters_out_non_matching_destinations(self):
+        ai_provider = StubAIProvider(structured_response=_intent(month=10, continent="europe"))
+
+        result = get_travel_recommendation(
+            "quero montar um eurotrip de 5 dias",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"lisbon"})
+
+    def test_continent_alone_is_enough_signal_to_search(self):
+        # Mirrors test_trip_type_alone_is_now_enough_signal_to_search above -
+        # a continent name is at least as strong a differentiating signal
+        # as a trip_type, so it shouldn't trigger an open-ended
+        # clarification question either.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(continent="europe"),  # no month, no temp, no cost
+            reply_text="Here are some European options!",
+        )
+
+        result = get_travel_recommendation(
+            "quero montar um eurotrip de 5 dias",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"lisbon"})
 
 
 class RecommendationCapTests(TestCase):

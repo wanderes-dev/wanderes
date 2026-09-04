@@ -9,6 +9,7 @@ from recommendations.scoring import (
     ScoredDestination,
     generate_recommendations,
 )
+from travel.geography import CONTINENT_CHOICES
 from travel.models import (
     COST_OF_LIVING_CHOICES,
     TRIP_TYPE_CHOICES,
@@ -47,6 +48,7 @@ FEEDBACK_TAG_KEYS = {key for key, _label in FEEDBACK_TAG_CHOICES}
 # choices (found in a 2026-09-02 review). travel.models is the canonical
 # source since it owns the destination catalog these fields describe.
 TRIP_TYPE_CODES = [code for code, _label in TRIP_TYPE_CHOICES]
+CONTINENT_CODES = [code for code, _label in CONTINENT_CHOICES]
 MAX_COST_OF_LIVING_TIER = len(COST_OF_LIVING_CHOICES)
 
 FALLBACK_REPLY = (
@@ -202,6 +204,16 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "request doesn't clearly match one of these four, or matches more than "
     "one - do not force-fit a vibe like 'romantic' or 'family-friendly' "
     "into one of these categories just because you have to pick something.\n"
+    "continent: set this when the traveler names or clearly implies ONE "
+    "continent/region as where they want to go - a continent name itself "
+    "('Europe', 'Ásia'), a well-known colloquial term for a trip there "
+    "('Eurotrip', 'Eurotour' -> 'europe'), or a specific country/city that "
+    "unambiguously belongs to one continent ('Japan', 'quero ir a Roma' -> "
+    "'asia'/'europe' respectively). Use exactly one of: 'europe', 'asia', "
+    "'africa', 'north_america', 'south_america', 'oceania'. Leave it null "
+    "if no continent/region/country was named or implied, or if what was "
+    "named doesn't map to a single continent (e.g. 'somewhere warm', "
+    "'anywhere with beaches').\n"
     "If the user asks to avoid or exclude specific places, countries, or "
     "regions, list the place/country names they mentioned in "
     "excluded_place_names (e.g. ['Marrakech', 'Morocco']). Leave it as an "
@@ -283,6 +295,10 @@ INTENT_SCHEMA = {
                 "type": ["string", "null"],
                 "enum": [*TRIP_TYPE_CODES, None],
             },
+            "continent": {
+                "type": ["string", "null"],
+                "enum": [*CONTINENT_CODES, None],
+            },
             "excluded_place_names": {"type": "array", "items": {"type": "string"}},
             "feedback_destination_name": {"type": ["string", "null"]},
             "feedback_rating": {"type": ["integer", "null"]},
@@ -302,6 +318,7 @@ INTENT_SCHEMA = {
             "max_temp_c",
             "max_cost_of_living",
             "trip_type",
+            "continent",
             "excluded_place_names",
             "feedback_destination_name",
             "feedback_rating",
@@ -550,6 +567,7 @@ def stream_travel_recommendation(
         or intent["max_temp_c"] is not None
         or intent["max_cost_of_living"] is not None
         or intent["trip_type"] is not None
+        or intent["continent"] is not None
     )
     if not has_enough_signal:
         logger.info(
@@ -595,6 +613,7 @@ def stream_travel_recommendation(
         max_temp_c=intent["max_temp_c"],
         max_cost_of_living=intent["max_cost_of_living"],
         trip_type=intent["trip_type"],
+        continent=intent["continent"],
         excluded_slugs=find_destination_slugs_by_name(intent["excluded_place_names"]),
         user=user,
     )
@@ -603,13 +622,14 @@ def stream_travel_recommendation(
     if not results:
         logger.info(
             "No destinations matched constraints. message=%r month=%s min_temp_c=%s "
-            "max_temp_c=%s max_cost_of_living=%s trip_type=%s",
+            "max_temp_c=%s max_cost_of_living=%s trip_type=%s continent=%s",
             message,
             intent["month"],
             intent["min_temp_c"],
             intent["max_temp_c"],
             intent["max_cost_of_living"],
             intent["trip_type"],
+            intent["continent"],
         )
         # Rather than a dead-end canned reply, let the AI try to actually
         # help - reason from its own general knowledge (same recommendation
@@ -1647,6 +1667,8 @@ def _build_no_matches_messages(
         constraints.append(f"month={intent['month']}")
     if intent["trip_type"]:
         constraints.append(f"trip_type={intent['trip_type']}")
+    if intent["continent"]:
+        constraints.append(f"continent={intent['continent']}")
     if intent["min_temp_c"] is not None:
         constraints.append(f"min_temp_c={intent['min_temp_c']}")
     if intent["max_temp_c"] is not None:

@@ -41,11 +41,11 @@ class CountingClimateProvider(StubClimateProvider):
         )
 
 
-def _make_destination(slug, *, lat, lon, trip_type="beach", cost_of_living=3):
+def _make_destination(slug, *, lat, lon, trip_type="beach", cost_of_living=3, country="Testland"):
     return Destination.objects.create(
         slug=slug,
         name=slug,
-        country="Testland",
+        country=country,
         latitude=lat,
         longitude=lon,
         trip_type=trip_type,
@@ -141,6 +141,62 @@ class GenerateRecommendationsTests(TestCase):
         self.assertEqual(
             sorted(counting_climate.queried_coords), [(10.0, 10.0), (30.0, 30.0)]
         )
+
+    def test_continent_excludes_non_matching_destinations(self):
+        # 2026-09-04, real production bug: a "Eurotrip" request's
+        # recommendation cards included Bali, Marrakech, and Chiang Mai
+        # alongside the genuinely European options - nothing filtered by
+        # continent at all before this field existed.
+        request = RecommendationRequest(month=10, continent="europe")
+
+        results = generate_recommendations(request, climate_provider=self.climate)
+
+        slugs = {r.destination.slug for r in results}
+        self.assertEqual(slugs, set())  # setUp's destinations are all "Testland"
+
+    def test_continent_filter_skips_climate_lookups_for_non_matching_destinations(self):
+        _make_destination(
+            "lisbon", lat=40.0, lon=-9.0, trip_type="city", cost_of_living=2, country="Portugal"
+        )
+        bangkok = _make_destination(
+            "bangkok", lat=13.0, lon=100.0, trip_type="city", cost_of_living=2, country="Tailândia"
+        )
+        counting_climate = CountingClimateProvider(
+            {
+                (40.0, -9.0): MonthlyClimateSummary(2025, 10, 22.0, 15.0, 5.0),
+                (13.0, 100.0): MonthlyClimateSummary(2025, 10, 32.0, 24.0, 20.0),
+                (10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0),
+                (20.0, 20.0): MonthlyClimateSummary(2025, 10, 26.0, 18.0, 10.0),
+                (30.0, 30.0): MonthlyClimateSummary(2025, 10, 5.0, -2.0, 40.0),
+            }
+        )
+        request = RecommendationRequest(month=10, continent="europe")
+
+        results = generate_recommendations(request, climate_provider=counting_climate)
+
+        self.assertEqual({r.destination.slug for r in results}, {"lisbon"})
+        self.assertEqual(counting_climate.queried_coords, [(40.0, -9.0)])
+        self.assertNotIn(bangkok.slug, {r.destination.slug for r in results})
+
+    def test_no_continent_applies_no_geographic_filtering(self):
+        _make_destination(
+            "lisbon", lat=40.0, lon=-9.0, trip_type="city", cost_of_living=2, country="Portugal"
+        )
+        climate = StubClimateProvider(
+            {
+                (40.0, -9.0): MonthlyClimateSummary(2025, 10, 22.0, 15.0, 5.0),
+                (10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0),
+                (20.0, 20.0): MonthlyClimateSummary(2025, 10, 26.0, 18.0, 10.0),
+                (30.0, 30.0): MonthlyClimateSummary(2025, 10, 5.0, -2.0, 40.0),
+            }
+        )
+        request = RecommendationRequest(month=10)
+
+        results = generate_recommendations(request, climate_provider=climate)
+
+        slugs = {r.destination.slug for r in results}
+        self.assertIn("lisbon", slugs)
+        self.assertIn("warm-cheap", slugs)
 
     def test_excluded_slugs_are_removed_from_candidates(self):
         request = RecommendationRequest(month=10, excluded_slugs=frozenset({"warm-cheap"}))
