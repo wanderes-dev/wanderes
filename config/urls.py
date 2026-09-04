@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.urls import include, path
 
+from core.views import set_language
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     # core.urls owns the bare domain root - a real landing page (2026-09-01),
@@ -18,9 +20,14 @@ urlpatterns = [
     # come along with this include but aren't linked from anywhere in the
     # UI - users.urls's own forms still own that.
     path("accounts/", include("allauth.urls")),
-    # django.conf.urls.i18n's set_language view (2026-09-04, translation
-    # rollout) - what templates/base.html's language switcher POSTs to.
-    # Sets a cookie and redirects back to the "next" page; no URL-prefix
-    # i18n_patterns() involved, language is entirely cookie/header-based.
-    path("i18n/", include("django.conf.urls.i18n")),
+    # core.views.set_language (2026-09-04, automatic language detection -
+    # was django.conf.urls.i18n's own set_language view directly until
+    # this date) - what templates/base.html's language switcher and the
+    # language-suggestion banner both POST to. Same URL path and cookie
+    # behavior as Django's default view (wraps it rather than replacing
+    # it - see core.views.set_language's docstring), plus persisting an
+    # authenticated visitor's choice to their account. No URL-prefix
+    # i18n_patterns() involved, language is entirely cookie/header/
+    # account-based.
+    path("i18n/setlang/", set_language, name="set_language"),
 ]

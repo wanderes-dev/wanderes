@@ -1,11 +1,14 @@
 import logging
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import connections
 from django.db.utils import OperationalError
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils.translation import check_for_language
+from django.views.i18n import set_language as django_set_language
 
 from travel.models import Destination
 
@@ -59,6 +62,31 @@ def landing(request):
             "preview_destination": preview_destination,
         },
     )
+
+
+def set_language(request):
+    """Wraps Django's own django.views.i18n.set_language view (2026-09-04,
+    automatic language detection) to also persist an authenticated
+    visitor's explicit choice to their account
+    (users.User.preferred_language), so it follows them to any device -
+    not just the browser that set the django_language cookie. Reuses
+    100% of Django's own cookie-setting/redirect/referer-validation logic
+    rather than reimplementing any of it; the only thing added is the
+    account-level side effect Django's own view has no concept of.
+
+    Mirrors Django's own validation exactly (request.method == "POST" and
+    check_for_language(lang_code)) rather than a separate check, so this
+    only ever persists a value Django's own view just accepted - never a
+    value it silently ignored (e.g. a POST with no or invalid `language`,
+    which leaves the cookie/account untouched, per its own docstring)."""
+    response = django_set_language(request)
+    if request.method == "POST" and request.user.is_authenticated:
+        lang_code = request.POST.get("language")
+        if lang_code and check_for_language(lang_code):
+            get_user_model().objects.filter(pk=request.user.pk).update(
+                preferred_language=lang_code
+            )
+    return response
 
 
 def health_check(request):
