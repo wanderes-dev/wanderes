@@ -313,6 +313,38 @@ OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 # tries to use this before it's set.
 FLIGHT_PROVIDER = env("FLIGHT_PROVIDER", default="")
 
+# Email (2026-09-04, password reset via emailed token) - deliberately
+# provider-agnostic, the same pattern as every other external service in
+# this project: settings/env vars, never a specific vendor hardcoded, so
+# picking an actual SMTP provider (SendGrid, Mailgun, AWS SES, Postmark, a
+# plain Gmail account, etc.) stays the user's own choice, not one made
+# here. EMAIL_HOST unset (the default) means no real credentials exist
+# yet - falls back to Django's console backend, which never raises and
+# never actually delivers anything, so a password-reset request always
+# succeeds from the visitor's point of view (matching Django's own
+# security convention of never revealing whether an email exists) without
+# ever 500ing from an unreachable SMTP host. users.views'
+# email_configured flag (mirroring google_oauth_configured) keeps the
+# "Forgot your password?" link itself hidden until this is genuinely
+# wired up, for the same reason the Google button stays hidden until real
+# OAuth credentials exist - showing a recovery flow that silently can't
+# deliver anything would be its own kind of broken-in-production surprise.
+EMAIL_HOST = env("EMAIL_HOST", default="")
+if EMAIL_HOST:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+    EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+    EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+    EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Wanderes <noreply@wanderes.com>")
+
+# django.contrib.auth's PasswordResetTokenGenerator invalidates a token
+# after this many days - 1 is deliberately short for a security-sensitive,
+# single-use link (Django's own default is 3).
+PASSWORD_RESET_TIMEOUT = 60 * 60 * 24
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

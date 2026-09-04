@@ -73,6 +73,12 @@ def site_meta(request):
         "canonical_url": f"https://{settings.SITE_DOMAIN}{request.path}",
         "organization_jsonld": organization_jsonld,
         "google_oauth_configured": google_oauth_configured,
+        # 2026-09-04, password reset via emailed token: same reasoning as
+        # google_oauth_configured above - EMAIL_HOST unset means the
+        # console backend is in effect (reset "succeeds" but delivers
+        # nothing anyone can see), so the "Forgot your password?" link
+        # stays hidden until real SMTP credentials exist.
+        "email_configured": bool(settings.EMAIL_HOST),
         "og_locale": OG_LOCALE_BY_LANGUAGE.get(get_language(), "en_US"),
         # Raw settings.LANGUAGES, deliberately not Django's own
         # {% get_available_languages %} template tag - that tag runs each

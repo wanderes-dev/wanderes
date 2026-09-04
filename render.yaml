@@ -89,6 +89,24 @@ services:
         sync: false
       - key: GOOGLE_OAUTH_CLIENT_SECRET
         sync: false
+      # Email (2026-09-04, password reset via emailed token) - web service
+      # only, never the worker, since no Celery task sends email today.
+      # Blank until entered manually here (see .env.example for what's
+      # needed and how it's provider-agnostic) - the "Forgot your
+      # password?" link stays hidden until these are set
+      # (core.context_processors.site_meta's email_configured flag).
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: EMAIL_USE_TLS
+        value: "True"
+      - key: DEFAULT_FROM_EMAIL
+        value: "Wanderes <noreply@wanderes.com>"
 
   - type: worker
     name: wanderes-worker

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-04 13:23+0000\n"
+"POT-Creation-Date: 2026-09-04 15:00+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -46,11 +46,13 @@ msgstr ""
 
 #: ai/templates/ai/chat.html:347 ai/templates/ai/chat.html:406
 #: templates/base.html:51 users/templates/users/login.html:4
-#: users/templates/users/login.html:16 users/templates/users/register.html:24
+#: users/templates/users/login.html:16
+#: users/templates/users/password_reset_complete.html:15
+#: users/templates/users/register.html:32
 msgid "Log in"
 msgstr "Se connecter"
 
-#: ai/templates/ai/chat.html:348 users/templates/users/login.html:24
+#: ai/templates/ai/chat.html:348 users/templates/users/login.html:37
 msgid "Create an account"
 msgstr "Créer un compte"
 
@@ -113,7 +115,8 @@ msgstr "Aucune conversation enregistrée pour l'instant."
 
 #: ai/templates/ai/chat.html:405
 msgid "Log in and have your conversation history saved here."
-msgstr "Connectez-vous et votre historique de conversations sera enregistré ici."
+msgstr ""
+"Connectez-vous et votre historique de conversations sera enregistré ici."
 
 #: ai/templates/ai/chat.html:413
 msgid "Chat with Wander"
@@ -951,17 +954,118 @@ msgstr ""
 "Connectez-vous pour reprendre la planification de votre voyage là où vous "
 "l'aviez laissée."
 
-#: users/templates/users/login.html:19 users/templates/users/register.html:19
+#: users/templates/users/login.html:20
+msgid "Forgot your password?"
+msgstr "Mot de passe oublié ?"
+
+#: users/templates/users/login.html:24 users/templates/users/register.html:19
 msgid "or"
 msgstr "ou"
 
-#: users/templates/users/login.html:20 users/templates/users/register.html:20
+#: users/templates/users/login.html:32 users/templates/users/register.html:27
 msgid "Continue with Google"
 msgstr "Continuer avec Google"
 
-#: users/templates/users/login.html:23
+#: users/templates/users/login.html:36
 msgid "New to Wanderes?"
 msgstr "Nouveau sur Wanderes ?"
+
+#: users/templates/users/password_reset_complete.html:4
+#: users/templates/users/password_reset_complete.html:12
+msgid "Password changed"
+msgstr "Mot de passe modifié"
+
+#: users/templates/users/password_reset_complete.html:13
+msgid "Your password has been set. You can log in now."
+msgstr "Votre mot de passe a été défini. Vous pouvez maintenant vous connecter."
+
+#: users/templates/users/password_reset_confirm.html:4
+#: users/templates/users/password_reset_confirm.html:13
+msgid "Set a new password"
+msgstr "Définir un nouveau mot de passe"
+
+#: users/templates/users/password_reset_confirm.html:14
+msgid "Choose a new password for your account."
+msgstr "Choisissez un nouveau mot de passe pour votre compte."
+
+#: users/templates/users/password_reset_confirm.html:18
+msgid "Set new password"
+msgstr "Définir le nouveau mot de passe"
+
+#: users/templates/users/password_reset_confirm.html:21
+msgid "This reset link no longer works"
+msgstr "Ce lien de réinitialisation ne fonctionne plus"
+
+#: users/templates/users/password_reset_confirm.html:22
+msgid ""
+"It may have already been used, or it's expired. Request a new one below."
+msgstr "Il a peut-être déjà été utilisé ou a expiré. Demandez-en un nouveau ci-dessous."
+
+#: users/templates/users/password_reset_confirm.html:24
+msgid "Request a new reset link"
+msgstr "Demander un nouveau lien de réinitialisation"
+
+#: users/templates/users/password_reset_done.html:4
+#: users/templates/users/password_reset_done.html:12
+msgid "Check your email"
+msgstr "Vérifiez votre email"
+
+#: users/templates/users/password_reset_done.html:13
+msgid ""
+"If an account exists for that email address, we've sent a link to reset your "
+"password. It expires in 24 hours."
+msgstr "Si un compte existe pour cette adresse email, nous avons envoyé un lien pour réinitialiser votre mot de passe. Il expire dans 24 heures."
+
+#: users/templates/users/password_reset_done.html:15
+#: users/templates/users/password_reset_form.html:20
+msgid "Back to log in"
+msgstr "Retour à la connexion"
+
+#: users/templates/users/password_reset_email.txt:1
+msgid "Hi,"
+msgstr "Bonjour,"
+
+#: users/templates/users/password_reset_email.txt:3
+msgid ""
+"You're receiving this email because you (or someone else) requested a "
+"password reset for your Wanderes account."
+msgstr "Vous recevez cet email parce que vous (ou quelqu'un d'autre) avez demandé la réinitialisation du mot de passe de votre compte Wanderes."
+
+#: users/templates/users/password_reset_email.txt:5
+msgid "Click the link below to set a new password:"
+msgstr "Cliquez sur le lien ci-dessous pour définir un nouveau mot de passe :"
+
+#: users/templates/users/password_reset_email.txt:8
+msgid ""
+"This link will expire in 24 hours. If you didn't request this, you can "
+"safely ignore this email - your password won't be changed."
+msgstr "Ce lien expirera dans 24 heures. Si vous n'avez pas demandé cela, vous pouvez ignorer cet email en toute sécurité - votre mot de passe ne sera pas modifié."
+
+#: users/templates/users/password_reset_email.txt:10
+msgid "Thanks,"
+msgstr "Merci,"
+
+#: users/templates/users/password_reset_email.txt:11
+msgid "The Wanderes team"
+msgstr "L'équipe Wanderes"
+
+#: users/templates/users/password_reset_form.html:4
+#: users/templates/users/password_reset_form.html:12
+msgid "Reset your password"
+msgstr "Réinitialisez votre mot de passe"
+
+#: users/templates/users/password_reset_form.html:13
+msgid ""
+"Enter your email address and we'll send you a link to set a new password."
+msgstr "Saisissez votre adresse email et nous vous enverrons un lien pour définir un nouveau mot de passe."
+
+#: users/templates/users/password_reset_form.html:17
+msgid "Send reset link"
+msgstr "Envoyer le lien de réinitialisation"
+
+#: users/templates/users/password_reset_subject.txt:1
+msgid "Reset your Wanderes password"
+msgstr "Réinitialisez votre mot de passe Wanderes"
 
 #: users/templates/users/profile.html:4 users/templates/users/profile.html:8
 msgid "My traveler profile"
@@ -1002,7 +1106,7 @@ msgstr ""
 "Enregistrez des voyages, suivez vos avis et recevez des recommandations qui "
 "s'améliorent avec le temps."
 
-#: users/templates/users/register.html:23
+#: users/templates/users/register.html:31
 msgid "Already have an account?"
 msgstr "Vous avez déjà un compte ?"
 

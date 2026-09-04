@@ -192,6 +192,29 @@ Create the Google Cloud project, agree to Google's terms, or generate real crede
 
 ---
 
+## 6. Password Reset via Emailed Token — 🟢 CODE READY, real SMTP credentials needed (provider choice is yours, not Claude Code's)
+
+**2026-09-04, direct user request: "configure a recuperação de senha atraves de token, enviado por email."** Built entirely on Django's own `PasswordResetView`/`PasswordResetConfirmView`/token generator - the same "Django's own built-in auth, no custom reimplementation" convention already used for login/logout/registration (`07_API_DESIGN.md` §3). The one thing left is real SMTP credentials, and deliberately not one specific vendor - same boundary as every other external provider in this project.
+
+**What's built and working**: `/users/password-reset/` (request form) → `/users/password-reset/done/` (a deliberately vague "check your email" page - never confirms whether an account exists, Django's own security convention) → the emailed link → `/users/reset/<uidb64>/<token>/` (set a new password, or an honest "this link no longer works" if it's already used or expired) → `/users/reset/done/`. The email itself uses `django.contrib.sites`'s `Site` row for its domain (kept in sync with `SITE_DOMAIN`, the same one canonical hostname everything else in this app uses), so the link is always `https://www.wanderes.com/...` regardless of which hostname the reset was actually requested from - verified live, not assumed, given the exact class of domain-mismatch bug that caused an outage earlier the same day.
+
+**Deliberately safe in the meantime**: with `EMAIL_HOST` unset (default), Django uses its own console backend - a password-reset request always "succeeds" from the visitor's point of view (no 500, matching the same never-reveal-account-existence convention above) but genuinely delivers nothing anyone can see. The "Forgot your password?" link itself stays hidden until `EMAIL_HOST` is actually set (`core.context_processors.site_meta`'s `email_configured` flag, the same pattern as `google_oauth_configured`) - showing a recovery link that silently can't deliver anything would be its own kind of broken-in-production surprise, exactly what this project has been careful to avoid.
+
+### What you need to do (pick any SMTP provider - your call)
+
+1. Choose an SMTP provider - SendGrid, Mailgun, AWS SES (via its SMTP interface), Postmark, or even a plain Gmail account with an app password all work, since nothing here is vendor-specific. Get its SMTP host/port/username/password.
+2. On Render: `wanderes-web` service → Environment → set `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` (these are `sync: false` in `render.yaml`, so they need entering manually, same reason as the Google OAuth credentials). `EMAIL_PORT`/`EMAIL_USE_TLS`/`DEFAULT_FROM_EMAIL` already have sensible defaults in `render.yaml` - only override if your provider needs something different.
+3. If your provider requires sender-domain verification (most do, to avoid landing in spam) - that's a step on the provider's own dashboard, tied to `wanderes.com`'s DNS, nothing in this codebase.
+4. No redeploy needed for the env var change itself - the "Forgot your password?" link appears automatically once `EMAIL_HOST` is set.
+
+### What Claude Code cannot do
+
+Create an account with any email provider or agree to their terms - the same boundary already documented for Google OAuth and KAYAK above.
+
+**Reference:** `users/urls.py` (the four password-reset views), `users/templates/users/password_reset_*.html/.txt`, `config/settings/base.py`'s `EMAIL_*` settings, `users/tests/test_password_reset.py`.
+
+---
+
 ## How to unblock
 
 Reply with your decision(s) — even a partial one (e.g., "let's start with just a destination dataset and Anthropic Claude, defer flights/hotels") is enough to resume work. Claude Code will then:

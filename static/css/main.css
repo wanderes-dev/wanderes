@@ -806,6 +806,12 @@ button:focus-visible, .btn:focus-visible {
     color: var(--color-text-muted);
 }
 
+.auth-forgot-password {
+    text-align: center;
+    margin: 0.6rem 0 0;
+    font-size: 0.85rem;
+}
+
 .auth-divider {
     display: flex;
     align-items: center;
@@ -820,6 +826,17 @@ button:focus-visible, .btn:focus-visible {
     flex: 1;
     height: 1px;
     background: var(--color-border);
+}
+
+.btn-google {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+}
+
+.btn-google-icon {
+    flex-shrink: 0;
 }
 
 /* Account page */
