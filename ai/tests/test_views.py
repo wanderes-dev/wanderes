@@ -65,8 +65,8 @@ class ChatPageTests(TestCase):
     def test_saved_conversation_ui_shown_to_authenticated_users(self):
         # 2026-09-02, direct request: a ChatGPT-style sidebar (new
         # conversation, save checkbox, saved-conversation list) - saving is
-        # a registered-users-only feature, so none of this UI exists for
-        # anonymous visitors at all.
+        # a registered-users-only feature, so the save-specific pieces are
+        # login-gated even though the sidebar itself isn't (2026-09-04).
         user = User.objects.create_user(email="traveler@example.com", password="testpass123")
         self.client.force_login(user)
 
@@ -78,14 +78,24 @@ class ChatPageTests(TestCase):
         self.assertContains(response, 'id="conversation-limit-modal"')
         self.assertContains(response, 'id="conversation-size-limit-modal"')
 
-    def test_saved_conversation_ui_not_shown_to_anonymous_users(self):
+    def test_sidebar_and_new_conversation_still_shown_to_anonymous_users(self):
+        # 2026-09-04, direct request: the history column and "+ New
+        # conversation" stay visible for anonymous visitors too (the
+        # reset endpoint already works for them, keyed by session) - only
+        # the save checkbox and the saved-conversation list itself (both
+        # meaningless without an account) are login-gated, replaced with
+        # a login call-to-action. The two saved-conversation *limit*
+        # modals stay authenticated-only - they can only ever fire for a
+        # feature (saving) anonymous visitors don't have.
         response = self.client.get(reverse("ai:chat"))
 
-        self.assertNotContains(response, 'id="chat-sidebar"')
-        self.assertNotContains(response, 'id="new-conversation-btn"')
+        self.assertContains(response, 'id="chat-sidebar"')
+        self.assertContains(response, 'id="new-conversation-btn"')
         self.assertNotContains(response, 'id="save-conversation-checkbox"')
+        self.assertNotContains(response, 'id="chat-sidebar-list"')
         self.assertNotContains(response, 'id="conversation-limit-modal"')
         self.assertNotContains(response, 'id="conversation-size-limit-modal"')
+        self.assertContains(response, "Log in and have your conversation history saved here.")
 
 
 class RecommendationsStreamViewTests(TestCase):

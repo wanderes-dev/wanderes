@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-04 00:06+0000\n"
+"POT-Creation-Date: 2026-09-04 13:23+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,121 +16,141 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
 #: ai/templates/ai/chat.html:5 ai/templates/ai/chat.html:7
 #: ai/templates/ai/chat.html:9
 msgid ""
 "Chat with Wander, Wanderes's travel consultant. Describe your ideal trip - "
 "budget, climate, pace, vibe - and get real destination recommendations with "
 "an honest explanation for each one."
-msgstr "Converse com o Wander, o consultor de viagens da Wanderes. Descreva sua viagem ideal - orçamento, clima, ritmo, estilo - e receba recomendações reais de destinos com uma explicação honesta para cada uma."
+msgstr ""
+"Converse com o Wander, o consultor de viagens da Wanderes. Descreva sua "
+"viagem ideal - orçamento, clima, ritmo, estilo - e receba recomendações "
+"reais de destinos com uma explicação honesta para cada uma."
 
 #: ai/templates/ai/chat.html:6 ai/templates/ai/chat.html:8
 msgid "Chat with Wander - Wanderes"
 msgstr "Converse com o Wander - Wanderes"
 
-#: ai/templates/ai/chat.html:335
+#: ai/templates/ai/chat.html:344
 msgid "Save your trips as you go"
 msgstr "Salve suas viagens à medida que avança"
 
-#: ai/templates/ai/chat.html:336
+#: ai/templates/ai/chat.html:345
 msgid ""
 "Log in to keep your recommendations, save trips, and get better suggestions "
 "over time."
-msgstr "Faça login para manter suas recomendações, salvar viagens e receber sugestões cada vez melhores."
+msgstr ""
+"Faça login para manter suas recomendações, salvar viagens e receber "
+"sugestões cada vez melhores."
 
-#: ai/templates/ai/chat.html:338 templates/base.html:51
-#: users/templates/users/login.html:4 users/templates/users/login.html:16
-#: users/templates/users/register.html:24
+#: ai/templates/ai/chat.html:347 ai/templates/ai/chat.html:406
+#: templates/base.html:51 users/templates/users/login.html:4
+#: users/templates/users/login.html:16 users/templates/users/register.html:24
 msgid "Log in"
 msgstr "Entrar"
 
-#: ai/templates/ai/chat.html:339 users/templates/users/login.html:24
+#: ai/templates/ai/chat.html:348 users/templates/users/login.html:24
 msgid "Create an account"
 msgstr "Criar uma conta"
 
-#: ai/templates/ai/chat.html:340
+#: ai/templates/ai/chat.html:349
 msgid "Continue without an account"
 msgstr "Continuar sem uma conta"
 
-#: ai/templates/ai/chat.html:356
+#: ai/templates/ai/chat.html:365
 msgid "Saved conversation limit reached"
 msgstr "Limite de conversas salvas atingido"
 
-#: ai/templates/ai/chat.html:357
+#: ai/templates/ai/chat.html:366
 #, python-format
 msgid ""
 "You already have %(max_saved_conversations)s saved conversations, the Free "
 "plan limit. Delete an older one from the sidebar to save this one instead - "
 "or just keep chatting, this conversation simply won't be saved. Premium "
 "plans with room for more are coming soon."
-msgstr "Você já tem %(max_saved_conversations)s conversas salvas, o limite do plano Gratuito. Exclua uma mais antiga na barra lateral para salvar esta em vez dela - ou simplesmente continue conversando, esta conversa só não será salva. Planos Premium com mais espaço estão chegando em breve."
+msgstr ""
+"Você já tem %(max_saved_conversations)s conversas salvas, o limite do plano "
+"Gratuito. Exclua uma mais antiga na barra lateral para salvar esta em vez "
+"dela - ou simplesmente continue conversando, esta conversa só não será "
+"salva. Planos Premium com mais espaço estão chegando em breve."
 
-#: ai/templates/ai/chat.html:359 ai/templates/ai/chat.html:368
+#: ai/templates/ai/chat.html:368 ai/templates/ai/chat.html:377
 msgid "Got it, keep chatting"
 msgstr "Entendi, continuar conversando"
 
-#: ai/templates/ai/chat.html:365
+#: ai/templates/ai/chat.html:374
 msgid "This conversation reached its saved size limit"
 msgstr "Esta conversa atingiu seu limite de tamanho salvo"
 
-#: ai/templates/ai/chat.html:366
+#: ai/templates/ai/chat.html:375
 msgid ""
 "This conversation hit the Free plan's saved-conversation size limit, so "
 "messages from here on won't be added to it - but you can keep chatting "
 "normally. Premium plans with higher limits are coming soon."
-msgstr "Esta conversa atingiu o limite de tamanho de conversas salvas do plano Gratuito, então as mensagens a partir daqui não serão mais adicionadas a ela - mas você pode continuar conversando normalmente. Planos Premium com limites maiores estão chegando em breve."
+msgstr ""
+"Esta conversa atingiu o limite de tamanho de conversas salvas do plano "
+"Gratuito, então as mensagens a partir daqui não serão mais adicionadas a ela "
+"- mas você pode continuar conversando normalmente. Planos Premium com "
+"limites maiores estão chegando em breve."
 
-#: ai/templates/ai/chat.html:372
+#: ai/templates/ai/chat.html:389
 msgid "History"
 msgstr "Histórico"
 
-#: ai/templates/ai/chat.html:379 ai/views.py:64
+#: ai/templates/ai/chat.html:394 ai/views.py:64
 msgid "New conversation"
 msgstr "Nova conversa"
 
-#: ai/templates/ai/chat.html:382
+#: ai/templates/ai/chat.html:398
 msgid "Save this conversation"
 msgstr "Salvar esta conversa"
 
-#: ai/templates/ai/chat.html:385 ai/views.py:62
+#: ai/templates/ai/chat.html:401 ai/views.py:62
 msgid "No saved conversations yet."
 msgstr "Nenhuma conversa salva ainda."
 
-#: ai/templates/ai/chat.html:392
+#: ai/templates/ai/chat.html:405
+msgid "Log in and have your conversation history saved here."
+msgstr "Faça login e tenha seu histórico de conversas salvo aqui."
+
+#: ai/templates/ai/chat.html:413
 msgid "Chat with Wander"
 msgstr "Converse com o Wander"
 
-#: ai/templates/ai/chat.html:393
+#: ai/templates/ai/chat.html:414
 msgid ""
 "Tell me what kind of trip you're thinking about - dates, budget, climate, "
 "anything."
-msgstr "Me conte que tipo de viagem você está pensando - datas, orçamento, clima, qualquer coisa."
+msgstr ""
+"Me conte que tipo de viagem você está pensando - datas, orçamento, clima, "
+"qualquer coisa."
 
-#: ai/templates/ai/chat.html:398
+#: ai/templates/ai/chat.html:419
 msgid "Where should we send you? A few ideas to get going:"
 msgstr "Para onde devemos te enviar? Algumas ideias para começar:"
 
-#: ai/templates/ai/chat.html:400
+#: ai/templates/ai/chat.html:421
 msgid "Somewhere warm in October, not too expensive"
 msgstr "Algum lugar quente em outubro, não muito caro"
 
-#: ai/templates/ai/chat.html:401
+#: ai/templates/ai/chat.html:422
 msgid "A relaxing beach trip with great food"
 msgstr "Uma viagem relaxante à praia com ótima comida"
 
-#: ai/templates/ai/chat.html:402
+#: ai/templates/ai/chat.html:423
 msgid "Somewhere I can hike and explore nature"
 msgstr "Algum lugar para fazer trilhas e explorar a natureza"
 
-#: ai/templates/ai/chat.html:411
+#: ai/templates/ai/chat.html:432
 msgid "e.g. Somewhere warm in October, not too expensive"
 msgstr "ex.: Algum lugar quente em outubro, não muito caro"
 
-#: ai/templates/ai/chat.html:413
+#: ai/templates/ai/chat.html:434
 msgid "Message"
 msgstr "Mensagem"
 
-#: ai/templates/ai/chat.html:416
+#: ai/templates/ai/chat.html:437
 msgid "Send"
 msgstr "Enviar"
 
@@ -176,17 +196,21 @@ msgstr "Não foi possível carregar essa conversa."
 
 #: ai/views.py:66
 msgid "Couldn't reach the server. Check your connection and try again."
-msgstr "Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente."
+msgstr ""
+"Não foi possível conectar ao servidor. Verifique sua conexão e tente "
+"novamente."
 
 #: ai/views.py:68
 msgid "Something went wrong on our end. Please try again."
 msgstr "Algo deu errado do nosso lado. Por favor, tente novamente."
 
-#: core/context_processors.py:47
+#: core/context_processors.py:48
 msgid ""
 "Wanderes is an intelligent travel consultant that recommends real "
 "destinations based on what travelers actually want."
-msgstr "A Wanderes é uma consultora de viagens inteligente que recomenda destinos reais com base no que os viajantes realmente querem."
+msgstr ""
+"A Wanderes é uma consultora de viagens inteligente que recomenda destinos "
+"reais com base no que os viajantes realmente querem."
 
 #: core/templates/core/landing.html:6 core/templates/core/landing.html:8
 #: core/templates/core/landing.html:10
@@ -194,7 +218,11 @@ msgid ""
 "Wanderes gets to know what you actually want from a trip - budget, climate, "
 "pace, vibe - then recommends real destinations that genuinely fit, and "
 "explains exactly why. No account needed to get started."
-msgstr "A Wanderes conhece o que você realmente quer de uma viagem - orçamento, clima, ritmo, estilo - e então recomenda destinos reais que realmente combinam, explicando exatamente o porquê. Não é preciso ter conta para começar."
+msgstr ""
+"A Wanderes conhece o que você realmente quer de uma viagem - orçamento, "
+"clima, ritmo, estilo - e então recomenda destinos reais que realmente "
+"combinam, explicando exatamente o porquê. Não é preciso ter conta para "
+"começar."
 
 #: core/templates/core/landing.html:9
 msgid "Wanderes - Your personal travel advisor"
@@ -213,7 +241,10 @@ msgid ""
 "Wanderes gets to know what you actually want from a trip - budget, climate, "
 "pace, vibe - then recommends destinations that genuinely fit, and explains "
 "exactly why."
-msgstr "A Wanderes conhece o que você realmente quer de uma viagem - orçamento, clima, ritmo, estilo - e então recomenda destinos que realmente combinam, explicando exatamente o porquê."
+msgstr ""
+"A Wanderes conhece o que você realmente quer de uma viagem - orçamento, "
+"clima, ritmo, estilo - e então recomenda destinos que realmente combinam, "
+"explicando exatamente o porquê."
 
 #: core/templates/core/landing.html:23
 msgid "Start planning your trip"
@@ -255,7 +286,9 @@ msgstr "Diga à Wanderes o que você quer"
 msgid ""
 "Describe your ideal trip in your own words - budget, climate, pace, who's "
 "coming. No forms, no filters to configure."
-msgstr "Descreva sua viagem ideal com suas próprias palavras - orçamento, clima, ritmo, quem vai junto. Sem formulários, sem filtros para configurar."
+msgstr ""
+"Descreva sua viagem ideal com suas próprias palavras - orçamento, clima, "
+"ritmo, quem vai junto. Sem formulários, sem filtros para configurar."
 
 #: core/templates/core/landing.html:67
 msgid "Get destinations that fit"
@@ -265,7 +298,9 @@ msgstr "Receba destinos que combinam"
 msgid ""
 "Real recommendations grounded in real climate and cost data - not a generic "
 "list of trending places."
-msgstr "Recomendações reais baseadas em dados reais de clima e custo - não uma lista genérica de lugares da moda."
+msgstr ""
+"Recomendações reais baseadas em dados reais de clima e custo - não uma lista "
+"genérica de lugares da moda."
 
 #: core/templates/core/landing.html:72
 msgid "See exactly why"
@@ -275,7 +310,9 @@ msgstr "Veja exatamente o porquê"
 msgid ""
 "Every suggestion comes with a clear, honest explanation of why it matches "
 "what you asked for."
-msgstr "Cada sugestão vem com uma explicação clara e honesta de por que ela combina com o que você pediu."
+msgstr ""
+"Cada sugestão vem com uma explicação clara e honesta de por que ela combina "
+"com o que você pediu."
 
 #: core/templates/core/landing.html:81
 msgid "A few places Wanderes already knows well"
@@ -289,12 +326,23 @@ msgstr "Pronto para encontrar sua próxima viagem?"
 msgid "Start planning"
 msgstr "Começar a planejar"
 
+#: core/tests/test_i18n.py:74 travel/models.py:26
+msgid "Beach"
+msgstr "Praia"
+
+#: core/tests/test_i18n.py:75 travel/models.py:18
+msgid "Very low"
+msgstr "Muito baixo"
+
 #: templates/base.html:9 templates/base.html:17 templates/base.html:21
 msgid ""
 "Wanderes is an intelligent travel consultant. Tell it what you want from a "
 "trip and get real destination recommendations, grounded in real climate and "
 "cost data, with an honest explanation for every suggestion."
-msgstr "A Wanderes é uma consultora de viagens inteligente. Diga a ela o que você quer de uma viagem e receba recomendações reais de destinos, baseadas em dados reais de clima e custo, com uma explicação honesta para cada sugestão."
+msgstr ""
+"A Wanderes é uma consultora de viagens inteligente. Diga a ela o que você "
+"quer de uma viagem e receba recomendações reais de destinos, baseadas em "
+"dados reais de clima e custo, com uma explicação honesta para cada sugestão."
 
 #: templates/base.html:40
 msgid "Chat"
@@ -335,11 +383,10 @@ msgid ""
 "We collect anonymized usage data (such as which features are used) to "
 "improve our recommendations. We never store your message text or share this "
 "data with third parties."
-msgstr "Coletamos dados de uso anonimizados (como quais recursos são usados) para melhorar nossas recomendações. Nunca armazenamos o texto das suas mensagens nem compartilhamos esses dados com terceiros."
-
-#: travel/models.py:18
-msgid "Very low"
-msgstr "Muito baixo"
+msgstr ""
+"Coletamos dados de uso anonimizados (como quais recursos são usados) para "
+"melhorar nossas recomendações. Nunca armazenamos o texto das suas mensagens "
+"nem compartilhamos esses dados com terceiros."
 
 #: travel/models.py:19
 msgid "Low"
@@ -356,10 +403,6 @@ msgstr "Alto"
 #: travel/models.py:22
 msgid "Very high"
 msgstr "Muito alto"
-
-#: travel/models.py:26
-msgid "Beach"
-msgstr "Praia"
 
 #: travel/models.py:27
 msgid "City"
@@ -467,7 +510,8 @@ msgstr "Ordem deste trecho no itinerário da viagem (1, 2, 3...)."
 
 #: trips/models.py:96
 msgid "True if this leg is a connecting flight, not the first/only leg."
-msgstr "Verdadeiro se este trecho for um voo de conexão, não o primeiro/único trecho."
+msgstr ""
+"Verdadeiro se este trecho for um voo de conexão, não o primeiro/único trecho."
 
 #: trips/models.py:101
 msgid "How this price compares to the historical price for this route."
@@ -825,7 +869,9 @@ msgstr "Período do orçamento"
 msgid ""
 "Please provide a budget amount, currency, and period together, or leave all "
 "three blank."
-msgstr "Informe o valor do orçamento, a moeda e o período juntos, ou deixe os três em branco."
+msgstr ""
+"Informe o valor do orçamento, a moeda e o período juntos, ou deixe os três "
+"em branco."
 
 #: users/models.py:71
 msgid "Per day"
@@ -841,7 +887,8 @@ msgstr "Por mês"
 
 #: users/models.py:100
 msgid "List of preferred trip type codes, e.g. ['beach', 'culture']."
-msgstr "Lista de códigos de tipos de viagem preferidos, ex.: ['beach', 'culture']."
+msgstr ""
+"Lista de códigos de tipos de viagem preferidos, ex.: ['beach', 'culture']."
 
 #: users/models.py:108
 msgid "Where you usually travel from, e.g. 'Brazil'."
@@ -916,7 +963,9 @@ msgstr "Meu perfil de viajante"
 msgid ""
 "Tell Wander more about how you like to travel - this shapes every "
 "recommendation."
-msgstr "Conte mais ao Wander sobre como você gosta de viajar - isso molda cada recomendação."
+msgstr ""
+"Conte mais ao Wander sobre como você gosta de viajar - isso molda cada "
+"recomendação."
 
 #: users/templates/users/profile.html:20
 msgid "Trip preferences"
@@ -930,7 +979,9 @@ msgstr "Detalhes da viagem"
 msgid ""
 "Helps Wander tailor suggestions to your trips - optional, fill in what "
 "applies."
-msgstr "Ajuda o Wander a personalizar sugestões para suas viagens - opcional, preencha o que se aplicar."
+msgstr ""
+"Ajuda o Wander a personalizar sugestões para suas viagens - opcional, "
+"preencha o que se aplicar."
 
 #: users/templates/users/register.html:11
 msgid "Create your account"
@@ -939,7 +990,9 @@ msgstr "Crie sua conta"
 #: users/templates/users/register.html:12
 msgid ""
 "Save trips, track feedback, and get recommendations that improve over time."
-msgstr "Salve viagens, acompanhe feedback e receba recomendações que melhoram com o tempo."
+msgstr ""
+"Salve viagens, acompanhe feedback e receba recomendações que melhoram com o "
+"tempo."
 
 #: users/templates/users/register.html:23
 msgid "Already have an account?"

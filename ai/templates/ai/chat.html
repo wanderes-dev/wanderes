@@ -186,6 +186,15 @@
         font-size: 0.85rem;
         padding: 0.5rem 0.2rem;
     }
+    .chat-sidebar-login-cta {
+        line-height: 1.5;
+    }
+    .chat-sidebar-login-cta a {
+        display: block;
+        margin-top: 0.4rem;
+        color: var(--color-primary);
+        font-weight: 600;
+    }
     .chat-sidebar-item {
         display: flex;
         align-items: center;
@@ -369,14 +378,21 @@
         </div>
     </div>
 </dialog>
+{% endif %}
+<!-- Sidebar itself (toggle, backdrop, aside) is shown to everyone,
+     logged in or not (2026-09-04, direct request) - anonymous visitors
+     still get "+ New conversation" (ai.views.conversation_reset already
+     works for them, keyed by session, per its own docstring) and the
+     history panel's presence for layout consistency; only the
+     save-conversation checkbox and the actual saved-conversation list
+     are login-gated, since saving itself is registered-only. -->
 <button type="button" id="sidebar-toggle" class="btn btn-secondary chat-sidebar-toggle" aria-expanded="false" aria-controls="chat-sidebar">{% trans "History" %}</button>
 <div id="chat-sidebar-backdrop" class="chat-sidebar-backdrop"></div>
-{% endif %}
 
 <div class="chat-layout">
-    {% if user.is_authenticated %}
     <aside id="chat-sidebar" class="chat-sidebar">
         <button type="button" id="new-conversation-btn" class="btn chat-sidebar-new-btn">+ {% trans "New conversation" %}</button>
+        {% if user.is_authenticated %}
         <label class="chat-sidebar-save-toggle">
             <input type="checkbox" id="save-conversation-checkbox" checked>
             {% trans "Save this conversation" %}
@@ -384,8 +400,13 @@
         <div id="chat-sidebar-list" class="chat-sidebar-list">
             <p class="chat-sidebar-empty">{% trans "No saved conversations yet." %}</p>
         </div>
+        {% else %}
+        <p class="chat-sidebar-empty chat-sidebar-login-cta">
+            {% blocktrans %}Log in and have your conversation history saved here.{% endblocktrans %}
+            <a href="{% url 'users:login' %}">{% trans "Log in" %}</a>
+        </p>
+        {% endif %}
     </aside>
-    {% endif %}
 
     <div class="chat-page chat-empty" id="chat-page">
         <div class="chat-header">
@@ -422,6 +443,12 @@
 <script>
 (function () {
     const CHAT_I18N = JSON.parse(document.getElementById("chat-i18n-data").textContent);
+    // 2026-09-04: the sidebar <aside> itself now renders for anonymous
+    // visitors too (only the save checkbox and the actual saved-list are
+    // login-gated), so #chat-sidebar-list exists in the DOM either way -
+    // this flag is what actually stops fetchSidebarList() from calling
+    // the login-required conversation-list endpoint for them.
+    const IS_AUTHENTICATED = {{ user.is_authenticated|yesno:"true,false" }};
     const form = document.getElementById("chat-form");
     const input = document.getElementById("message-input");
     const sendButton = document.getElementById("send-button");
@@ -766,7 +793,7 @@
     }
 
     function fetchSidebarList() {
-        if (!sidebarList) {
+        if (!sidebarList || !IS_AUTHENTICATED) {
             return;
         }
         fetch("/api/v1/conversations/", { headers: { "X-CSRFToken": csrfToken } })
