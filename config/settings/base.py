@@ -109,6 +109,13 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # 2026-09-04, automatic language detection: overrides LocaleMiddleware's
+    # cookie/Accept-Language result for an authenticated visitor who has an
+    # explicit saved preference (users.User.preferred_language) - must come
+    # after AuthenticationMiddleware (needs request.user resolved) and
+    # after LocaleMiddleware (deliberately overrides its result). See the
+    # middleware's own docstring for the full reasoning.
+    "core.middleware.UserLanguagePreferenceMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # Required by django-allauth as of its 0.65 series (2026-09-03).
@@ -189,6 +196,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.site_meta",
+                "core.context_processors.language_suggestion",
             ],
         },
     },

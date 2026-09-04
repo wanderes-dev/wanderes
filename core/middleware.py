@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.http import HttpResponsePermanentRedirect
+from django.utils import translation
 
 # Known aliases of the live service that should never accumulate their own
 # search-ranking signal separately from SITE_DOMAIN (2026-09-03, SEO prep -
@@ -52,4 +53,31 @@ class CanonicalDomainRedirectMiddleware:
             target = f"https://{settings.SITE_DOMAIN}{request.get_full_path()}"
             return HttpResponsePermanentRedirect(target)
 
+        return self.get_response(request)
+
+
+class UserLanguagePreferenceMiddleware:
+    """Makes an authenticated user's saved language (users.User.
+    preferred_language) win over whatever LocaleMiddleware already picked
+    from the anonymous django_language cookie or the browser's
+    Accept-Language header (2026-09-04, automatic language detection -
+    priority 1, "previously saved user language preference... always
+    respect it," regardless of which device/browser they're on right
+    now). Must sit after AuthenticationMiddleware in settings.MIDDLEWARE
+    (request.user isn't resolved yet before that) and after
+    LocaleMiddleware (this deliberately overrides its result, not races
+    it) - see the ordering comment in settings/base.py.
+
+    A blank preferred_language (the default - no explicit choice made
+    yet) is a no-op: normal cookie/Accept-Language detection applies
+    exactly as it did before this middleware existed."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, "user", None)
+        if user is not None and user.is_authenticated and user.preferred_language:
+            translation.activate(user.preferred_language)
+            request.LANGUAGE_CODE = translation.get_language()
         return self.get_response(request)
