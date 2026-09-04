@@ -1,3 +1,6 @@
+import time
+from unittest.mock import patch
+
 from django.test import TestCase
 
 from integrations.climate.base import ClimateProviderError, MonthlyClimateSummary
@@ -209,3 +212,50 @@ class GenerateRecommendationsTests(TestCase):
         for result in results:
             self.assertEqual(result.preference_fit, 0.0)
             self.assertEqual(result.repetition_penalty, 0.0)
+
+
+class SlowClimateProvider:
+    """Simulates a real per-call network delay - lets a test exercise the
+    request's climate-lookup time budget (2026-09-04 fix) without actually
+    waiting anywhere close to a real HTTP timeout."""
+
+    def __init__(self, climate, delay_seconds):
+        self._climate = climate
+        self._delay_seconds = delay_seconds
+
+    def get_monthly_climate(self, *, latitude, longitude, month, year=None):
+        time.sleep(self._delay_seconds)
+        return self._climate
+
+
+class ClimateLookupTimeBudgetTests(TestCase):
+    """2026-09-04, real production timeout: a request naming no
+    trip_type/max_cost_of_living (e.g. "montar um eurotrip de 5 dias")
+    leaves the DB-level candidate set unfiltered, so a run of cold climate
+    lookups across the full catalog could exceed gunicorn's worker
+    timeout and kill the entire worker process. generate_recommendations
+    now caps the climate-lookup loop's own wall-clock budget and returns
+    whatever's already been scored instead."""
+
+    def setUp(self):
+        for i in range(5):
+            _make_destination(f"dest-{i}", lat=float(i), lon=float(i))
+        self.climate_summary = MonthlyClimateSummary(2025, 10, 25.0, 15.0, 5.0)
+
+    @patch("recommendations.scoring.CLIMATE_LOOKUP_TIME_BUDGET_SECONDS", 0.05)
+    def test_partial_results_returned_once_time_budget_is_exceeded(self):
+        slow_climate = SlowClimateProvider(self.climate_summary, delay_seconds=0.03)
+        request = RecommendationRequest(month=10)
+
+        results = generate_recommendations(request, climate_provider=slow_climate)
+
+        self.assertGreater(len(results), 0)
+        self.assertLess(len(results), 5)
+
+    def test_all_destinations_scored_when_well_within_budget(self):
+        fast_climate = SlowClimateProvider(self.climate_summary, delay_seconds=0.0)
+        request = RecommendationRequest(month=10)
+
+        results = generate_recommendations(request, climate_provider=fast_climate)
+
+        self.assertEqual(len(results), 5)

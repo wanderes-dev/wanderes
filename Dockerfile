@@ -73,4 +73,20 @@ EXPOSE 8000
 
 # Shell form (not exec-array) so $PORT expands - hosting platforms (e.g.
 # Render) inject the port to bind at runtime; 8000 is the local fallback.
-CMD ["sh", "-c", "gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000}"]
+#
+# --timeout 60 (2026-09-04, real production incident - a chat request
+# with no trip_type/cost constraint, e.g. "montar um eurotrip de 5 dias",
+# scored the full destination catalog and hit gunicorn's *default* 30s
+# sync-worker timeout, which kills the whole worker process, not just the
+# one slow request): gunicorn's sync worker only checks in with its
+# arbiter once handle_request() returns, so a single request - streaming
+# or not - that runs longer than --timeout gets the entire worker
+# aborted mid-flight. This app's AI orchestration makes several
+# sequential OpenAI calls plus, per candidate destination, a climate
+# provider lookup (recommendations/scoring.py now caps that specific
+# loop's own time budget well under this value - see
+# CLIMATE_LOOKUP_TIME_BUDGET_SECONDS - but the LLM calls themselves have
+# no such cap and are a real, independent source of latency). 60s gives
+# real headroom above the climate budget without masking a genuinely
+# hung worker indefinitely.
+CMD ["sh", "-c", "gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --timeout 60"]

@@ -1,9 +1,13 @@
+import logging
+import time
 from dataclasses import dataclass
 
 from integrations.climate import ClimateProviderError, get_climate_provider
 from travel.models import Destination
 from trips.models import TravelHistoryEntry, Trip
 from users.models import TravelerProfile
+
+logger = logging.getLogger(__name__)
 
 # Tunable weights for the v1 scoring formula (05_AI_DESIGN.md §6). Kept as
 # simple constants rather than a config system - "should remain simple
@@ -13,6 +17,37 @@ REPETITION_PENALTY = 3.0
 BUDGET_FIT_WEIGHT = 0.5
 TEMPERATURE_FIT_WEIGHT = 0.1
 TEMPERATURE_FIT_CAP_C = 10.0
+
+# 2026-09-04, real production timeout ("montar um eurotrip de 5 dias" -
+# a request naming no trip_type/max_cost_of_living, so the 2026-09-02 fix
+# below has nothing to filter on and the DB-level candidate set is the
+# full ~384-destination catalog): the climate provider is only ever
+# queried synchronously, one destination at a time, each call bounded at
+# integrations.climate.open_meteo.REQUEST_TIMEOUT_SECONDS=5s. In normal
+# operation integrations.tasks.warm_climate_cache keeps this cache warm
+# well inside its 7-day TTL, so real requests rarely hit more than a
+# handful of cold entries - but "rarely" isn't "never" (a newly-added
+# destination, a just-expired entry, a transient warm-cache-task failure),
+# and gunicorn's default --timeout is only 30s, shared with however long
+# intent extraction/explanation generation already took. Enough cold
+# entries in a row - which an unconstrained, catalog-wide request like
+# this one makes far more likely - can still exceed that, and gunicorn
+# then kills the *entire worker process* (a much worse failure than one
+# missing destination). This budget bounds the worst case: once elapsed
+# wall-clock time in the loop below crosses it, stop looking up more
+# candidates and return whatever's already been scored, exactly the same
+# "graceful degradation, never let one slow lookup take down the whole
+# request" principle already applied to a single failed lookup
+# (ClimateProviderError -> skip and continue) two paragraphs down -
+# generalized from "this one lookup failed" to "we've spent our fair
+# share of the request's time budget." Deliberately sequential, not
+# parallelized - a real prior incident (see integrations/tasks.py's
+# warm_climate_cache docstring) found a burst of concurrent requests to
+# Open-Meteo's free API tripped its abuse protection in a way that
+# escaped `requests`' own per-call timeout entirely (a DNS/connection-level
+# hang, not a slow HTTP transfer) - trading a bounded, sequential partial
+# result for a small chance of a much worse, unbounded hang was rejected.
+CLIMATE_LOOKUP_TIME_BUDGET_SECONDS = 15.0
 
 
 @dataclass(frozen=True)
@@ -87,7 +122,19 @@ def generate_recommendations(
     visited_slugs = _visited_destination_slugs(request.user)
 
     scored = []
+    loop_started_at = time.monotonic()
     for destination in candidates:
+        if time.monotonic() - loop_started_at > CLIMATE_LOOKUP_TIME_BUDGET_SECONDS:
+            logger.warning(
+                "Climate lookup time budget (%ss) exceeded after scoring %s "
+                "destination(s) - returning partial results rather than risking "
+                "a request timeout. month=%s trip_type=%s",
+                CLIMATE_LOOKUP_TIME_BUDGET_SECONDS,
+                len(scored),
+                request.month,
+                request.trip_type,
+            )
+            break
         try:
             climate = climate_provider.get_monthly_climate(
                 latitude=float(destination.latitude),
