@@ -215,32 +215,6 @@ Create an account with any email provider or agree to their terms - the same bou
 
 ---
 
-## 7. IP-Based Country Detection for Automatic Language Suggestion — 🔵 NOT STARTED (Claude Code should not choose this alone)
-
-**2026-09-04, direct user request (automatic language detection spec)**: priority tier 4 of the requested detection order - "approximate IP geolocation as a fallback/context signal... never treat it as definitive proof of the user's preferred language." Everything else in that request is built and live (see the same-day `DEVELOPMENT_LOG.md` entry) - saved preference priority (account-level for authenticated visitors, cookie for anonymous), full browser Accept-Language detection, and a dismissible "prefer Wanderes in X?" suggestion banner driven entirely by the browser's own signal, no IP involved.
-
-**Why this one piece is a human decision and not just an implementation detail**, per `15_IMPLEMENTATION_GUIDE.md` §38 ("What Claude Code Should Not Decide Alone"): turning this on means sending every anonymous visitor's IP address somewhere new on every request (either to a third-party API in real time, or via a downloaded geolocation database that itself requires a new external account/license) - that's simultaneously "what data we collect," "whether a new technology should be introduced," and "how user privacy is interpreted," three separate items on that list. This app's footer already makes a live privacy promise to visitors ("We never store your message text or share this data with third parties") - starting to transmit IPs to an external geolocation service is a new category of third-party data flow that promise doesn't currently cover, so it deserves the same explicit sign-off as the AI provider and travel data provider choices got, not a quiet default.
-
-### What needs to be decided
-
-Whether to add IP-based country detection at all (the feature is fully useful and shippable without it - see above), and if so, which approach:
-
-1. **A third-party HTTP geolocation API** (e.g. ip-api.com, ipapi.co, ipinfo.io) - simplest to integrate (one HTTP call, same shape as the existing `integrations.climate` adapter pattern), but sends the visitor's real IP to that company on every request needing a lookup, subject to their own privacy policy and rate limits (most free tiers cap requests/minute and restrict commercial use).
-2. **A downloaded offline database** (e.g. MaxMind's free GeoLite2 Country `.mmdb`, via Django's own built-in `django.contrib.gis.geoip2` wrapper) - no per-request external call and no IP ever leaves this app's own servers, the more privacy-preserving option - but requires creating a free MaxMind account for a license key, and a periodic (MaxMind requires roughly monthly) database re-download to stay accurate, which is new operational surface (where does the file live in the Render deploy? Who/what refreshes it?).
-3. **Don't build it** - the feature already works well using only the browser-language signal (arguably the stronger, more directly-informative signal of the two per the original request's own example - "a visitor physically located in Portugal may still prefer English," which the browser's own language setting already reflects better than their location does).
-
-### What Claude Code can do once you decide
-
-Whichever way you go, the suggestion banner (`core.context_processors.language_suggestion`, `templates/base.html`, `static/js/main.js`) is already structured to take a second, independent signal alongside the existing browser-language one - adding IP-derived country as an additional input is a small, additive change, not a rewrite.
-
-### What Claude Code cannot do
-
-Create an account with MaxMind or any IP-geolocation API provider, agree to their terms, or decide which one's data-handling practices are acceptable to send visitor IPs to - the same boundary already documented for every other external provider in this file.
-
-**Reference:** `core/context_processors.py` (`_browser_preferred_language`, `language_suggestion` - the browser-only half already built), `core/middleware.py` (`UserLanguagePreferenceMiddleware`), `core/views.py` (`set_language`), `users/models.py` (`User.preferred_language`), `core/tests/test_language_detection.py`.
-
----
-
 ## How to unblock
 
 Reply with your decision(s) — even a partial one (e.g., "let's start with just a destination dataset and Anthropic Claude, defer flights/hotels") is enough to resume work. Claude Code will then:

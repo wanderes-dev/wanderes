@@ -51,10 +51,10 @@
                 <a href="{% url 'users:login' %}">{% trans "Log in" %}</a>
                 <a href="{% url 'users:register' %}">{% trans "Register" %}</a>
                 {% endif %}
-                <form id="lang-switcher-form" action="{% url 'set_language' %}" method="post" class="lang-switcher">
+                <form action="{% url 'set_language' %}" method="post" class="lang-switcher">
                     {% csrf_token %}
                     <input name="next" type="hidden" value="{{ request.path }}">
-                    <select id="lang-switcher-select" name="language" onchange="this.form.submit()" aria-label="{% trans "Language" %}">
+                    <select name="language" onchange="this.form.submit()" aria-label="{% trans "Language" %}">
                         {% for code, name in available_languages %}
                         <option value="{{ code }}" {% if code == LANGUAGE_CODE %}selected{% endif %}>{{ name }}</option>
                         {% endfor %}
@@ -71,16 +71,6 @@
         <li class="message {{ message.tags }}">{{ message }}</li>
         {% endfor %}
     </ul>
-    {% endif %}
-
-    {% if language_suggestion %}
-    <div id="language-suggestion" class="language-suggestion" data-language-code="{{ language_suggestion.code }}" hidden>
-        <span class="language-suggestion-text">🌐 {% blocktrans with language=language_suggestion.name %}Prefer Wanderes in {{ language }}?{% endblocktrans %}</span>
-        <div class="language-suggestion-actions">
-            <button type="button" class="language-suggestion-switch">{{ language_suggestion.name }}</button>
-            <button type="button" class="language-suggestion-dismiss">{% trans "Not now" %}</button>
-        </div>
-    </div>
     {% endif %}
 
     <main class="{% block content_class %}site-content{% endblock %}">

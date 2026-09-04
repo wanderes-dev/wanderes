@@ -1,9 +1,8 @@
 import json
 
 from django.conf import settings
-from django.utils.translation import get_language, get_supported_language_variant
+from django.utils.translation import get_language
 from django.utils.translation import gettext as _
-from django.utils.translation.trans_real import parse_accept_lang_header
 
 # Maps each supported LANGUAGES code to the full language_TERRITORY form
 # the Open Graph og:locale property expects (2026-09-04, translation
@@ -20,64 +19,6 @@ OG_LOCALE_BY_LANGUAGE = {
     "it": "it_IT",
     "fr": "fr_FR",
 }
-
-
-def _browser_preferred_language(request):
-    """The best supported language the browser's own Accept-Language
-    header asks for, ignoring any cookie/account override entirely -
-    2026-09-04, automatic language detection. Deliberately separate from
-    the *active* language (get_language()): the two can only ever differ
-    when an explicit preference (anonymous cookie or
-    users.User.preferred_language) already overrode the browser's own
-    signal, which is exactly the situation worth a subtle suggestion.
-
-    Reuses Django's own Accept-Language parsing/matching
-    (parse_accept_lang_header + get_supported_language_variant) - the
-    same functions LocaleMiddleware itself calls internally when there's
-    no cookie yet - rather than re-parsing the header by hand, so
-    "supported language" always means exactly what LANGUAGES/LOCALE_PATHS
-    already define. trans_real is technically a private submodule, but
-    parse_accept_lang_header has no public equivalent and is what
-    LocaleMiddleware's own get_language_from_request relies on."""
-    header = request.META.get("HTTP_ACCEPT_LANGUAGE", "")
-    for accept_lang, _priority in parse_accept_lang_header(header):
-        if accept_lang == "*":
-            continue
-        try:
-            return get_supported_language_variant(accept_lang)
-        except LookupError:
-            continue
-    return None
-
-
-def language_suggestion(request):
-    """A subtle "prefer Wanderes in <language>?" suggestion signal
-    (2026-09-04, automatic language detection) - None unless the
-    browser's own Accept-Language genuinely disagrees with the language
-    actually being shown right now. That only happens when an explicit
-    preference (anonymous django_language cookie, or an authenticated
-    user's saved preferred_language - see
-    core.middleware.UserLanguagePreferenceMiddleware) already overrode
-    the browser's signal: a first-time visitor with no saved preference
-    at all is already shown their browser's language automatically (by
-    Django's own LocaleMiddleware, no code needed here), so no suggestion
-    is ever shown to them - only to a *returning* visitor whose saved
-    choice and current browser now disagree (e.g. shared/borrowed device,
-    changed OS/browser language since). Deliberately never overrides the
-    active language itself - templates/base.html only ever renders this
-    as a dismissible suggestion, never an automatic switch, per the
-    2026-09-04 request ("Do NOT automatically switch... show a subtle
-    suggestion instead")."""
-    browser_lang = _browser_preferred_language(request)
-    active_lang = get_language()
-    if not browser_lang or browser_lang == active_lang:
-        return {"language_suggestion": None}
-    return {
-        "language_suggestion": {
-            "code": browser_lang,
-            "name": dict(settings.LANGUAGES).get(browser_lang, browser_lang),
-        }
-    }
 
 
 def site_meta(request):

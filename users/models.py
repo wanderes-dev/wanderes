@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.models import UserManager as DjangoUserManager
 from django.db import models
@@ -58,20 +57,6 @@ class User(AbstractUser):
 
     username = None
     email = models.EmailField("email address", unique=True)
-
-    # 2026-09-04, automatic language detection: an explicit language choice
-    # made while logged in, so it follows the account across devices/
-    # browsers rather than living only in the anonymous per-browser
-    # django_language cookie LocaleMiddleware already reads. Blank means
-    # "no explicit choice yet" - cookie/Accept-Language detection applies
-    # as normal (see core.middleware.UserLanguagePreferenceMiddleware,
-    # which activates this over the cookie/header whenever it's set).
-    preferred_language = models.CharField(
-        max_length=10,
-        choices=settings.LANGUAGES,
-        blank=True,
-        help_text=_("Explicit UI language choice, applied on every device once set."),
-    )
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []

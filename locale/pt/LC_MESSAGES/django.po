@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-04 16:47+0000\n"
+"POT-Creation-Date: 2026-09-04 15:00+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -206,7 +206,7 @@ msgstr ""
 msgid "Something went wrong on our end. Please try again."
 msgstr "Algo deu errado do nosso lado. Por favor, tente novamente."
 
-#: core/context_processors.py:107
+#: core/context_processors.py:48
 msgid ""
 "Wanderes is an intelligent travel consultant that recommends real "
 "destinations based on what travelers actually want."
@@ -380,16 +380,7 @@ msgstr "Registrar"
 msgid "Language"
 msgstr "Idioma"
 
-#: templates/base.html:78
-#, python-format
-msgid "Prefer Wanderes in %(language)s?"
-msgstr "Prefere a Wanderes em %(language)s?"
-
 #: templates/base.html:81
-msgid "Not now"
-msgstr "Agora não"
-
-#: templates/base.html:91
 msgid ""
 "We collect anonymized usage data (such as which features are used) to "
 "improve our recommendations. We never store your message text or share this "
@@ -884,40 +875,36 @@ msgstr ""
 "Informe o valor do orçamento, a moeda e o período juntos, ou deixe os três "
 "em branco."
 
-#: users/models.py:73
-msgid "Explicit UI language choice, applied on every device once set."
-msgstr "Escolha explícita de idioma da interface, aplicada em todos os dispositivos após ser definida."
-
-#: users/models.py:86
+#: users/models.py:71
 msgid "Per day"
 msgstr "Por dia"
 
-#: users/models.py:87
+#: users/models.py:72
 msgid "Per week"
 msgstr "Por semana"
 
-#: users/models.py:88
+#: users/models.py:73
 msgid "Per month"
 msgstr "Por mês"
 
-#: users/models.py:115
+#: users/models.py:100
 msgid "List of preferred trip type codes, e.g. ['beach', 'culture']."
 msgstr ""
 "Lista de códigos de tipos de viagem preferidos, ex.: ['beach', 'culture']."
 
-#: users/models.py:123
+#: users/models.py:108
 msgid "Where you usually travel from, e.g. 'Brazil'."
 msgstr "De onde você costuma viajar, ex.: 'Brasil'."
 
-#: users/models.py:128
+#: users/models.py:113
 msgid "How many people you usually travel with, including yourself."
 msgstr "Com quantas pessoas você costuma viajar, incluindo você mesmo."
 
-#: users/models.py:135
+#: users/models.py:120
 msgid "Typical travel budget, paired with budget_period."
 msgstr "Orçamento de viagem típico, associado ao budget_period."
 
-#: users/models.py:144
+#: users/models.py:129
 msgid "The currency budget_amount is stated in - required alongside it."
 msgstr "A moeda em que budget_amount é informado - obrigatória junto com ele."
 
@@ -1018,9 +1005,7 @@ msgstr "Verifique seu e-mail"
 msgid ""
 "If an account exists for that email address, we've sent a link to reset your "
 "password. It expires in 24 hours."
-msgstr ""
-"Se existir uma conta com esse endereço de e-mail, enviamos um link para "
-"redefinir sua senha. Ele expira em 24 horas."
+msgstr "Se existir uma conta com esse endereço de e-mail, enviamos um link para redefinir sua senha. Ele expira em 24 horas."
 
 #: users/templates/users/password_reset_done.html:15
 #: users/templates/users/password_reset_form.html:20
@@ -1035,9 +1020,7 @@ msgstr "Olá,"
 msgid ""
 "You're receiving this email because you (or someone else) requested a "
 "password reset for your Wanderes account."
-msgstr ""
-"Você está recebendo este e-mail porque você (ou outra pessoa) solicitou a "
-"redefinição de senha da sua conta Wanderes."
+msgstr "Você está recebendo este e-mail porque você (ou outra pessoa) solicitou a redefinição de senha da sua conta Wanderes."
 
 #: users/templates/users/password_reset_email.txt:5
 msgid "Click the link below to set a new password:"
@@ -1047,9 +1030,7 @@ msgstr "Clique no link abaixo para definir uma nova senha:"
 msgid ""
 "This link will expire in 24 hours. If you didn't request this, you can "
 "safely ignore this email - your password won't be changed."
-msgstr ""
-"Este link expirará em 24 horas. Se você não solicitou isso, pode ignorar "
-"este e-mail com segurança - sua senha não será alterada."
+msgstr "Este link expirará em 24 horas. Se você não solicitou isso, pode ignorar este e-mail com segurança - sua senha não será alterada."
 
 #: users/templates/users/password_reset_email.txt:10
 msgid "Thanks,"
@@ -1067,9 +1048,7 @@ msgstr "Redefina sua senha"
 #: users/templates/users/password_reset_form.html:13
 msgid ""
 "Enter your email address and we'll send you a link to set a new password."
-msgstr ""
-"Digite seu endereço de e-mail e enviaremos um link para você definir uma "
-"nova senha."
+msgstr "Digite seu endereço de e-mail e enviaremos um link para você definir uma nova senha."
 
 #: users/templates/users/password_reset_form.html:17
 msgid "Send reset link"
