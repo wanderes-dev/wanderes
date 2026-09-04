@@ -20,7 +20,7 @@
     <meta name="twitter:title" content="{% block twitter_title %}Wanderes{% endblock %}">
     <meta name="twitter:description" content="{% block twitter_description %}{% trans "Wanderes is an intelligent travel consultant. Tell it what you want from a trip and get real destination recommendations, grounded in real climate and cost data, with an honest explanation for every suggestion." %}{% endblock %}">
 
-    <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon.svg' %}">
+    <link rel="icon" type="image/png" href="{% static 'img/icon.png' %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap">
@@ -35,7 +35,7 @@
             <button type="button" class="nav-toggle" id="nav-toggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="site-nav">
                 <span></span><span></span><span></span>
             </button>
-            <a class="brand" href="{% url 'core:landing' %}">Wanderes</a>
+            <a class="brand" href="{% url 'core:landing' %}"><img src="{% static 'img/logo.png' %}" alt="Wanderes"></a>
             <nav class="site-nav" id="site-nav">
                 <a href="{% url 'ai:chat' %}">{% trans "Chat" %}</a>
                 {% if user.is_authenticated %}

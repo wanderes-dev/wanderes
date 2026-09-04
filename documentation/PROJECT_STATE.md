@@ -2,7 +2,7 @@
 
 > Purpose: let Claude (in any future session) resume exactly where the last session left off, without re-reading the entire conversation history. Update this file every time meaningful progress is made or the project pauses. This is the single source of truth for "where did we stop."
 
-**Last updated:** 2026-09-04 (Google icon on the login button; password reset via emailed token, code ready; 306/306 tests passing)
+**Last updated:** 2026-09-04 (real logo/favicon wired in - header brand is now `logo.png`, tab icon is `icon.png`; Google icon on the login button; password reset via emailed token, code ready; 306/306 tests passing)
 
 ## ⚠️ PENDING MANUAL ACTION — four independent items, none blocks other work
 
