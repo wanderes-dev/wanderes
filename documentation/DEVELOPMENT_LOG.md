@@ -1864,3 +1864,11 @@ Both had been flagged as ambiguous - possibly harness gaps rather than real app 
 **Tests**: `trips/tests/test_travel_history_views.py` updated - the old `test_list_requires_login`/`test_list_only_shows_own_entries` (which GET the now-removed list view) replaced with `test_trip_list_shows_history_entries_for_current_user_only` (asserting `trips:trip-list`'s `history_entries` context is correctly scoped to the caller); every redirect-target assertion updated from `trips:history-list` to `trips:trip-list`. 353/353 total passing, `ruff check .` clean, no migrations (confirmed via `makemigrations --check --dry-run`).
 
 **Verified live in a real browser**: logged in with a real trip and a real history entry on file - "My trips" (`/trips/`) shows both sections with a clean divider between them, the header/account page no longer show any separate history link, and the account page's single "My trips" card correctly describes both in the newly-translated copy.
+
+---
+
+## 2026-09-05 — Decision: IP-based country detection for the language suggestion banner - browser-only, no IP
+
+**Direct request: "vamos decidir a geolocalização por IP: usar só o navegador mesmo"** (let's decide on IP geolocation: just use the browser, really) - resolves `DECISIONS_PENDING.md` §7, the one open piece of the 2026-09-04 automatic language detection spec (priority 4, "approximate IP geolocation as a fallback/context signal"). Decision: don't build it - the feature stays exactly as already shipped, using only saved preference (account/cookie) and the browser's `Accept-Language` header.
+
+**No code change** - the browser-only path (`core.context_processors._browser_preferred_language`/`language_suggestion`, `UserLanguagePreferenceMiddleware`, `User.preferred_language`) was already the complete, live implementation; IP-based detection was always additive scaffolding that was never built, not a stub that needed removing. This entry, `DECISIONS_PENDING.md` §7, and `PROJECT_STATE.md`'s pending-actions list are the only things that changed - closing the open question rather than leaving it listed as still-undecided.
