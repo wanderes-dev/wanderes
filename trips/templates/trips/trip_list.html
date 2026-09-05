@@ -6,22 +6,50 @@
 
 {% block content %}
 <h1>{% trans "My trips" %}</h1>
-<p class="actions"><a href="{% url 'trips:trip-create' %}" class="btn">{% trans "Create a new trip" %}</a></p>
 
-{% if trips %}
-<ul class="item-list">
-    {% for trip in trips %}
-    <li>
-        <a class="item-title" href="{% url 'trips:trip-detail' trip.pk %}">
-            {{ trip.name|default:trip.destination.name }} - {{ trip.destination.name }}, {{ trip.destination.country }}
-        </a>
-        <span class="item-status">{{ trip.get_status_display }}</span>
-    </li>
-    {% endfor %}
-</ul>
-{% else %}
-<p class="empty-state">{% trans "You haven't saved any trips yet." %}</p>
-{% endif %}
+<section class="profile-section">
+    <p class="actions"><a href="{% url 'trips:trip-create' %}" class="btn">{% trans "Create a new trip" %}</a></p>
+
+    {% if trips %}
+    <ul class="item-list">
+        {% for trip in trips %}
+        <li>
+            <a class="item-title" href="{% url 'trips:trip-detail' trip.pk %}">
+                {{ trip.name|default:trip.destination.name }} - {{ trip.destination.name }}, {{ trip.destination.country }}
+            </a>
+            <span class="item-status">{{ trip.get_status_display }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">{% trans "You haven't saved any trips yet." %}</p>
+    {% endif %}
+</section>
+
+<section class="profile-section">
+    <h2>{% trans "Travel history" %}</h2>
+    <p class="profile-section-hint">{% trans "Places you've already been." %}</p>
+    <p class="actions"><a href="{% url 'trips:history-add' %}" class="btn">{% trans "Add a destination I've visited" %}</a></p>
+
+    {% if history_entries %}
+    <ul class="item-list">
+        {% for entry in history_entries %}
+        <li>
+            <span class="item-title">
+                {{ entry.destination.name }}, {{ entry.destination.country }}
+                {% if entry.visited_year %}({{ entry.visited_year }}){% endif %}
+            </span>
+            <span class="item-actions">
+                <a href="{% url 'trips:history-edit' entry.pk %}">{% trans "Edit" %}</a>
+                <a href="{% url 'trips:history-delete' entry.pk %}">{% trans "Delete" %}</a>
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">{% trans "You haven't recorded any past destinations yet." %}</p>
+    {% endif %}
+</section>
 
 <p><a href="{% url 'users:account' %}">{% trans "Back to my account" %}</a></p>
 {% endblock %}

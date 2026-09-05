@@ -10,6 +10,6 @@
 <form method="post" class="actions">
     {% csrf_token %}
     <button type="submit" class="btn btn-danger">{% trans "Remove" %}</button>
-    <a href="{% url 'trips:history-list' %}" class="btn btn-secondary">{% trans "Cancel" %}</a>
+    <a href="{% url 'trips:trip-list' %}" class="btn btn-secondary">{% trans "Cancel" %}</a>
 </form>
 {% endblock %}

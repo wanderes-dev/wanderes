@@ -13,12 +13,6 @@ FEEDBACK_TAG_LABELS = dict(FEEDBACK_TAG_CHOICES)
 
 
 @login_required
-def travel_history_list(request):
-    entries = TravelHistoryEntry.objects.filter(user=request.user).select_related("destination")
-    return render(request, "trips/travel_history_list.html", {"entries": entries})
-
-
-@login_required
 def travel_history_add(request):
     if request.method == "POST":
         form = TravelHistoryEntryForm(request.POST)
@@ -27,7 +21,7 @@ def travel_history_add(request):
             entry.user = request.user
             entry.save()
             messages.success(request, _("Added to your travel history."))
-            return redirect("trips:history-list")
+            return redirect("trips:trip-list")
     else:
         form = TravelHistoryEntryForm()
     return render(request, "trips/travel_history_form.html", {"form": form, "is_edit": False})
@@ -42,7 +36,7 @@ def travel_history_edit(request, pk):
         if form.is_valid():
             form.save()
             messages.success(request, _("Updated."))
-            return redirect("trips:history-list")
+            return redirect("trips:trip-list")
     else:
         form = TravelHistoryEntryForm(instance=entry)
     return render(request, "trips/travel_history_form.html", {"form": form, "is_edit": True})
@@ -54,14 +48,26 @@ def travel_history_delete(request, pk):
     if request.method == "POST":
         entry.delete()
         messages.success(request, _("Removed from your travel history."))
-        return redirect("trips:history-list")
+        return redirect("trips:trip-list")
     return render(request, "trips/travel_history_confirm_delete.html", {"entry": entry})
 
 
 @login_required
 def trip_list(request):
+    # 2026-09-05, direct request: "desfaça a aba my history, quero que o
+    # historico seja possivel consultar dentro de my trips" - travel
+    # history is no longer its own top-level nav destination
+    # (trips:history-list removed); it's shown as a second section on
+    # this same page instead. TravelHistoryEntry stays its own model/URLs
+    # (add/edit/delete) - only the standalone list page and nav entry are
+    # gone.
     trips = Trip.objects.filter(user=request.user).select_related("destination")
-    return render(request, "trips/trip_list.html", {"trips": trips})
+    history_entries = TravelHistoryEntry.objects.filter(user=request.user).select_related(
+        "destination"
+    )
+    return render(
+        request, "trips/trip_list.html", {"trips": trips, "history_entries": history_entries}
+    )
 
 
 @login_required

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-04 16:47+0000\n"
+"POT-Creation-Date: 2026-09-05 00:18+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -45,7 +45,7 @@ msgstr ""
 "sugestões cada vez melhores."
 
 #: ai/templates/ai/chat.html:347 ai/templates/ai/chat.html:406
-#: templates/base.html:51 users/templates/users/login.html:4
+#: templates/base.html:50 users/templates/users/login.html:4
 #: users/templates/users/login.html:16
 #: users/templates/users/password_reset_complete.html:15
 #: users/templates/users/register.html:32
@@ -351,45 +351,41 @@ msgid "Chat"
 msgstr "Chat"
 
 #: templates/base.html:42 trips/templates/trips/trip_list.html:4
-#: trips/templates/trips/trip_list.html:8 users/templates/users/account.html:37
+#: trips/templates/trips/trip_list.html:8 users/templates/users/account.html:30
 msgid "My trips"
 msgstr "Minhas viagens"
 
 #: templates/base.html:43
-msgid "My history"
-msgstr "Meu histórico"
-
-#: templates/base.html:44
 msgid "Profile"
 msgstr "Perfil"
 
-#: templates/base.html:45
+#: templates/base.html:44
 msgid "Account"
 msgstr "Conta"
 
-#: templates/base.html:48 users/templates/users/account.html:45
+#: templates/base.html:47 users/templates/users/account.html:38
 msgid "Log out"
 msgstr "Sair"
 
-#: templates/base.html:52 users/templates/users/register.html:4
+#: templates/base.html:51 users/templates/users/register.html:4
 #: users/templates/users/register.html:16
 msgid "Register"
 msgstr "Registrar"
 
-#: templates/base.html:57
+#: templates/base.html:56
 msgid "Language"
 msgstr "Idioma"
 
-#: templates/base.html:78
+#: templates/base.html:77
 #, python-format
 msgid "Prefer Wanderes in %(language)s?"
 msgstr "Prefere a Wanderes em %(language)s?"
 
-#: templates/base.html:81
+#: templates/base.html:80
 msgid "Not now"
 msgstr "Agora não"
 
-#: templates/base.html:91
+#: templates/base.html:90
 msgid ""
 "We collect anonymized usage data (such as which features are used) to "
 "improve our recommendations. We never store your message text or share this "
@@ -578,9 +574,9 @@ msgid "Cancel"
 msgstr "Cancelar"
 
 #: trips/templates/trips/travel_history_form.html:4
-#: trips/templates/trips/travel_history_list.html:20
 #: trips/templates/trips/trip_detail.html:34
 #: trips/templates/trips/trip_form.html:4
+#: trips/templates/trips/trip_list.html:43
 msgid "Edit"
 msgstr "Editar"
 
@@ -598,38 +594,15 @@ msgstr "Adicionar um destino visitado"
 
 #: trips/templates/trips/travel_history_form.html:12
 #: trips/templates/trips/trip_form.html:12
-#: users/templates/users/profile.html:68
+#: users/templates/users/profile.html:69
 msgid "Save"
 msgstr "Salvar"
 
 #: trips/templates/trips/travel_history_form.html:14
-msgid "Back to my travel history"
-msgstr "Voltar ao meu histórico de viagens"
-
-#: trips/templates/trips/travel_history_list.html:4
-#: trips/templates/trips/travel_history_list.html:8
-msgid "My travel history"
-msgstr "Meu histórico de viagens"
-
-#: trips/templates/trips/travel_history_list.html:9
-msgid "Add a destination I've visited"
-msgstr "Adicionar um destino que visitei"
-
-#: trips/templates/trips/travel_history_list.html:21
-#: trips/templates/trips/trip_confirm_delete.html:12
-#: trips/templates/trips/trip_detail.html:35
-msgid "Delete"
-msgstr "Excluir"
-
-#: trips/templates/trips/travel_history_list.html:27
-msgid "You haven't recorded any past destinations yet."
-msgstr "Você ainda não registrou nenhum destino visitado."
-
-#: trips/templates/trips/travel_history_list.html:30
-#: trips/templates/trips/trip_list.html:26
-#: users/templates/users/profile.html:69
-msgid "Back to my account"
-msgstr "Voltar à minha conta"
+#: trips/templates/trips/trip_detail.html:37
+#: trips/templates/trips/trip_form.html:14
+msgid "Back to my trips"
+msgstr "Voltar às minhas viagens"
 
 #: trips/templates/trips/trip_confirm_delete.html:4
 msgid "Delete trip"
@@ -638,6 +611,12 @@ msgstr "Excluir viagem"
 #: trips/templates/trips/trip_confirm_delete.html:8
 msgid "Delete this trip?"
 msgstr "Excluir esta viagem?"
+
+#: trips/templates/trips/trip_confirm_delete.html:12
+#: trips/templates/trips/trip_detail.html:35
+#: trips/templates/trips/trip_list.html:44
+msgid "Delete"
+msgstr "Excluir"
 
 #: trips/templates/trips/trip_detail.html:10
 #, python-format
@@ -682,11 +661,6 @@ msgstr "Editar feedback"
 msgid "Leave feedback"
 msgstr "Deixar feedback"
 
-#: trips/templates/trips/trip_detail.html:37
-#: trips/templates/trips/trip_form.html:14
-msgid "Back to my trips"
-msgstr "Voltar às minhas viagens"
-
 #: trips/templates/trips/trip_feedback_form.html:8
 #, python-format
 msgid "Feedback for %(name)s"
@@ -712,39 +686,60 @@ msgstr "Editar viagem"
 msgid "Create a trip"
 msgstr "Criar uma viagem"
 
-#: trips/templates/trips/trip_list.html:9
+#: trips/templates/trips/trip_list.html:11
 msgid "Create a new trip"
 msgstr "Criar uma nova viagem"
 
-#: trips/templates/trips/trip_list.html:23
+#: trips/templates/trips/trip_list.html:25
 msgid "You haven't saved any trips yet."
 msgstr "Você ainda não salvou nenhuma viagem."
 
-#: trips/views.py:29
+#: trips/templates/trips/trip_list.html:30
+msgid "Travel history"
+msgstr "Histórico de viagens"
+
+#: trips/templates/trips/trip_list.html:31
+msgid "Places you've already been."
+msgstr "Lugares onde você já esteve."
+
+#: trips/templates/trips/trip_list.html:32
+msgid "Add a destination I've visited"
+msgstr "Adicionar um destino que visitei"
+
+#: trips/templates/trips/trip_list.html:50
+msgid "You haven't recorded any past destinations yet."
+msgstr "Você ainda não registrou nenhum destino visitado."
+
+#: trips/templates/trips/trip_list.html:54
+#: users/templates/users/profile.html:70
+msgid "Back to my account"
+msgstr "Voltar à minha conta"
+
+#: trips/views.py:23
 msgid "Added to your travel history."
 msgstr "Adicionado ao seu histórico de viagens."
 
-#: trips/views.py:44
+#: trips/views.py:38
 msgid "Updated."
 msgstr "Atualizado."
 
-#: trips/views.py:56
+#: trips/views.py:50
 msgid "Removed from your travel history."
 msgstr "Removido do seu histórico de viagens."
 
-#: trips/views.py:93
+#: trips/views.py:99
 msgid "Trip saved."
 msgstr "Viagem salva."
 
-#: trips/views.py:121
+#: trips/views.py:127
 msgid "Trip updated."
 msgstr "Viagem atualizada."
 
-#: trips/views.py:133
+#: trips/views.py:139
 msgid "Trip deleted."
 msgstr "Viagem excluída."
 
-#: trips/views.py:162
+#: trips/views.py:168
 msgid "Thanks for your feedback!"
 msgstr "Obrigado pelo seu feedback!"
 
@@ -886,7 +881,9 @@ msgstr ""
 
 #: users/models.py:73
 msgid "Explicit UI language choice, applied on every device once set."
-msgstr "Escolha explícita de idioma da interface, aplicada em todos os dispositivos após ser definida."
+msgstr ""
+"Escolha explícita de idioma da interface, aplicada em todos os dispositivos "
+"após ser definida."
 
 #: users/models.py:86
 msgid "Per day"
@@ -938,17 +935,9 @@ msgstr "Perfil de viajante"
 msgid "Preferences that shape your recommendations"
 msgstr "Preferências que moldam suas recomendações"
 
-#: users/templates/users/account.html:30
-msgid "Travel history"
-msgstr "Histórico de viagens"
-
 #: users/templates/users/account.html:31
-msgid "Places you've already been"
-msgstr "Lugares onde você já esteve"
-
-#: users/templates/users/account.html:38
-msgid "Plans you're building or have saved"
-msgstr "Planos que você está montando ou salvou"
+msgid "Plans you're building, past visits, or saved recommendations"
+msgstr "Planos que você está montando, visitas passadas ou recomendações salvas"
 
 #: users/templates/users/login.html:11
 msgid "Welcome back"
@@ -1079,11 +1068,11 @@ msgstr "Enviar link de redefinição"
 msgid "Reset your Wanderes password"
 msgstr "Redefina sua senha da Wanderes"
 
-#: users/templates/users/profile.html:4 users/templates/users/profile.html:8
+#: users/templates/users/profile.html:4 users/templates/users/profile.html:9
 msgid "My traveler profile"
 msgstr "Meu perfil de viajante"
 
-#: users/templates/users/profile.html:10
+#: users/templates/users/profile.html:11
 msgid ""
 "Tell Wander more about how you like to travel - this shapes every "
 "recommendation."
@@ -1091,15 +1080,15 @@ msgstr ""
 "Conte mais ao Wander sobre como você gosta de viajar - isso molda cada "
 "recomendação."
 
-#: users/templates/users/profile.html:20
+#: users/templates/users/profile.html:21
 msgid "Trip preferences"
 msgstr "Preferências de viagem"
 
-#: users/templates/users/profile.html:34
+#: users/templates/users/profile.html:35
 msgid "Travel details"
 msgstr "Detalhes da viagem"
 
-#: users/templates/users/profile.html:36
+#: users/templates/users/profile.html:37
 msgid ""
 "Helps Wander tailor suggestions to your trips - optional, fill in what "
 "applies."

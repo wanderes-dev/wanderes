@@ -26,11 +26,6 @@ class TravelHistoryViewsTests(TestCase):
             points_of_interest=[],
         )
 
-    def test_list_requires_login(self):
-        response = self.client.get(reverse("trips:history-list"))
-
-        self.assertEqual(response.status_code, 302)
-
     def test_add_creates_entry_for_current_user(self):
         self.client.force_login(self.user)
 
@@ -39,19 +34,25 @@ class TravelHistoryViewsTests(TestCase):
             {"destination": self.destination.pk, "visited_year": 2019},
         )
 
-        self.assertRedirects(response, reverse("trips:history-list"))
+        self.assertRedirects(response, reverse("trips:trip-list"))
         entry = TravelHistoryEntry.objects.get(user=self.user)
         self.assertEqual(entry.destination, self.destination)
         self.assertEqual(entry.visited_year, 2019)
 
-    def test_list_only_shows_own_entries(self):
+    def test_trip_list_shows_history_entries_for_current_user_only(self):
+        # 2026-09-05, direct request: travel history is no longer its own
+        # top-level page (trips:history-list removed) - it's a second
+        # section on trips:trip-list instead.
         TravelHistoryEntry.objects.create(user=self.other_user, destination=self.destination)
+        entry = TravelHistoryEntry.objects.create(
+            user=self.user, destination=self.destination, visited_year=2019
+        )
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("trips:history-list"))
+        response = self.client.get(reverse("trips:trip-list"))
 
         self.assertNotContains(response, "other@example.com")
-        self.assertEqual(list(response.context["entries"]), [])
+        self.assertEqual(list(response.context["history_entries"]), [entry])
 
     def test_cannot_edit_another_users_entry(self):
         entry = TravelHistoryEntry.objects.create(
@@ -74,7 +75,7 @@ class TravelHistoryViewsTests(TestCase):
             {"destination": self.destination.pk, "visited_year": 2021},
         )
 
-        self.assertRedirects(response, reverse("trips:history-list"))
+        self.assertRedirects(response, reverse("trips:trip-list"))
         entry.refresh_from_db()
         self.assertEqual(entry.visited_year, 2021)
 
@@ -84,7 +85,7 @@ class TravelHistoryViewsTests(TestCase):
 
         response = self.client.post(reverse("trips:history-delete", args=[entry.pk]))
 
-        self.assertRedirects(response, reverse("trips:history-list"))
+        self.assertRedirects(response, reverse("trips:trip-list"))
         self.assertFalse(TravelHistoryEntry.objects.filter(pk=entry.pk).exists())
 
     def test_cannot_delete_another_users_entry(self):
