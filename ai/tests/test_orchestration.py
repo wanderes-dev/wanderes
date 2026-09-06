@@ -7,6 +7,8 @@ from ai.orchestration import (
     FALLBACK_REPLY,
     MAX_RECOMMENDATIONS,
     NEEDS_LOGIN_REPLY,
+    _extract_climate_budget_signal,
+    _validate_climate_budget,
     get_travel_recommendation,
     stream_travel_recommendation,
 )
@@ -63,6 +65,40 @@ class StubAIProvider:
     def stream_reply(self, messages, *, max_tokens=None, temperature=None):
         self.stream_reply_calls.append(messages)
         self.stream_reply_temperatures.append(temperature)
+        for word in self.reply_text.split(" "):
+            yield word + " "
+
+
+class SchemaAwareStubAIProvider:
+    """Like StubAIProvider, but generate_structured_reply's response
+    depends on which schema was requested. StubAIProvider returns the same
+    canned response for any schema, which can't simulate the combined
+    intent-extraction call ("travel_message") and the isolated climate/
+    budget call ("climate_budget_signal") returning genuinely different
+    things - exactly the scenario the 2026-09-06 structural fix needs to
+    be tested against (see ClimateBudgetSignalTests)."""
+
+    def __init__(self, *, responses_by_schema, reply_text="Here's my recommendation."):
+        self.responses_by_schema = responses_by_schema
+        self.reply_text = reply_text
+        self.generate_structured_reply_calls = []
+        self.stream_reply_calls = []
+
+    def generate_structured_reply(
+        self, messages, *, json_schema, max_tokens=None, temperature=None
+    ):
+        self.generate_structured_reply_calls.append(messages)
+        return self.responses_by_schema[json_schema["name"]]
+
+    def generate_reply(self, messages, *, max_tokens=None):
+        last_content = messages[-1].content
+        marker = "this applies just as much to English as to any other language: "
+        idx = last_content.find(marker)
+        content = last_content[idx + len(marker) :] if idx != -1 else last_content
+        return AIResponse(content=content, model="stub", prompt_tokens=0, completion_tokens=0)
+
+    def stream_reply(self, messages, *, max_tokens=None, temperature=None):
+        self.stream_reply_calls.append(messages)
         for word in self.reply_text.split(" "):
             yield word + " "
 
@@ -1781,3 +1817,135 @@ class ConversationMemoryTests(TestCase):
         key = memory.conversation_key(user=None, session_key="session-stream")
         history = memory.get_history(key)
         self.assertEqual(history[-1], {"role": "assistant", "content": full_reply})
+
+
+class ClimateBudgetSignalTests(TestCase):
+    """2026-09-06 structural fix, round 2: min_temp_c/max_temp_c/
+    max_cost_of_living are now extracted from the current message alone
+    (no history), overwriting whatever the combined intent-extraction call
+    produced, and merged with an accumulator so real multi-turn
+    combining still works. See DEVELOPMENT_LOG.md for the two prior
+    (reverted) prompt-only attempts and why they weren't enough."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+
+    def test_validate_climate_budget_rejects_out_of_range_cost_tier(self):
+        result = _validate_climate_budget(
+            {"min_temp_c": None, "max_temp_c": None, "max_cost_of_living": 99}
+        )
+
+        self.assertIsNone(result["max_cost_of_living"])
+
+    def test_validate_climate_budget_drops_contradictory_temperature_range(self):
+        result = _validate_climate_budget(
+            {"min_temp_c": 30, "max_temp_c": 20, "max_cost_of_living": None}
+        )
+
+        self.assertIsNone(result["min_temp_c"])
+        self.assertIsNone(result["max_temp_c"])
+
+    def test_validate_climate_budget_passes_through_valid_values(self):
+        result = _validate_climate_budget(
+            {"min_temp_c": 22, "max_temp_c": 30, "max_cost_of_living": 3}
+        )
+
+        self.assertEqual(result, {"min_temp_c": 22, "max_temp_c": 30, "max_cost_of_living": 3})
+
+    def test_extract_climate_budget_signal_sends_no_history(self):
+        ai_provider = StubAIProvider(
+            structured_response={"min_temp_c": 22, "max_temp_c": None, "max_cost_of_living": None}
+        )
+
+        result = _extract_climate_budget_signal("somewhere warm", ai_provider=ai_provider)
+
+        self.assertEqual(result["min_temp_c"], 22)
+        # Just the system prompt + the current message - this call never
+        # receives conversation history, by design.
+        sent_messages = ai_provider.generate_structured_reply_calls[0]
+        self.assertEqual(len(sent_messages), 2)
+
+    def test_extract_climate_budget_signal_degrades_gracefully_on_provider_failure(self):
+        result = _extract_climate_budget_signal("somewhere warm", ai_provider=FailingAIProvider())
+
+        self.assertEqual(
+            result, {"min_temp_c": None, "max_temp_c": None, "max_cost_of_living": None}
+        )
+
+    def test_isolated_call_overrides_a_contaminated_combined_extraction(self):
+        # Simulates exactly the reported bug: the combined call (as if
+        # contaminated by destination names/descriptions in history) comes
+        # back with min_temp_c=28, but the isolated call - correctly,
+        # since the current message says nothing about climate - returns
+        # null. The isolated call's result must win.
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(
+                    message_type="recommendation", trip_type="beach", min_temp_c=28.0
+                ),
+                "climate_budget_signal": {
+                    "min_temp_c": None,
+                    "max_temp_c": None,
+                    "max_cost_of_living": None,
+                },
+            }
+        )
+
+        result = get_travel_recommendation(
+            "comer",
+            session_key="climate-budget-override",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertTrue(
+            all(r.temperature_fit == 0 for r in result.recommendations),
+            "expected no temperature fit - the isolated call said min_temp_c=None",
+        )
+
+    def test_climate_signal_from_an_earlier_turn_carries_forward(self):
+        first_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(message_type="recommendation", trip_type="beach"),
+                "climate_budget_signal": {
+                    "min_temp_c": 22,
+                    "max_temp_c": None,
+                    "max_cost_of_living": None,
+                },
+            },
+            reply_text="Here's a warm beach suggestion!",
+        )
+        get_travel_recommendation(
+            "somewhere warm and beachy",
+            session_key="climate-budget-carry",
+            ai_provider=first_provider,
+            climate_provider=self.climate,
+        )
+
+        # Second turn's own message says nothing about climate - the
+        # isolated call correctly returns null for it - but the earlier
+        # turn's min_temp_c=22 should still apply via the accumulator.
+        second_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(message_type="recommendation", trip_type="beach"),
+                "climate_budget_signal": {
+                    "min_temp_c": None,
+                    "max_temp_c": None,
+                    "max_cost_of_living": None,
+                },
+            }
+        )
+        result = get_travel_recommendation(
+            "comer",
+            session_key="climate-budget-carry",
+            ai_provider=second_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertTrue(
+            any(r.temperature_fit > 0 for r in result.recommendations),
+            "expected the earlier turn's min_temp_c=22 to still apply",
+        )

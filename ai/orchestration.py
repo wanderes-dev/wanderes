@@ -345,6 +345,78 @@ INTENT_SCHEMA = {
     },
 }
 
+# 2026-09-06 structural fix, round 2: min_temp_c/max_temp_c/max_cost_of_living
+# are extracted a SECOND time here, from the current message ALONE - no
+# conversation history at all - and that result overwrites whatever
+# INTENT_SCHEMA's own combined call produced for these same three fields
+# (see the call site in stream_travel_recommendation). The regex-based
+# sanitize_reply_for_context() (ai/memory.py) closes the exact "AI repeats
+# its own literal numbers" vector, but live testing found the model can
+# still reconstruct a similar climate/budget assumption from destination
+# names/descriptions alone once history is involved at all (e.g. "Phuket"
+# implies warmth via general knowledge, no digits needed). Giving this
+# extraction no history whatsoever makes that structurally impossible,
+# not just discouraged by instruction - two separate attempts to fix this
+# by strengthening INTENT_EXTRACTION_SYSTEM_PROMPT's own history-handling
+# instructions were tried and reverted (see DEVELOPMENT_LOG.md) after each
+# one broke a different, previously-correct case. Multi-turn combining
+# ("praia" -> "orçamento baixo" across turns) is preserved via
+# ai.memory.update_climate_budget()'s accumulator, not by this call
+# remembering anything itself.
+CLIMATE_BUDGET_SCHEMA = {
+    "name": "climate_budget_signal",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "min_temp_c": {"type": ["number", "null"]},
+            "max_temp_c": {"type": ["number", "null"]},
+            "max_cost_of_living": {"type": ["integer", "null"]},
+        },
+        "required": ["min_temp_c", "max_temp_c", "max_cost_of_living"],
+        "additionalProperties": False,
+    },
+}
+
+CLIMATE_BUDGET_SYSTEM_PROMPT = (
+    "Extract a temperature preference and/or a budget preference from THIS "
+    "ONE MESSAGE ALONE. You are deliberately given no conversation history "
+    "and must judge only the words in front of you - if this message alone "
+    "doesn't state a climate or budget preference, leave the corresponding "
+    "field(s) null, even if you suspect earlier turns in the conversation "
+    "might have mentioned one; a separate mechanism outside this call "
+    "carries a real earlier preference forward, so you never need to (and "
+    "should not try to) guess or recall one here.\n"
+    "The traveler may write in any language - understand it and extract "
+    "from it the same way regardless of language.\n"
+    "- Temperature (min_temp_c): 'hot' -> 28, 'warm' -> 22, 'mild' -> 18. "
+    "If the user wants somewhere cool or cold, or says nothing at all "
+    "about temperature, leave min_temp_c null.\n"
+    "- Upper temperature bound (max_temp_c): the mirror image of "
+    "min_temp_c, for when the user wants an upper limit instead of (or as "
+    "well as) a lower one - 'not too hot'/'nothing extreme' -> 30, "
+    "'cool'/'mild, not hot' -> 22, 'cold'/'chilly'/'somewhere cool and "
+    "crisp' -> 15. Only set this from words that are themselves about an "
+    "upper temperature limit or wanting it cool/cold. A message can set "
+    "both min_temp_c and max_temp_c together (e.g. 'mild, not too hot and "
+    "not too cold') or just one.\n"
+    "- Budget (max_cost_of_living, a 1-5 scale where 1 is cheapest): "
+    "'very cheap'/'budget'/'affordable' -> 2, 'cheap'/'not too expensive'/"
+    "'inexpensive' -> 3, 'moderate'/'mid-range' -> 4. If the user wants "
+    "luxury, or says nothing at all about budget, leave max_cost_of_living "
+    "null. Words describing a travel style or atmosphere - 'refined'/"
+    "'refinado', 'upscale', 'elegant', 'sophisticated', 'classy' - are NOT "
+    "budget words: they describe the kind of place someone wants, not "
+    "what they're willing to pay, and fall under the same 'wants luxury' "
+    "case above - leave max_cost_of_living null for these too.\n"
+    "Naming a destination, a trip type (beach/city/nature/culture), or a "
+    "month never by itself implies a temperature or budget, no matter how "
+    "strongly it's stereotypically associated with one - only set these "
+    "fields from words that are themselves about temperature or money. If "
+    "min_temp_c and max_temp_c would contradict each other (min above "
+    "max), leave both null instead."
+)
+
 
 @dataclass(frozen=True)
 class OrchestrationResult:
@@ -572,6 +644,21 @@ def stream_travel_recommendation(
     # through the same AI-judgment "ask a genuine follow-up, or suggest if
     # they've explicitly invited a guess" path used for a fully blank
     # opener, unless there's actually enough to differentiate on.
+    #
+    # min_temp_c/max_temp_c/max_cost_of_living are re-derived here from
+    # THIS message alone (2026-09-06 structural fix, round 2 - see
+    # CLIMATE_BUDGET_SYSTEM_PROMPT), overwriting whatever the combined
+    # extraction above produced for these three fields, and merged with
+    # whatever this conversation already had accumulated so a real
+    # multi-turn preference still combines across turns even though this
+    # extraction itself never sees history.
+    climate_budget = _extract_climate_budget_signal(message, ai_provider=ai_provider)
+    if conv_key is not None:
+        climate_budget = memory.update_climate_budget(conv_key, **climate_budget)
+    intent["min_temp_c"] = climate_budget["min_temp_c"]
+    intent["max_temp_c"] = climate_budget["max_temp_c"]
+    intent["max_cost_of_living"] = climate_budget["max_cost_of_living"]
+
     has_enough_signal = (
         intent["min_temp_c"] is not None
         or intent["max_temp_c"] is not None
@@ -1172,6 +1259,60 @@ def _extract_intent(
     return _validate_intent(data)
 
 
+def _extract_climate_budget_signal(message: str, *, ai_provider: AIProvider) -> dict:
+    """Derive min_temp_c/max_temp_c/max_cost_of_living from THIS message
+    alone - deliberately no conversation history at all. See
+    CLIMATE_BUDGET_SYSTEM_PROMPT's own comment and DEVELOPMENT_LOG.md
+    (2026-09-06) for why: a history-aware version of this extraction let
+    the model reconstruct a climate/budget assumption from destination
+    names/descriptions the AI itself had mentioned earlier, even after
+    sanitize_reply_for_context() stripped the literal numbers out of what
+    gets remembered. Giving this call no history closes that structurally
+    - not just by instruction - regardless of what the model would
+    otherwise infer."""
+    messages = [
+        AIMessage(role="system", content=CLIMATE_BUDGET_SYSTEM_PROMPT),
+        AIMessage(role="user", content=message),
+    ]
+    try:
+        data = ai_provider.generate_structured_reply(
+            messages, json_schema=CLIMATE_BUDGET_SCHEMA, temperature=0
+        )
+    except AIProviderError:
+        logger.warning(
+            "Could not extract an isolated climate/budget signal - AI provider failure. "
+            "message=%r",
+            message,
+        )
+        data = {"min_temp_c": None, "max_temp_c": None, "max_cost_of_living": None}
+    return _validate_climate_budget(data)
+
+
+def _validate_climate_budget(data: dict) -> dict:
+    """The max_cost_of_living range check and min_temp_c/max_temp_c
+    contradiction check - shared by _validate_intent (the combined call)
+    and _extract_climate_budget_signal (the isolated call), so both apply
+    the exact same rules rather than risking the two drifting apart."""
+    max_cost_of_living = data.get("max_cost_of_living")
+    if max_cost_of_living is not None and not (1 <= max_cost_of_living <= MAX_COST_OF_LIVING_TIER):
+        max_cost_of_living = None
+
+    min_temp_c = data.get("min_temp_c")
+    max_temp_c = data.get("max_temp_c")
+    if min_temp_c is not None and max_temp_c is not None and min_temp_c > max_temp_c:
+        # A contradictory extraction (e.g. "warm but not too hot" landing
+        # min > max) - drop both rather than pass a range hard_constraints
+        # in scoring.py would filter every destination out on.
+        min_temp_c = None
+        max_temp_c = None
+
+    return {
+        "min_temp_c": min_temp_c,
+        "max_temp_c": max_temp_c,
+        "max_cost_of_living": max_cost_of_living,
+    }
+
+
 def _validate_intent(data: dict) -> dict:
     # Response Validation (09_AI_ORCHESTRATION.md §9): never trust the
     # model's structured output blindly, even with a schema.
@@ -1195,18 +1336,7 @@ def _validate_intent(data: dict) -> dict:
         data["month"] = date.today().month
         data["month_was_assumed"] = True
 
-    max_cost_of_living = data.get("max_cost_of_living")
-    if max_cost_of_living is not None and not (1 <= max_cost_of_living <= MAX_COST_OF_LIVING_TIER):
-        data["max_cost_of_living"] = None
-
-    min_temp_c = data.get("min_temp_c")
-    max_temp_c = data.get("max_temp_c")
-    if min_temp_c is not None and max_temp_c is not None and min_temp_c > max_temp_c:
-        # A contradictory extraction (e.g. "warm but not too hot" landing
-        # min > max) - drop both rather than pass a range hard_constraints
-        # in scoring.py would filter every destination out on.
-        data["min_temp_c"] = None
-        data["max_temp_c"] = None
+    data.update(_validate_climate_budget(data))
 
     if data.get("trip_type") not in {*TRIP_TYPE_CODES, None}:
         data["trip_type"] = None

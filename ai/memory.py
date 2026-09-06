@@ -88,6 +88,56 @@ def clear_history(key: str) -> None:
     conversations feature), so a fresh thread doesn't silently inherit
     context from whatever was last discussed under the same key."""
     cache.delete(key)
+    cache.delete(_climate_budget_key(key))
+
+
+def _climate_budget_key(key: str) -> str:
+    return f"{key}:climate-budget"
+
+
+_NO_CLIMATE_BUDGET = {"min_temp_c": None, "max_temp_c": None, "max_cost_of_living": None}
+
+
+def get_climate_budget(key: str) -> dict:
+    """The conversation's accumulated climate/budget constraints - built up
+    across turns by update_climate_budget(), never re-derived from raw
+    history (see that function's docstring for why)."""
+    return cache.get(_climate_budget_key(key)) or dict(_NO_CLIMATE_BUDGET)
+
+
+def update_climate_budget(
+    key: str,
+    *,
+    min_temp_c: float | None = None,
+    max_temp_c: float | None = None,
+    max_cost_of_living: int | None = None,
+) -> dict:
+    """Merge this turn's own (history-free) climate/budget signal into the
+    conversation's accumulated constraints - a field only overwrites the
+    previous value when THIS call passes something non-null for it;
+    otherwise the earlier turn's value carries forward unchanged.
+
+    2026-09-06: this replaces letting ai.orchestration's intent extraction
+    re-derive min_temp_c/max_temp_c/max_cost_of_living from full
+    conversation history every turn - even with sanitize_reply_for_context()
+    stripping literal numbers, the model could still reconstruct a similar
+    assumption from destination names/descriptions alone (e.g. "Phuket"
+    implying warmth). Extracting these three fields from a single message
+    in isolation (no history at all - see
+    ai.orchestration._extract_climate_budget_signal) makes that
+    structurally impossible; this accumulator is what still lets a real
+    multi-turn preference ("praia" -> "orçamento baixo") combine across
+    turns despite each extraction only ever seeing one message."""
+    current = get_climate_budget(key)
+    merged = {
+        "min_temp_c": min_temp_c if min_temp_c is not None else current["min_temp_c"],
+        "max_temp_c": max_temp_c if max_temp_c is not None else current["max_temp_c"],
+        "max_cost_of_living": (
+            max_cost_of_living if max_cost_of_living is not None else current["max_cost_of_living"]
+        ),
+    }
+    cache.set(_climate_budget_key(key), merged, CONVERSATION_TTL_SECONDS)
+    return merged
 
 
 def _profile_confirmed_key(key: str) -> str:
