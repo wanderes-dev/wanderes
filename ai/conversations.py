@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
+from .memory import sanitize_reply_for_context
 from .models import SavedConversation
 from .provider import AIMessage, AIProvider, AIProviderError, get_ai_provider
 
@@ -144,7 +145,9 @@ def _append_turn(
     is_new: bool,
 ) -> SaveResult:
     conversation.messages.append({"role": "user", "content": user_message})
-    conversation.messages.append({"role": "assistant", "content": assistant_reply})
+    conversation.messages.append(
+        {"role": "assistant", "content": sanitize_reply_for_context(assistant_reply)}
+    )
 
     # Only ever True on the exact turn that pushes the total over MAX_CHARS
     # - record_turn() already returned early above for a conversation that

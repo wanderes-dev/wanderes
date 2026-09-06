@@ -1,3 +1,5 @@
+import re
+
 from django.core.cache import cache
 
 # Conversation Memory (09_AI_ORCHESTRATION.md §7): short-term "conversation
@@ -35,6 +37,37 @@ def get_history(key: str) -> list[dict]:
     return cache.get(key) or []
 
 
+# 2026-09-06 bug: a later turn's intent extraction (ai.orchestration) was
+# reading these exact figures back out of conversation history and
+# misattributing them to the traveler - e.g. a one-word follow-up like
+# "comer" after a reply suggesting destinations with illustrative
+# temperatures/cost tiers would set min_temp_c/max_cost_of_living from
+# numbers the AI itself had stated, not anything the traveler said. Two
+# attempts to fix this by strengthening the extraction prompt were tried
+# and reverted - both broke a different, previously-correct case without
+# fixing this one (see DEVELOPMENT_LOG.md). This is a structural fix
+# instead: strip these figures from what's actually persisted for future
+# context, so a later extraction call can never see them at all, whatever
+# the model would otherwise do with them.
+_TEMPERATURE_PATTERN = re.compile(
+    r"-?\d{1,3}(?:[.,]\d+)?\s*(?:-\s*-?\d{1,3}(?:[.,]\d+)?)?\s*°\s*C", re.IGNORECASE
+)
+_COST_TIER_PATTERN = re.compile(r"\b[1-5]\s*/\s*5\b")
+
+
+def sanitize_reply_for_context(assistant_reply: str) -> str:
+    """Strip temperature (e.g. "31°C", "18-20°C") and cost-tier (e.g.
+    "4/5") figures from an assistant reply before it's persisted as
+    conversation context. Only affects what gets remembered for later
+    extraction - never the reply actually streamed to the traveler, and
+    never what's used to generate a saved conversation's title (see
+    ai.conversations._generate_subject, which intentionally keeps using
+    the raw text). Not exhaustive - only the specific patterns confirmed
+    to cause real contamination; see the note above."""
+    sanitized = _TEMPERATURE_PATTERN.sub("[temp]", assistant_reply)
+    return _COST_TIER_PATTERN.sub("[cost]", sanitized)
+
+
 def append_turn(key: str, *, user_message: str, assistant_reply: str) -> None:
     """Record one exchange, trimming to the most recent MAX_HISTORY_MESSAGES
     and refreshing the TTL - called once per handled message, regardless of
@@ -42,7 +75,9 @@ def append_turn(key: str, *, user_message: str, assistant_reply: str) -> None:
     clarification, fallback) produced the reply."""
     history = get_history(key)
     history.append({"role": "user", "content": user_message})
-    history.append({"role": "assistant", "content": assistant_reply})
+    history.append(
+        {"role": "assistant", "content": sanitize_reply_for_context(assistant_reply)}
+    )
     history = history[-MAX_HISTORY_MESSAGES:]
     cache.set(key, history, CONVERSATION_TTL_SECONDS)
 

@@ -82,6 +82,36 @@ class RecordTurnTests(TestCase):
         )
         self.assertEqual(len(provider.generate_reply_calls), 1)
 
+    def test_stores_a_sanitized_reply_but_generates_subject_from_the_raw_text(self):
+        # 2026-09-06 bug: a later turn's intent extraction was reading
+        # temperature/cost-tier figures back out of a SavedConversation's
+        # stored messages (used as history_override) and misattributing
+        # them to the traveler. Structural fix: strip those figures from
+        # what's persisted, but keep using the raw reply for the subject,
+        # since that's unrelated to the bug and benefits from real text.
+        provider = StubAIProvider(subject="Beach trip planning")
+
+        result = record_turn(
+            user=self.user,
+            conversation=None,
+            save_requested=True,
+            user_message="quero uma praia mais refinada para dezembro",
+            assistant_reply="Santorini (18-20°C, custo 4/5) e Phuket (31°C, custo 4/5).",
+            ai_provider=provider,
+        )
+
+        self.assertTrue(result.saved)
+        conversation = SavedConversation.objects.get(pk=result.conversation_id)
+        stored_reply = conversation.messages[1]["content"]
+        self.assertNotIn("18-20°C", stored_reply)
+        self.assertNotIn("31°C", stored_reply)
+        self.assertNotIn("4/5", stored_reply)
+        self.assertIn("[temp]", stored_reply)
+        self.assertIn("[cost]", stored_reply)
+        # Subject generation still saw the real figures.
+        subject_call_content = provider.generate_reply_calls[0][1].content
+        self.assertIn("31°C", subject_call_content)
+
     def test_continues_existing_conversation_without_regenerating_subject(self):
         conversation = SavedConversation.objects.create(user=self.user, subject="Existing trip")
         conversation.messages = [
