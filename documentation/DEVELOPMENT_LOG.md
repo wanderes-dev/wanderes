@@ -1914,3 +1914,16 @@ Both had been flagged as ambiguous - possibly harness gaps rather than real app 
 **Explicit instruction carried forward**: the pending application must not block other product development - the `AccommodationProvider` abstraction stays decoupled from Booking.com specifically so it (or another provider) can be wired in later without touching core recommendation logic.
 
 **What changed**: documentation only. `10_EXTERNAL_INTEGRATIONS.md` §13.8 gained a same-day status-update block with all of the above. `DECISIONS_PENDING.md` §4 gained a matching dated update. `PROJECT_STATE.md`'s summary line and Booking.com scaffolding note were both updated. **No code, tests, settings, or migrations changed** - `integrations/hotels/booking_com.py` remains the same `NotImplementedError` skeleton from 2026-09-04.
+
+
+---
+
+## 2026-09-06 — Cleaned up throwaway diagnostic accounts from production
+
+**Direct request: delete the diagnostic accounts from production.** These were flagged as pending cleanup since the 2026-09-04 incident/fix and the 2026-09-05 migration-safety re-verification - harmless throwaway accounts created while testing live registration, never urgent, just noted for whenever Render Shell was next open.
+
+I don't have Render Shell or Django admin access myself (both require the user's own login, and entering credentials on someone's behalf isn't something I do), so I gave the user a one-line `python manage.py shell -c "..."` command to run themselves, filtering on `email__icontains='claude-diagnostic-check'` plus the exact `claude-lang-verify-20260905@example.com` address, printing the matched emails before deleting them in the same call.
+
+**Result, pasted back from the user's real Render Shell session**: only **2** accounts actually existed, not the 4 assumed from earlier log entries - `claude-diagnostic-check3-20260904@example.com` and `claude-lang-verify-20260905@example.com`. Both deleted. The other two `claude-diagnostic-check*-20260904@example.com` accounts mentioned in the 2026-09-04 entry were never found by the `icontains` filter - either only one of the three original registration attempts actually persisted a user row at the time, or the other two had already been removed some other way. Not investigated further: these were always inert test data, and the actual production state now (zero stray diagnostic accounts) is the same either way.
+
+**No code, tests, or migrations changed** - a one-off data cleanup via a direct ORM filter/delete, run by the user in their own authenticated Render Shell session. `PROJECT_STATE.md`'s pending-cleanup note updated to reflect what was actually found and deleted.
