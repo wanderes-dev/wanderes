@@ -283,6 +283,68 @@ Per direct request ("prepare our project to receive the booking affiliate API fo
 - Not wired into the AI orchestration pipeline, `recommendations/scoring.py`, or any UI, for the same reason as the flight scaffolding - "receive a source," not "consume one yet."
 - 6 new tests (`integrations/tests/test_hotels.py`), identical shape to `test_flights.py`: the factory's unset/unknown/valid-provider paths, and that all three `BookingComHotelProvider` methods raise `NotImplementedError` rather than silently succeeding.
 
+### 13.8 Booking.com affiliate partnership initiated via CJ Affiliate (2026-09-06)
+
+**Documentation only - nothing in this section is implemented.** Direct user update: Wanderes has started the partnership process with Booking.com through **CJ Affiliate**, a third-party affiliate network - not a direct relationship with Booking.com.
+
+**Program details on file:**
+
+- Program: Booking.com Spain & Portugal
+- CJ Advertiser ID: `4347393`
+- Category: Hotel
+- Currency: EUR
+- Base commission currently displayed: 4%
+- Displayed reference period: 1 day
+- Deep linking: allowed
+
+The program also displays separate commission structures for other product lines (cars, attractions, airport taxis, flights) - not evaluated or pursued here. This entry covers the Hotel/accommodation line only, matching Wanderes's actual current scope (`HotelProvider`, §13.7).
+
+**Intended flow** (product decision, matching the "pure affiliate redirect" architecture already identified as the front-runner in `DECISIONS_PENDING.md` §4 - not the Duffel-style hosted-checkout model; Wanderes never becomes a merchant of record or handles payment):
+
+1. The user talks to Wanderes and states destination, dates, budget, and preferences.
+2. Wanderes identifies real, relevant accommodations.
+3. The app's own ranking/recommendation logic scores them (same "never rank by commission" principle as §13.3 and §14 below).
+4. The AI explains why a given accommodation fits.
+5. Wanderes shows relevant details - property, location, price, availability - only when actually available from an authorized data source.
+6. The user clicks something like "View accommodation."
+7. The user is redirected to Booking.com via a trackable affiliate/deep link.
+8. Booking.com owns the booking and the payment - Wanderes never processes either.
+9. Wanderes may earn a commission if the transaction meets the affiliate program's conditions.
+
+The commission or business relationship must never influence recommendation ranking - the traveler's own interest stays the deciding criterion, same as every other provider in this document.
+
+**Restrictions noted from the CJ program terms** (not exhaustive legal advice - recorded so any future implementation is built against them from day one, not retrofitted): Booking.com brand/trademark usage; no paid search/SEM campaigns bidding on Booking.com's own branded keywords; no incentivized traffic; restrictions on software/browser extensions/similar tools that redirect or inject affiliate links; restricted sub-affiliate arrangements; social media usage rules; restrictions on what counts as acceptable content/site context for placing these links; no presenting unauthorized discounts, vouchers, or benefits alongside a listing. None of this is implemented yet, so none of it is currently at risk.
+
+**CJ Affiliate is not the same thing as Booking.com's Demand API - this distinction must not be conflated:**
+
+- **CJ Affiliate** - the partnership, tracking, deep links, and commission attribution described above. This is what has actually been set up so far.
+- **Booking.com Demand API** - separate, programmatic access to real property/availability/pricing data. Approval into the CJ affiliate program is **not** automatic authorization for the Demand API - these are two different applications/relationships with Booking.com.
+
+**Before implementing any real accommodation search using Booking.com data**, confirm separately whether Wanderes has been granted Demand API access and which endpoints/credentials are actually available - the same "don't guess at an undocumented shape" discipline already applied to `integrations/hotels/booking_com.py`'s `NotImplementedError` skeleton (§13.7). Do not scrape Booking.com, and do not fabricate prices, availability, or properties, regardless of what CJ access alone would technically make possible to attempt.
+
+**Future architecture** (unchanged from what's already scaffolded in §13.7 - `HotelProvider`/`HotelOption`) keeps this replaceable, conceptually:
+
+```
+AccommodationProvider
+  -> search_accommodations(...)
+  -> NormalizedAccommodationOffer
+  -> Wanderes recommendation/ranking
+  -> AI explanation
+  -> outbound affiliate/deep link
+```
+
+Booking.com should remain just one of possibly several providers behind this interface, never a hardcoded assumption.
+
+**Status update, same day (2026-09-06): application submitted, still pending.** The Wanderes CJ Affiliate account itself is created and configured, and a formal application was submitted for the program above. Current state:
+
+- **Application status: pending / awaiting Booking.com's manual review.** CJ itself confirmed Booking.com approves publishers manually and will follow up if/when Wanderes is approved - there is no instant-approval path here.
+- **Intended model confirmed as affiliate/outbound referral** - matching the flow already documented above, not a hosted-checkout or reseller model.
+- CJ also surfaced several creative resources already available under this program's listing, before approval is even granted: **WIDGET: Accommodations** (resource ID `17323139`), **WIDGET: Flights** (`17323141`), **WIDGET: Car Rentals** (`17323142`), plus evergreen links and other Booking.com creatives. **Their visibility in the CJ dashboard is not authorization to use them** - the application is still pending, and nothing here should be treated as go-ahead to embed any of these until approval actually comes through.
+- **Separately tested: the Booking.com Affiliate Partner Centre itself.** Logging in returned *"You have no access rights to the Affiliate Partner Centre. Contact your administrator to request access rights."* This is a concrete, confirmed data point (not an assumption): **the CJ account does not automatically grant Affiliate Partner Centre access**, and by extension **Wanderes does not currently have confirmed access to the Booking.com Demand API** - reinforcing, with direct evidence now, the CJ-Affiliate-vs-Demand-API distinction above. Do not assume CJ approval will imply Demand API access; do not implement real Demand API calls without officially confirmed credentials/authorization; do not scrape Booking.com; do not fabricate properties, prices, or availability.
+- **Per direct instruction: the pending application does not block product development elsewhere.** The accommodation architecture stays provider-decoupled (`AccommodationProvider` abstraction above) precisely so Booking.com can be wired in later - or swapped for another provider - without touching core recommendation logic.
+
+**Status: documentation only, per direct instruction.** `integrations/hotels/booking_com.py` stays exactly the deliberate `NotImplementedError` skeleton it already was (§13.7) - no code, tests, or settings changed by this entry or the one above it. Implementation waits until the CJ application is approved **and** Demand API access/credentials are separately, officially confirmed (see `DECISIONS_PENDING.md` §4).
+
 ## 14. Principle
 
 > **External providers provide capabilities and data; Wanderes controls the business logic and user experience. Providers should be replaceable, monitored, and isolated so that external failures or provider changes do not unnecessarily disrupt the platform.**

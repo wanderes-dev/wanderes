@@ -1882,3 +1882,35 @@ Both had been flagged as ambiguous - possibly harness gaps rather than real app 
 **No fixable code incoherence found this pass.** Everything from the last two days' fixes (the `continent` constraint, the climate-lookup time budget, profile-preference context) held up correctly across a much wider variety of phrasings than each fix's own original repro. One real, but not code-fixable, characteristic was found and documented rather than mis-diagnosed as a bug: the LLM's own `message_type` classification for genuinely ambiguous short messages (e.g. "Fui para Barcelona e adorei" with no explicit request) isn't perfectly consistent between separate calls even at `temperature=0` - confirmed the underlying login-gate code itself is correct (already covered by passing `test_feedback_requires_login`/`test_future_intent_requires_login`) and the variance is purely upstream in the classification step, a known limitation of hosted LLM inference. Full write-up, including the one already-known trade-off re-confirmed (a very broad, unconstrained query can still hit the climate time-budget cutoff after scoring only a handful of candidates) - see `testes/2026-09-05.md`.
 
 **New standing convention**: exploratory/manual QA passes like this one now live in `testes/YYYY-MM-DD.md`, one file per pass, separate from the real `pytest` suite - noted in `CLAUDE.md` so future sessions know where to look and where to add the next one.
+
+
+---
+
+## 2026-09-06 — Booking.com CJ Affiliate partnership details recorded (documentation only)
+
+**Direct request: record context about the Booking.com affiliate partnership; explicitly do not implement anything until credentials and access type are confirmed.** Wanderes has started the partnership process with Booking.com through **CJ Affiliate**, a third-party affiliate network - not a direct relationship with Booking.com.
+
+**Program details now on file**: "Booking.com Spain & Portugal," CJ Advertiser ID `4347393`, category Hotel, currency EUR, base commission currently displayed 4% (1-day reference period), deep linking allowed. The program also displays separate commission structures for cars, attractions, airport taxis, and flights - not pursued, out of scope for Wanderes's current `HotelProvider`-only scaffolding (§13.7).
+
+**Intended flow recorded** (pure affiliate redirect, matching the architecture already named as the front-runner in `DECISIONS_PENDING.md` §4): user states destination/dates/budget/preferences → Wanderes identifies real accommodations → Wanderes's own ranking scores them (commission never influences ranking) → AI explains the fit → relevant details shown only from an authorized source → user clicks "View accommodation" → redirected to Booking.com via a trackable deep link → Booking.com owns the booking/payment → Wanderes may earn commission if the program's conditions are met.
+
+**CJ program restrictions noted** (brand/trademark usage, no branded-keyword SEM, no incentivized traffic, restrictions on software/extensions/subaffiliates/social media/content context, no unauthorized discount/voucher presentation) - recorded so a future real implementation respects them from the start.
+
+**The important distinction, called out explicitly and documented prominently**: CJ Affiliate approval (tracking, deep links, commission attribution - what's actually in progress now) is **not** the same as, and does not automatically grant, Booking.com's separate **Demand API** (programmatic access to real property/availability/pricing data). Before implementing any real accommodation search, Demand API access and available endpoints/credentials must be confirmed separately. No scraping, no fabricated prices/availability/properties - regardless of what CJ access alone would make technically possible to attempt.
+
+**What changed**: only documentation. `10_EXTERNAL_INTEGRATIONS.md` gained §13.8 with the full details above and the conceptual future architecture (`AccommodationProvider -> search_accommodations() -> NormalizedAccommodationOffer -> ranking -> AI explanation -> outbound affiliate link`, mirroring the already-scaffolded `HotelProvider`/`HotelOption` from §13.7). `DECISIONS_PENDING.md` §4 got a dated update recording these details and reaffirming the open decision (Demand API access) is unresolved. `PROJECT_STATE.md`'s summary line and its Booking.com scaffolding note were both updated. **`integrations/hotels/booking_com.py` was not touched** - it remains the same deliberate `NotImplementedError` skeleton from 2026-09-04; no code, tests, settings, or migrations changed by this entry.
+
+
+---
+
+## 2026-09-06 — Booking.com CJ Affiliate: application submitted (pending), Demand API access confirmed NOT granted (documentation only)
+
+**Direct status update, same day as the partnership details above.** The Wanderes CJ Affiliate account is created and configured, and a formal application was submitted for "Booking.com Spain & Portugal" (CJ Advertiser ID `4347393`). **Status: pending / awaiting Booking.com's manual review** - CJ confirmed Booking.com approves publishers manually and will follow up if/when approved, so there's no instant-approval path. Intended model reconfirmed as affiliate/outbound referral, matching the flow already documented in §13.8.
+
+**New resources surfaced by CJ, even pre-approval**: WIDGET: Accommodations (`17323139`), WIDGET: Flights (`17323141`), WIDGET: Car Rentals (`17323142`), plus evergreen links and other Booking.com creatives. Their visibility in the CJ dashboard is explicitly **not** treated as authorization to use them - the application is still pending.
+
+**The more consequential finding: the Booking.com Affiliate Partner Centre was actually tested, not assumed.** Logging in returned *"You have no access rights to the Affiliate Partner Centre. Contact your administrator to request access rights."* This is now a confirmed fact, not a caution: the CJ account does **not** grant Affiliate Partner Centre access, and Wanderes does **not** currently have confirmed access to the Booking.com Demand API. Reinforces, with direct evidence, the CJ-Affiliate-vs-Demand-API distinction already documented - no real Demand API calls, no scraping, no fabricated properties/prices/availability, regardless of CJ approval status.
+
+**Explicit instruction carried forward**: the pending application must not block other product development - the `AccommodationProvider` abstraction stays decoupled from Booking.com specifically so it (or another provider) can be wired in later without touching core recommendation logic.
+
+**What changed**: documentation only. `10_EXTERNAL_INTEGRATIONS.md` §13.8 gained a same-day status-update block with all of the above. `DECISIONS_PENDING.md` §4 gained a matching dated update. `PROJECT_STATE.md`'s summary line and Booking.com scaffolding note were both updated. **No code, tests, settings, or migrations changed** - `integrations/hotels/booking_com.py` remains the same `NotImplementedError` skeleton from 2026-09-04.
