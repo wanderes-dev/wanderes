@@ -32,7 +32,7 @@
         <h2>{% trans "See it in action" %}</h2>
         <p class="landing-preview-caption">{% trans "A real example of what a conversation with Wanderes looks like." %}</p>
         <div class="landing-preview-mock">
-            <div class="chat-bubble user">{% trans "I want somewhere warm, good food, nature, and not too crowded." %}</div>
+            <div class="chat-bubble user">{% trans "I want somewhere warm, good food, nature, not too crowded, and I don't want to spend a lot." %}</div>
             <div class="recommendation-cards">
                 <div class="recommendation-card">
                     <div class="destination-name">{{ preview_destination.name }}</div>
@@ -41,11 +41,21 @@
                         <span class="tag">{{ preview_destination.get_trip_type_display }}</span>
                         <span class="tag tag-accent">{{ preview_destination.get_cost_of_living_display }}</span>
                     </div>
-                    <div class="fit-reasons-label">{% trans "Why this fits you" %}</div>
+                    <div class="fit-reasons-label">{% trans "Strong match for your trip" %}</div>
                     <ul class="fit-reasons">
-                        <li>{% trans "Matches your travel style" %}</li>
-                        <li>{% trans "Within your budget" %}</li>
+                        <li>{% trans "Warm during your travel period" %}</li>
+                        <li>{% blocktrans with trip_type=preview_destination.get_trip_type_display|lower %}Strong {{ trip_type }} fit{% endblocktrans %}</li>
+                        <li>{% trans "Compatible with your budget" %}</li>
+                        <li>{% trans "Good match for your preferred pace" %}</li>
                     </ul>
+                    <p class="fit-tradeoff">
+                        <strong>{% trans "Tradeoff:" %}</strong>
+                        {% trans "Popular spots can get crowded, so quieter areas nearby may suit a traveler who wants a calmer pace." %}
+                    </p>
+                    <div class="fit-reasons-label">{% trans "Why this fits you" %}</div>
+                    <p class="fit-explanation">
+                        {% blocktrans with name=preview_destination.name trip_type=preview_destination.get_trip_type_display|lower %}Based on wanting somewhere warm, relaxed, and not too crowded, {{ name }} fits that climate window, leans toward {{ trip_type }} experiences rather than nightlife, and fits comfortably within a typical travel budget - with a heads-up that its most popular spots can get busy, so it's worth asking about quieter alternatives nearby.{% endblocktrans %}
+                    </p>
                     <span class="btn btn-secondary" aria-hidden="true">{% trans "Save this trip" %}</span>
                 </div>
             </div>
@@ -65,7 +75,7 @@
         <div class="landing-step">
             <div class="landing-step-icon" aria-hidden="true">🧭</div>
             <h3>{% trans "Get destinations that fit" %}</h3>
-            <p>{% trans "Real recommendations grounded in real climate and cost data - not a generic list of trending places." %}</p>
+            <p>{% trans "Real recommendations grounded in destination, climate, and travel-cost data - not a generic list of trending places." %}</p>
         </div>
         <div class="landing-step">
             <div class="landing-step-icon" aria-hidden="true">💡</div>

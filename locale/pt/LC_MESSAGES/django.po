@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-05 00:18+0000\n"
+"POT-Creation-Date: 2026-09-06 03:09+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -172,7 +172,7 @@ msgstr "Comparando possibilidades..."
 msgid "Looking at climate and costs for you..."
 msgstr "Verificando clima e custos para você..."
 
-#: ai/views.py:57 core/templates/core/landing.html:44
+#: ai/views.py:57 core/templates/core/landing.html:55
 msgid "Why this fits you"
 msgstr "Por que isso combina com você"
 
@@ -180,7 +180,7 @@ msgstr "Por que isso combina com você"
 msgid "avg"
 msgstr "méd."
 
-#: ai/views.py:59 core/templates/core/landing.html:49
+#: ai/views.py:59 core/templates/core/landing.html:59
 msgid "Save this trip"
 msgstr "Salvar esta viagem"
 
@@ -265,26 +265,61 @@ msgid "A real example of what a conversation with Wanderes looks like."
 msgstr "Um exemplo real de como é uma conversa com a Wanderes."
 
 #: core/templates/core/landing.html:35
-msgid "I want somewhere warm, good food, nature, and not too crowded."
-msgstr "Quero um lugar quente, com boa comida, natureza e sem muita gente."
+msgid ""
+"I want somewhere warm, good food, nature, not too crowded, and I don't want "
+"to spend a lot."
+msgstr "Quero um lugar quente, com boa comida, natureza, sem muita gente, e não quero gastar muito."
+
+#: core/templates/core/landing.html:44
+msgid "Strong match for your trip"
+msgstr "Ótima combinação para sua viagem"
 
 #: core/templates/core/landing.html:46
-msgid "Matches your travel style"
-msgstr "Combina com seu estilo de viagem"
+msgid "Warm during your travel period"
+msgstr "Clima quente no período da sua viagem"
 
 #: core/templates/core/landing.html:47
-msgid "Within your budget"
+#, python-format
+msgid "Strong %(trip_type)s fit"
+msgstr "Boa combinação com %(trip_type)s"
+
+#: core/templates/core/landing.html:48
+msgid "Compatible with your budget"
 msgstr "Dentro do seu orçamento"
 
-#: core/templates/core/landing.html:58
+#: core/templates/core/landing.html:49
+msgid "Good match for your preferred pace"
+msgstr "Combina com o ritmo que você prefere"
+
+#: core/templates/core/landing.html:52
+msgid "Tradeoff:"
+msgstr "Ressalva:"
+
+#: core/templates/core/landing.html:53
+msgid ""
+"Popular spots can get crowded, so quieter areas nearby may suit a traveler "
+"who wants a calmer pace."
+msgstr "Os pontos mais turísticos podem ficar cheios, então áreas mais tranquilas por perto podem combinar melhor com quem busca um ritmo mais calmo."
+
+#: core/templates/core/landing.html:57
+#, python-format
+msgid ""
+"Based on wanting somewhere warm, relaxed, and not too crowded, %(name)s fits "
+"that climate window, leans toward %(trip_type)s experiences rather than "
+"nightlife, and fits comfortably within a typical travel budget - with a "
+"heads-up that its most popular spots can get busy, so it's worth asking "
+"about quieter alternatives nearby."
+msgstr "Já que você quer um lugar quente, tranquilo e sem muita gente, %(name)s combina com esse clima, é mais voltado para %(trip_type)s do que vida noturna, e cabe bem dentro de um orçamento de viagem típico - só um aviso de que os pontos mais turísticos podem ficar cheios, vale perguntar sobre alternativas mais tranquilas por perto."
+
+#: core/templates/core/landing.html:68
 msgid "How it works"
 msgstr "Como funciona"
 
-#: core/templates/core/landing.html:62
+#: core/templates/core/landing.html:72
 msgid "Tell Wanderes what you want"
 msgstr "Diga à Wanderes o que você quer"
 
-#: core/templates/core/landing.html:63
+#: core/templates/core/landing.html:73
 msgid ""
 "Describe your ideal trip in your own words - budget, climate, pace, who's "
 "coming. No forms, no filters to configure."
@@ -292,23 +327,21 @@ msgstr ""
 "Descreva sua viagem ideal com suas próprias palavras - orçamento, clima, "
 "ritmo, quem vai junto. Sem formulários, sem filtros para configurar."
 
-#: core/templates/core/landing.html:67
+#: core/templates/core/landing.html:77
 msgid "Get destinations that fit"
 msgstr "Receba destinos que combinam"
 
-#: core/templates/core/landing.html:68
+#: core/templates/core/landing.html:78
 msgid ""
-"Real recommendations grounded in real climate and cost data - not a generic "
-"list of trending places."
-msgstr ""
-"Recomendações reais baseadas em dados reais de clima e custo - não uma lista "
-"genérica de lugares da moda."
+"Real recommendations grounded in destination, climate, and travel-cost data "
+"- not a generic list of trending places."
+msgstr "Recomendações reais baseadas em dados de destino, clima e custo de viagem - não uma lista genérica de lugares na moda."
 
-#: core/templates/core/landing.html:72
+#: core/templates/core/landing.html:82
 msgid "See exactly why"
 msgstr "Veja exatamente o porquê"
 
-#: core/templates/core/landing.html:73
+#: core/templates/core/landing.html:83
 msgid ""
 "Every suggestion comes with a clear, honest explanation of why it matches "
 "what you asked for."
@@ -316,15 +349,15 @@ msgstr ""
 "Cada sugestão vem com uma explicação clara e honesta de por que ela combina "
 "com o que você pediu."
 
-#: core/templates/core/landing.html:81
+#: core/templates/core/landing.html:91
 msgid "A few places Wanderes already knows well"
 msgstr "Alguns lugares que a Wanderes já conhece bem"
 
-#: core/templates/core/landing.html:99
+#: core/templates/core/landing.html:109
 msgid "Ready to find your next trip?"
 msgstr "Pronto para encontrar sua próxima viagem?"
 
-#: core/templates/core/landing.html:100
+#: core/templates/core/landing.html:110
 msgid "Start planning"
 msgstr "Começar a planejar"
 
@@ -339,12 +372,10 @@ msgstr "Muito baixo"
 #: templates/base.html:9 templates/base.html:17 templates/base.html:21
 msgid ""
 "Wanderes is an intelligent travel consultant. Tell it what you want from a "
-"trip and get real destination recommendations, grounded in real climate and "
-"cost data, with an honest explanation for every suggestion."
-msgstr ""
-"A Wanderes é uma consultora de viagens inteligente. Diga a ela o que você "
-"quer de uma viagem e receba recomendações reais de destinos, baseadas em "
-"dados reais de clima e custo, com uma explicação honesta para cada sugestão."
+"trip and get real destination recommendations, grounded in destination, "
+"climate, and travel-cost data, with an honest explanation for every "
+"suggestion."
+msgstr "A Wanderes é uma consultora de viagens inteligente. Diga o que você quer de uma viagem e receba recomendações reais de destinos, baseadas em dados de destino, clima e custo de viagem, com uma explicação honesta para cada sugestão."
 
 #: templates/base.html:40
 msgid "Chat"
@@ -937,7 +968,8 @@ msgstr "Preferências que moldam suas recomendações"
 
 #: users/templates/users/account.html:31
 msgid "Plans you're building, past visits, or saved recommendations"
-msgstr "Planos que você está montando, visitas passadas ou recomendações salvas"
+msgstr ""
+"Planos que você está montando, visitas passadas ou recomendações salvas"
 
 #: users/templates/users/login.html:11
 msgid "Welcome back"

@@ -37,3 +37,27 @@ class LandingPageTests(TestCase):
         response = self.client.get("/")
 
         self.assertContains(response, '/chat/')
+
+    def test_preview_card_demonstrates_fit_reasoning(self):
+        # 2026-09-06, direct request: the "see it in action" example should
+        # demonstrate signals (climate/style/budget/pace fit and a tradeoff),
+        # not just a couple of generic, context-free bullets.
+        Destination.objects.create(
+            slug="test-beach-destination",
+            name="Test Beach Destination",
+            country="Testland",
+            latitude=1.0,
+            longitude=1.0,
+            trip_type="beach",
+            cost_of_living=2,
+            best_season="Jan-Dec",
+            worst_season="None",
+            short_description="A test destination.",
+            points_of_interest=[],
+        )
+
+        response = self.client.get("/")
+
+        self.assertContains(response, "Strong match for your trip")
+        self.assertContains(response, "Tradeoff:")
+        self.assertContains(response, "Why this fits you")

@@ -1,3 +1,4 @@
+from django.http import QueryDict
 from django.test import TestCase
 from django.urls import reverse
 
@@ -31,6 +32,22 @@ class TripViewsTests(TestCase):
         response = self.client.get(reverse("trips:trip-list"))
 
         self.assertEqual(response.status_code, 302)
+
+    def test_create_requires_login_and_redirects_with_next(self):
+        # 2026-09-06: this is the "save as trip" login gate an anonymous
+        # chat visitor actually hits (the chat page always renders a "Save
+        # this trip" link, login-gated only here at trip_create, not
+        # earlier) - confirming the existing, correct, unregressed
+        # behavior since this exact flow was reviewed as part of a UX pass
+        # on where account creation gets introduced.
+        create_url = reverse("trips:trip-create") + f"?destination={self.destination.slug}"
+
+        response = self.client.get(create_url)
+
+        querystring = QueryDict(mutable=True)
+        querystring["next"] = create_url
+        expected_redirect = f"{reverse('users:login')}?{querystring.urlencode(safe='/')}"
+        self.assertRedirects(response, expected_redirect, fetch_redirect_response=False)
 
     def test_create_saves_trip_for_current_user(self):
         self.client.force_login(self.user)

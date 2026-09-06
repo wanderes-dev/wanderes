@@ -818,6 +818,19 @@ button:focus-visible, .btn:focus-visible {
     font-weight: 700;
 }
 
+.recommendation-card .fit-tradeoff {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+
+.recommendation-card .fit-explanation {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: var(--color-text);
+}
+
 .recommendation-card .btn {
     margin-top: auto;
     align-self: flex-start;
