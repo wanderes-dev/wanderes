@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% if is_edit %}{% trans "Edit country" %}{% else %}{% trans "Add country" %}{% endif %} - Wanderes{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+
+{% block content %}
+<h1>{% if is_edit %}{% trans "Edit country" %}{% else %}{% trans "Add a new country" %}{% endif %}</h1>
+
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="btn">{% trans "Save" %}</button>
+</form>
+
+{% if is_edit %}
+<section class="profile-section">
+    <h2>{% trans "Videos" %}</h2>
+
+    {% if country.videos %}
+    <ul class="item-list">
+        {% for video in country.videos %}
+        <li>
+            <a class="item-title" href="{{ video.0 }}" target="_blank" rel="noopener noreferrer">{{ video.0 }}</a>
+            <span class="item-status">{{ video.1 }}</span>
+            <div class="item-actions">
+                <form method="post" action="{% url 'travel:country-remove-video' country.pk forloop.counter0 %}">
+                    {% csrf_token %}
+                    <button type="submit" class="link-button">{% trans "Remove" %}</button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">{% trans "No videos yet." %}</p>
+    {% endif %}
+
+    <h3>{% trans "Add a video" %}</h3>
+    <form method="post" action="{% url 'travel:country-add-video' country.pk %}">
+        {% csrf_token %}
+        {{ add_video_form.as_p }}
+        <button type="submit" class="btn">{% trans "Add video" %}</button>
+    </form>
+</section>
+{% endif %}
+
+<p><a href="{% url 'travel:country-list' %}">{% trans "Back to countries" %}</a></p>
+{% endblock %}

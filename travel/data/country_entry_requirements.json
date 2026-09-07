@@ -1,5 +1,5 @@
 {
-  "$schema_note": "Visa/vaccine/insurance entry-requirement guidance, requested by the user 2026-09-02 ('tabela de country regulation'). IMPORTANT, read before trusting or extending this file: this is compiled from general knowledge, not verified against each country's official government/embassy source, and is NOT exhaustive - it covers the 18 curated Destination countries plus roughly 25 other major destinations, not all ~195 UN member states. Some entries (flagged inline via 'confidence': 'low' where present) cover genuinely volatile situations (e.g. Brazil's reciprocal visa policy toward US/Canada/Australia has changed direction multiple times in recent years; Russia's visa relationships with Western countries are actively shifting; China has been expanding unilateral visa-free entry for various countries) where the general pattern described may already be stale. travel.services.ENTRY_REQUIREMENT_DISCLAIMER must accompany this data wherever it is shown - see travel/models.py's CountryEntryRequirement docstring for why. visa_required_nationalities lists are deliberately representative (major/commonly-relevant nationalities), not exhaustive enumerations of all countries - see each entry's visa_notes for the general exemption structure instead, which is the more reliable and more compact way to describe most countries' policies.",
+  "$schema_note": "Visa/vaccine/insurance entry-requirement guidance, requested by the user 2026-09-02 ('tabela de country regulation'). IMPORTANT, read before trusting or extending this file: this is compiled from general knowledge, not verified against each country's official government/embassy source, and is NOT exhaustive - it covers the 18 curated Destination countries plus roughly 25 other major destinations, not all ~195 UN member states. Some entries (flagged inline via 'confidence': 'low' where present) cover genuinely volatile situations (e.g. Brazil's reciprocal visa policy toward US/Canada/Australia has changed direction multiple times in recent years; Russia's visa relationships with Western countries are actively shifting; China has been expanding unilateral visa-free entry for various countries) where the general pattern described may already be stale. travel.services.ENTRY_REQUIREMENT_DISCLAIMER must accompany this data wherever it is shown - see travel/models.py's CountryEntryRequirement docstring for why. visa_required_nationalities lists are deliberately representative (major/commonly-relevant nationalities), not exhaustive enumerations of all countries - see each entry's visa_notes for the general exemption structure instead, which is the more reliable and more compact way to describe most countries' policies. 'videos' (added 2026-09-07, direct user request) is a separate, unrelated caveat of its own: real YouTube URLs found via live web search (never fabricated - each one was verified to exist in an actual search result before being added here), as [url, language_code] pairs - not vetted against an official tourism board catalog, and video availability/content can change or be taken down after the fact, so treat this the same as any other unverified-third-party-source field in this file.",
   "countries": [
     {
       "country": "Portugal",
@@ -8,7 +8,8 @@
       "vaccine_requirements": [],
       "insurance_required": true,
       "insurance_notes": "Quem precisa de visto Schengen deve comprovar seguro viagem com cobertura mínima de €30.000 para emergências médicas.",
-      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"],
+      "videos": [["https://www.youtube.com/watch?v=PJdZ5_ZKD7Q", "EN"]]
     },
     {
       "country": "Indonésia",
@@ -17,7 +18,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "Não exigido para entrada, mas fortemente recomendado.",
-      "other_requirements": ["Passaporte válido por pelo menos 6 meses", "Comprovante de saída do país (passagem de volta ou continuação)"]
+      "other_requirements": ["Passaporte válido por pelo menos 6 meses", "Comprovante de saída do país (passagem de volta ou continuação)"],
+      "videos": [["https://www.youtube.com/watch?v=3Khxdtvwhyw", "EN"]]
     },
     {
       "country": "Islândia",
@@ -26,7 +28,8 @@
       "vaccine_requirements": [],
       "insurance_required": true,
       "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
-      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"],
+      "videos": [["https://www.youtube.com/watch?v=u_f90pXw5sQ", "EN"]]
     },
     {
       "country": "África do Sul",
@@ -35,7 +38,8 @@
       "vaccine_requirements": ["Febre Amarela - certificado obrigatório para viajantes vindos de (ou em trânsito por) país com risco de transmissão"],
       "insurance_required": false,
       "insurance_notes": "Não exigido para entrada, mas recomendado.",
-      "other_requirements": ["Ao menos 2 páginas em branco no passaporte"]
+      "other_requirements": ["Ao menos 2 páginas em branco no passaporte"],
+      "videos": [["https://www.youtube.com/watch?v=DjoL1ehafFw", "EN"]]
     },
     {
       "country": "Japão",
@@ -44,7 +48,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "Não exigido para entrada, mas recomendado dado o alto custo de saúde local.",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=jTOfOew316s", "EN"]]
     },
     {
       "country": "Peru",
@@ -53,7 +58,8 @@
       "vaccine_requirements": ["Febre Amarela - recomendada para quem for visitar regiões amazônicas"],
       "insurance_required": false,
       "insurance_notes": "Não exigido para entrada, mas recomendado, especialmente para trilhas de altitude.",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=pxKa2SWFbPo", "EN"]]
     },
     {
       "country": "Marrocos",
@@ -62,7 +68,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=_Hed085c-IA", "EN"]]
     },
     {
       "country": "Nova Zelândia",
@@ -71,7 +78,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "Não exigido, mas fortemente recomendado dado o custo de resgates/emergências em áreas remotas.",
-      "other_requirements": ["NZeTA (autorização eletrônica) obrigatória mesmo para nacionalidades isentas de visto tradicional", "Taxa de conservação turística (IVL) paga junto com o NZeTA"]
+      "other_requirements": ["NZeTA (autorização eletrônica) obrigatória mesmo para nacionalidades isentas de visto tradicional", "Taxa de conservação turística (IVL) paga junto com o NZeTA"],
+      "videos": [["https://www.youtube.com/watch?v=Atf_Af1q_5w", "EN"]]
     },
     {
       "country": "Tailândia",
@@ -80,7 +88,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "Não exigido para a maioria dos vistos de turismo.",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=BWqB7KGHTq4", "EN"]]
     },
     {
       "country": "Argentina",
@@ -89,7 +98,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=NrvXE1HbmEQ", "EN"]]
     },
     {
       "country": "Grécia",
@@ -98,7 +108,8 @@
       "vaccine_requirements": [],
       "insurance_required": true,
       "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
-      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"],
+      "videos": [["https://www.youtube.com/watch?v=f4wBcKc2j8s", "EN"]]
     },
     {
       "country": "Canadá",
@@ -107,7 +118,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "Não exigido para entrada, mas fortemente recomendado dado o alto custo de saúde.",
-      "other_requirements": ["eTA obrigatório mesmo para nacionalidades isentas de visto tradicional"]
+      "other_requirements": ["eTA obrigatório mesmo para nacionalidades isentas de visto tradicional"],
+      "videos": [["https://www.youtube.com/watch?v=R-MvwRoC1qo", "EN"]]
     },
     {
       "country": "Tanzânia",
@@ -116,7 +128,8 @@
       "vaccine_requirements": ["Febre Amarela - certificado obrigatório para viajantes vindos de (ou em trânsito por) país com risco de transmissão"],
       "insurance_required": false,
       "insurance_notes": "Não exigido para entrada, mas recomendado, especialmente para safáris.",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=iixaoPpp54E", "EN"]]
     },
     {
       "country": "Estados Unidos",
@@ -125,7 +138,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "Não exigido para entrada, mas essencial dado o custo extremamente alto de saúde nos EUA sem seguro.",
-      "other_requirements": ["ESTA obrigatório (mesmo sem visto) para nacionalidades do VWP, solicitado com antecedência"]
+      "other_requirements": ["ESTA obrigatório (mesmo sem visto) para nacionalidades do VWP, solicitado com antecedência"],
+      "videos": [["https://www.youtube.com/watch?v=EhG21sZQN4Y", "EN"]]
     },
     {
       "country": "Vietnã",
@@ -134,7 +148,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=_tkBerWUTw8", "EN"]]
     },
     {
       "country": "Croácia",
@@ -143,7 +158,8 @@
       "vaccine_requirements": [],
       "insurance_required": true,
       "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
-      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"],
+      "videos": [["https://www.youtube.com/watch?v=cTLD9t5lSTQ", "EN"]]
     },
     {
       "country": "México",
@@ -152,7 +168,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=NyJW-f_rjzU", "EN"]]
     },
     {
       "country": "Maldivas",
@@ -161,7 +178,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": ["Comprovante de reserva de hospedagem e passagem de volta"]
+      "other_requirements": ["Comprovante de reserva de hospedagem e passagem de volta"],
+      "videos": [["https://www.youtube.com/watch?v=0REj6oM2eSc", "EN"]]
     },
     {
       "country": "Reino Unido",
@@ -170,7 +188,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "Visitantes não têm acesso gratuito ao NHS - seguro viagem fortemente recomendado.",
-      "other_requirements": ["ETA obrigatório mesmo para nacionalidades isentas de visto"]
+      "other_requirements": ["ETA obrigatório mesmo para nacionalidades isentas de visto"],
+      "videos": [["https://www.youtube.com/watch?v=TTmICp21R4E", "EN"]]
     },
     {
       "country": "França",
@@ -179,7 +198,8 @@
       "vaccine_requirements": [],
       "insurance_required": true,
       "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
-      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"],
+      "videos": [["https://www.youtube.com/watch?v=rETpXdTbAzo", "EN"]]
     },
     {
       "country": "Alemanha",
@@ -188,7 +208,8 @@
       "vaccine_requirements": [],
       "insurance_required": true,
       "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
-      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"],
+      "videos": [["https://www.youtube.com/watch?v=j32RezXacYM", "EN"]]
     },
     {
       "country": "Itália",
@@ -197,7 +218,8 @@
       "vaccine_requirements": [],
       "insurance_required": true,
       "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
-      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"],
+      "videos": [["https://www.youtube.com/watch?v=eq7pkma3RgA", "EN"]]
     },
     {
       "country": "Espanha",
@@ -206,7 +228,8 @@
       "vaccine_requirements": [],
       "insurance_required": true,
       "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
-      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"],
+      "videos": [["https://www.youtube.com/watch?v=BH9YNaBl1W4", "EN"]]
     },
     {
       "country": "Suíça",
@@ -215,7 +238,8 @@
       "vaccine_requirements": [],
       "insurance_required": true,
       "insurance_notes": "Mesma exigência de seguro Schengen (mínimo €30.000) para quem precisa de visto.",
-      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"]
+      "other_requirements": ["Passaporte válido por pelo menos 3 meses após a data prevista de saída"],
+      "videos": [["https://www.youtube.com/watch?v=pfdb6u4HDoQ", "EN"]]
     },
     {
       "country": "Irlanda",
@@ -224,7 +248,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=7bQRRFDK4-A", "EN"]]
     },
     {
       "country": "Austrália",
@@ -233,7 +258,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "Não exigido, mas fortemente recomendado dado o alto custo de saúde para não-residentes.",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=nFS1nvRUVkY", "EN"]]
     },
     {
       "country": "China",
@@ -242,7 +268,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=RfOzBVKvOv4", "EN"]]
     },
     {
       "country": "Índia",
@@ -251,7 +278,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=xUphsn5b1w8", "EN"]]
     },
     {
       "country": "Emirados Árabes Unidos",
@@ -260,7 +288,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=OjZPBDvvA-M", "EN"]]
     },
     {
       "country": "Egito",
@@ -269,7 +298,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=rsYXPoTi13I", "EN"]]
     },
     {
       "country": "Turquia",
@@ -278,7 +308,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=MNMCqO7LIDg", "EN"]]
     },
     {
       "country": "Brasil",
@@ -287,7 +318,8 @@
       "vaccine_requirements": ["Febre Amarela - recomendada/exigida para quem for visitar a região amazônica ou determinados estados, dependendo do itinerário"],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=GGPgvq06y40", "EN"]]
     },
     {
       "country": "Rússia",
@@ -296,7 +328,8 @@
       "vaccine_requirements": [],
       "insurance_required": true,
       "insurance_notes": "Seguro viagem historicamente exigido como parte do processo de visto.",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=6PucIvOn964", "EN"]]
     },
     {
       "country": "Coreia do Sul",
@@ -305,7 +338,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": ["K-ETA (autorização eletrônica) obrigatório mesmo para nacionalidades isentas de visto"]
+      "other_requirements": ["K-ETA (autorização eletrônica) obrigatório mesmo para nacionalidades isentas de visto"],
+      "videos": [["https://www.youtube.com/watch?v=rKMP8Gvj9Vk", "EN"]]
     },
     {
       "country": "Chile",
@@ -314,7 +348,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=pWH_R5ca-k4", "EN"]]
     },
     {
       "country": "Colômbia",
@@ -323,7 +358,8 @@
       "vaccine_requirements": ["Febre Amarela - recomendada para quem for visitar regiões amazônicas"],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=czfKyc-HtF4", "EN"]]
     },
     {
       "country": "Costa Rica",
@@ -332,7 +368,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=Zi2ClirjvMY", "EN"]]
     },
     {
       "country": "Filipinas",
@@ -341,7 +378,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=ADNgEHFDYzo", "EN"]]
     },
     {
       "country": "Singapura",
@@ -350,7 +388,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=L8sPZIkKywA", "EN"]]
     },
     {
       "country": "Malásia",
@@ -359,7 +398,8 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [["https://www.youtube.com/watch?v=6UguPyZalgI", "EN"]]
     }
   ]
 }
