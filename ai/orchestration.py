@@ -2082,11 +2082,28 @@ def _build_no_matches_messages(
 
     Per the Phase 11 recommendation philosophy and direct user feedback
     (2026-08-30 - never just ask for more when a real answer is possible),
-    this always tries to actually help rather than dead-ending or asking
-    another question: reason from general travel knowledge instead, and
-    treat whichever constraint made everything unmatchable as the one to
-    relax, exactly like a hard filter our own scoring never even had to
-    apply here would have been treated as a soft preference."""
+    this tries to actually help rather than dead-ending: reason from
+    general travel knowledge instead, and treat whichever constraint made
+    everything unmatchable as the one to relax, exactly like a hard filter
+    our own scoring never even had to apply here would have been treated
+    as a soft preference.
+
+    Revised 2026-09-08, direct user feedback on a real conversation ("neve,
+    talvez no Egito" - snow, maybe in Egypt): the reply confidently listed
+    3 specific unverified destinations (one, "Amina Moutiers, França",
+    isn't even a real place) in a table with fake-precise numbers ("Frio
+    (setembro)", specific cost tiers) as if it were real climate-provider
+    data, for a request the traveler themselves had already hedged as
+    uncertain ("talvez"). Direct instruction: "o chat não deve sugerir
+    destinos se a informação for duvidosa, deve confirmar com o usuário
+    sempre" - don't suggest destinations when the underlying data is
+    dubious, always confirm with the user first. This only reverses the
+    2026-08-30 "lead with confident help" framing for the specific
+    sub-case where the request itself is contradictory or the traveler
+    signaled their own uncertainty - a real, coherent request that our
+    catalog simply doesn't happen to cover still gets a real (but now
+    honestly-framed, non-tabular) answer, per the original 2026-08-30
+    decision."""
     constraints = []
     if intent["month"]:
         constraints.append(f"month={intent['month']}")
@@ -2131,45 +2148,49 @@ def _build_no_matches_messages(
                 "can't find a good match there instead of substituting "
                 "somewhere else silently)."
                 f"{traveler_note}\n\n"
-                "Suggest 1-3 real destinations from your own general "
-                "travel knowledge that fit the traveler's request as well "
-                "as possible, relaxing whichever constraint seems least "
-                "essential to what they actually care about (never ask "
-                "them to do this for you). Every destination you name "
-                "must be a real, actual place you're genuinely confident "
-                "exists - never invent a plausible-sounding name to "
-                "satisfy a constraint literally, especially when the "
-                "constraint itself doesn't make physical sense for the "
-                "trip type (e.g. no beach is ever anywhere near freezing) "
-                "- in that case, say so honestly in a sentence and then "
-                "suggest real places that get as close as an actual "
-                "destination realistically can, rather than inventing "
-                "one that supposedly matches exactly. Present them as a compact "
-                "Markdown table (standard pipe syntax) comparing them "
-                "side by side - pick columns that actually matter here "
-                "(e.g. destination, climate, cost, a standout pro, a real "
-                "downside or trade-off) rather than paragraphs of prose. "
-                "Lead with real, confident help - do NOT open by saying "
-                "you don't have data or apologizing for lacking specific "
-                "information (never start with something like "
-                "'unfortunately I don't have data for this'); a real "
-                "travel consultant asked about something outside their "
-                "usual reference material just helps, the same way. "
-                "Mention that these particular suggestions come from your "
-                "own knowledge rather than our verified dataset briefly "
-                "and in passing - so the traveler knows to double-check "
-                "current details - not as an apology or a caveat that "
-                "opens the reply. After the table, also ask one genuine "
-                "follow-up question that would help narrow the search "
-                "further, the way a real consultant keeps refining even "
-                "after giving a first real answer. Only ask a clarifying "
-                "question INSTEAD of suggesting if the message truly gives "
-                "you nothing at all to go on (not even a vibe, place "
-                "type, or timing) - this should be rare. Reply in the "
-                "same language the traveler has been using in this "
-                "conversation (check the history above, not just this "
-                "message) - this applies just as much to English as to "
-                "any other language."
+                "First, decide whether the request itself is coherent, or "
+                "whether it doesn't really add up (e.g. asking for snow "
+                "in a country that never gets any, a beach in a "
+                "landlocked place) or the traveler themselves signaled "
+                "uncertainty about it ('talvez'/'maybe', 'não sei bem', "
+                "'ou seja lá o que for').\n\n"
+                "If the request doesn't add up or the traveler hedged it "
+                "themselves: do NOT substitute your own guess for real "
+                "destinations. Say plainly and specifically what doesn't "
+                "add up (e.g. 'o Egito não tem neve'), and ask directly "
+                "what they'd actually like instead (e.g. a cold "
+                "destination elsewhere, or Egypt without the snow) - "
+                "confirm with them before naming any place. This is "
+                "always better than presenting invented-sounding "
+                "specifics as if they were a real answer.\n\n"
+                "If the request IS coherent and just isn't something our "
+                "own catalog happens to cover (a real, sensible "
+                "combination of month/budget/place that's simply outside "
+                "what we track): still genuinely help, relaxing whichever "
+                "constraint seems least essential to what they actually "
+                "care about (never ask them to do this for you). Every "
+                "destination you name must be a real, actual place you're "
+                "genuinely confident exists - never invent a "
+                "plausible-sounding name. Since you have no real "
+                "climate-provider or cost data for these (that's exactly "
+                "why they're not in our own results), describe them in "
+                "plain prose using qualitative terms ('bastante frio', "
+                "'custo alto') rather than specific numbers or a "
+                "comparison table - a precise-looking figure you made up "
+                "yourself would misrepresent a guess as measured data. "
+                "State clearly, as part of the answer (not a caveat that "
+                "opens the reply, and never starting with something like "
+                "'unfortunately I don't have data for this'), that these "
+                "come from your own general knowledge rather than our "
+                "verified dataset, so the traveler knows to double-check "
+                "current details. Ask one genuine follow-up question "
+                "afterward that would help narrow the search further, the "
+                "way a real consultant keeps refining even after giving a "
+                "first real answer.\n\n"
+                "Reply in the same language the traveler has been using "
+                "in this conversation (check the history above, not just "
+                "this message) - this applies just as much to English as "
+                "to any other language."
             ),
         )
     )
