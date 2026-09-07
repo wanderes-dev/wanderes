@@ -2082,3 +2082,14 @@ Fixed the same way continent itself was added: a new `country` intent field (`IN
 **Live verification (real OpenAI, no mocks)**: replayed the exact reported message ("quero ir pra tailandia pode me dar dicas ?") - all returned destinations are now genuinely Thai only (Chiang Mai, Bangkok, Ayutthaya), no more Japan/Vietnam/Indonesia/Maldives mixed in.
 
 **Third point raised, not a bug - clarified rather than silently changed**: the user also noted the shared video was in English despite the conversation being in Portuguese. This is the already-designed, honest behavior (the reply explicitly disclosed "está em inglês") - all 40 videos currently on file are English-only (per the 2026-09-06 YouTube research pass), so there is no Portuguese-language video to offer for any country yet. Flagged back to the user as a data-coverage question (source non-English videos per country, a separate research task) rather than something to silently "fix" by ever implying a language match that isn't real.
+
+
+---
+
+## 2026-09-07 — robots.txt gap found via Google Search Console: /travel/ wasn't disallowed
+
+**Direct report**: the user set up Google Search Console (per the long-pending manual action in `PROJECT_STATE.md`) and shared a real finding - "Bloqueada pelo robots.txt" ("Blocked by robots.txt"), first detected 2026-09-05. Investigated `core/views.py`'s `robots_txt()` before assuming anything was wrong: the disallow list (`/admin/`, `/users/account/`, `/users/profile/`, `/trips/`, `/api/`, `/health/`) is deliberate and expected - Search Console correctly reporting these as blocked isn't an error, it's confirmation the intentional exclusions are working. Asked the user for the exact affected-URL list to rule out `/` or `/chat/` (the two pages that ARE supposed to be indexed) showing up there, which would be a real bug.
+
+**While checking, found a real, separate gap regardless of that answer**: `/travel/admin-tools/countries/` (the staff-only country-videos editing page added 2026-09-06, gated by `@staff_member_required`) was never added to the disallow list - simply missed since the `travel` app had no user-facing pages at all when the list was first written (2026-09-03). Same reasoning as every other entry already there applies identically: an unauthenticated crawler hitting it just finds a login redirect, nothing worth indexing, and there's no reason to let Google spend crawl budget discovering that.
+
+**Fixed**: added `Disallow: /travel/` to `core/views.py`'s `robots_txt()`. `core/tests/test_seo.py::RobotsTxtTests::test_disallows_private_login_gated_and_api_paths` extended to cover it. 399/399 tests passing, `ruff check .` clean, no migrations.

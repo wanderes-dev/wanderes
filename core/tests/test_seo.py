@@ -10,7 +10,14 @@ class RobotsTxtTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "text/plain")
         content = response.content.decode()
-        for path in ["/admin/", "/users/account/", "/users/profile/", "/trips/", "/api/"]:
+        for path in [
+            "/admin/",
+            "/users/account/",
+            "/users/profile/",
+            "/trips/",
+            "/api/",
+            "/travel/",
+        ]:
             self.assertIn(f"Disallow: {path}", content)
 
     def test_points_to_the_canonical_sitemap_url(self):
