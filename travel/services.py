@@ -28,6 +28,28 @@ def get_entry_requirements(country_name: str) -> CountryEntryRequirement | None:
     return CountryEntryRequirement.objects.filter(country__iexact=country_name.strip()).first()
 
 
+def resolve_country_name(place_name: str) -> str | None:
+    """Best-effort resolution of a free-text place name to a country name,
+    for looking up CountryEntryRequirement.videos (2026-09-07). A traveler
+    might name a city/destination ("Lisboa") or already a country
+    ("Portugal") - try matching a Destination by name or country first and
+    return its real .country; fall back to the raw input if nothing
+    matches, so callers can still try get_entry_requirements's own
+    case-insensitive country lookup (which returns None gracefully if
+    nothing is on file, rather than this function guessing)."""
+    if not place_name:
+        return None
+    place_name = place_name.strip()
+    if not place_name:
+        return None
+    destination = Destination.objects.filter(
+        Q(name__icontains=place_name) | Q(country__icontains=place_name)
+    ).first()
+    if destination is not None:
+        return destination.country
+    return place_name
+
+
 def find_destination_slugs_by_name(place_names: list[str]) -> frozenset:
     """Resolve free-text place/country names to matching Destination slugs.
 

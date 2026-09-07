@@ -20,6 +20,7 @@ from travel.services import (
     ENTRY_REQUIREMENT_DISCLAIMER,
     find_destination_slugs_by_name,
     get_entry_requirements,
+    resolve_country_name,
 )
 from trips.models import FEEDBACK_TAG_CHOICES, Feedback, TravelHistoryEntry, Trip
 from users.currency import convert_to_usd
@@ -284,7 +285,20 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "that's merely informational about flights/hotels/prices without "
     "asking to actually book anything (e.g. 'how much does a flight "
     "cost' or 'quais hotéis existem em Roma' is false - only an actual "
-    "request to book/reserve/purchase is true)."
+    "request to book/reserve/purchase is true).\n\n"
+    "--- is_video_request (independent of message_type) ---\n"
+    "true when the traveler wants to see a video of a place - either "
+    "asking unprompted ('tem algum vídeo do Japão?', 'can I see a video "
+    "of Portugal?') or agreeing to an offer YOU made earlier in the "
+    "conversation to show one (e.g. your prior reply asked 'gostaria de "
+    "ver um vídeo de Bali?' and the traveler just replied 'sim'/'quero'/"
+    "'show me'). False for everything else.\n"
+    "video_place_name: the place the traveler wants a video of, as "
+    "written in this message - if they simply agreed to an offer you "
+    "made ('sim', 'quero ver') without naming a place themselves, use "
+    "the place YOU offered in your own prior reply (check the history "
+    "above). Null if is_video_request is false, or if it's true but no "
+    "place can be identified either way."
 )
 
 INTENT_SCHEMA = {
@@ -320,6 +334,8 @@ INTENT_SCHEMA = {
             "visa_question_country": {"type": ["string", "null"]},
             "visa_question_nationality": {"type": ["string", "null"]},
             "is_booking_request": {"type": "boolean"},
+            "is_video_request": {"type": "boolean"},
+            "video_place_name": {"type": ["string", "null"]},
         },
         "required": [
             "message_type",
@@ -339,6 +355,8 @@ INTENT_SCHEMA = {
             "is_visa_or_entry_question",
             "visa_question_country",
             "visa_question_nationality",
+            "is_video_request",
+            "video_place_name",
             "is_booking_request",
         ],
         "additionalProperties": False,
@@ -552,6 +570,21 @@ def stream_travel_recommendation(
             booking_messages, message, ai_provider=ai_provider, remember=_remember
         )
         return StreamingOrchestrationResult([], booking_reply)
+
+    # Checked next (2026-09-07, direct request: the AI should proactively
+    # offer to show a video of a recommended place, and honor it when the
+    # traveler asks or agrees) - same "independent of message_type, handled
+    # with real verified data, never invented" pattern as the three checks
+    # above. Deliberately no live search fallback when nothing is on file
+    # for the resolved country (direct user decision, 2026-09-07) - a
+    # fabricated/guessed video link would be worse than admitting we don't
+    # have one yet, same principle already applied to entry requirements.
+    if intent["is_video_request"]:
+        video_messages = _build_video_reply_messages(message, intent, history)
+        video_reply = _stream_ai_reply(
+            video_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult([], video_reply)
 
     message_type = intent["message_type"]
 
@@ -1363,6 +1396,12 @@ def _validate_intent(data: dict) -> dict:
     )
     data["is_booking_request"] = bool(data.get("is_booking_request"))
 
+    data["is_video_request"] = bool(data.get("is_video_request"))
+    video_place_name = data.get("video_place_name")
+    data["video_place_name"] = (
+        video_place_name if isinstance(video_place_name, str) and video_place_name.strip() else None
+    )
+
     return data
 
 
@@ -1411,6 +1450,36 @@ def _build_profile_confirmation_messages(
     return messages
 
 
+def _video_availability_note(destinations: list[Destination]) -> str:
+    """Which of these candidates' countries have a real video on file
+    (CountryEntryRequirement.videos, 2026-09-07) - lets the explanation
+    offer to show a video with actual confidence there's something real
+    behind it, rather than a blind guess that might dead-end into "sorry,
+    no video" on the very next turn. Live testing found the model rarely
+    volunteered the offer at all when it had no idea whether one existed;
+    naming a real, deliverable candidate here makes the offer both more
+    likely and more trustworthy - it's never invented, same as every
+    other note built this way (see _entry_requirements_note above)."""
+    countries_with_videos = []
+    seen_countries = set()
+    for destination in destinations:
+        country = destination.country
+        if country in seen_countries:
+            continue
+        seen_countries.add(country)
+        requirement = get_entry_requirements(country)
+        if requirement is not None and requirement.videos:
+            countries_with_videos.append(country)
+    if not countries_with_videos:
+        return ""
+    countries_list = ", ".join(countries_with_videos)
+    return (
+        f"\n\nA real video is on file for: {countries_list} - a good, "
+        "grounded candidate to offer showing (see the closing-question "
+        "instruction below), since we can actually deliver on it."
+    )
+
+
 def _build_explanation_messages(
     message: str,
     results: list[ScoredDestination],
@@ -1439,6 +1508,7 @@ def _build_explanation_messages(
     entry_requirements_note = _entry_requirements_note(
         profile, [r.destination for r in top_results]
     )
+    video_note = _video_availability_note([r.destination for r in top_results])
     # 2026-09-02, direct user request: when the real match count exceeds
     # what we ever show (MAX_RECOMMENDATIONS), say so honestly rather than
     # silently presenting the capped list as if it were everything -
@@ -1467,6 +1537,7 @@ def _build_explanation_messages(
                 f"{assumed_month_note}"
                 f"{traveler_note}"
                 f"{entry_requirements_note}"
+                f"{video_note}"
                 f"{more_matches_note}\n\n"
                 "This ranking is by climate/cost/trip-type fit only - it "
                 "does not filter by region or country. If the traveler's "
@@ -1487,15 +1558,23 @@ def _build_explanation_messages(
                 "time. A short sentence or two of context before or after "
                 "the table is fine, but the comparison itself belongs in "
                 "the table, not paragraphs of prose. After the table, "
-                "don't just stop at the options - also ask one genuine "
-                "follow-up question that would help narrow the search "
-                "further (something not yet known: a preference, a "
-                "priority between the options, anything relevant) the way "
-                "a real consultant keeps refining even after giving a "
-                "first real answer. Reply in the same language the "
-                "traveler has been using in this conversation (check the "
-                "history above, not just this message) - this applies "
-                "just as much to English as to any other language."
+                "don't just stop at the options - close with ONE genuine "
+                "next step: normally a follow-up question that would help "
+                "narrow the search further (something not yet known: a "
+                "preference, a priority between the options, anything "
+                "relevant) the way a real consultant keeps refining even "
+                "after giving a first real answer. If a real video is "
+                "noted as being on file above for one of the destinations "
+                "you're presenting, prefer offering to show it instead "
+                "(e.g. 'gostaria de ver um vídeo de Bali?') - it's a good, "
+                "concrete thing you can actually deliver on. Don't stack "
+                "both in the same reply; pick whichever single one fits, "
+                "and only offer a video when one was actually noted as "
+                "available above - never offer one speculatively. Reply "
+                "in the same language the traveler has been using in "
+                "this conversation (check the history above, not just "
+                "this message) - this applies just as much to English as "
+                "to any other language."
             ),
         )
     )
@@ -1670,6 +1749,58 @@ def _build_booking_request_messages(
                 "destinations, timing, or general travel planning. Reply in "
                 "the same language the traveler has been using in this "
                 "conversation."
+            ),
+        )
+    )
+    return messages
+
+
+def _build_video_reply_messages(
+    message: str, intent: dict, history: list[dict] | None = None
+) -> list[AIMessage]:
+    """Built when intent extraction detects is_video_request - hands the
+    model real, verified CountryEntryRequirement.videos data (2026-09-07)
+    when any exists for the resolved country, never left to invent a link.
+    Deliberately no live search fallback when nothing is on file (direct
+    user decision) - same 'be honest about the gap' framing already used
+    by _build_visa_question_messages for missing entry-requirement data."""
+    place_name = intent["video_place_name"]
+    country = resolve_country_name(place_name) if place_name else None
+    requirement = get_entry_requirements(country) if country else None
+    videos = requirement.videos if requirement is not None else []
+
+    if videos:
+        videos_summary = "\n".join(f"- {url} (language: {lang})" for url, lang in videos)
+        data_note = (
+            f"\n\nReal videos on file for {country}, each with the language "
+            f"it's actually in:\n{videos_summary}\n\n"
+            "Share the most relevant one (or a couple, if more than one "
+            "fits). Never invent a URL beyond what's listed above. If the "
+            "video's own language doesn't match the language the traveler "
+            "has been using in this conversation, say so honestly (e.g. "
+            "'this one's in English') rather than implying it matches - "
+            "still share it, just don't misrepresent its language."
+        )
+    else:
+        where = f" for {country}" if country else ""
+        data_note = (
+            f"\n\nNo video is on file{where} yet - say so honestly and "
+            "plainly. Do not invent, guess, or describe a video/URL that "
+            "wasn't given to you above."
+        )
+
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler asked: "{message}" - wanting to see a video of a '
+                f"place (check the conversation above if the place isn't named "
+                f"here directly).{data_note}\n\n"
+                "Reply in the same language the traveler has been using in "
+                "this conversation (check the history above, not just this "
+                "message)."
             ),
         )
     )

@@ -152,6 +152,8 @@ def _intent(
     visa_question_country=None,
     visa_question_nationality=None,
     is_booking_request=False,
+    is_video_request=False,
+    video_place_name=None,
 ):
     return {
         "message_type": message_type,
@@ -172,6 +174,8 @@ def _intent(
         "visa_question_country": visa_question_country,
         "visa_question_nationality": visa_question_nationality,
         "is_booking_request": is_booking_request,
+        "is_video_request": is_video_request,
+        "video_place_name": video_place_name,
     }
 
 
@@ -1214,6 +1218,142 @@ class BookingRequestTests(TestCase):
         ai_provider = StubAIProvider(
             structured_response=_intent(
                 month=10, min_temp_c=20.0, is_booking_request=False
+            ),
+            reply_text="Here you go!",
+        )
+
+        result = get_travel_recommendation(
+            "somewhere warm in October", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        self.assertEqual(len(result.recommendations), 1)
+
+
+class VideoRequestTests(TestCase):
+    """2026-09-07, direct request: the AI should offer/share real videos
+    from CountryEntryRequirement.videos, never invent a link, and be
+    honest when nothing is on file for the resolved country (no live
+    search fallback - a direct user decision, see DEVELOPMENT_LOG.md)."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+        self.requirement = CountryEntryRequirement.objects.create(
+            country="Portugal",
+            videos=[["https://www.youtube.com/watch?v=PJdZ5_ZKD7Q", "EN"]],
+        )
+
+    def test_video_request_skips_a_new_search(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_video_request=True, video_place_name="Portugal"),
+            reply_text="Here's a video of Portugal!",
+        )
+
+        result = get_travel_recommendation(
+            "posso ver um vídeo de Portugal?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.recommendations, [])
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_video_request_takes_priority_over_message_type(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="off_topic", is_video_request=True, video_place_name="Portugal"
+            ),
+            reply_text="Here's a video!",
+        )
+
+        get_travel_recommendation(
+            "posso ver um vídeo de Portugal?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_real_video_data_included_when_on_file(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_video_request=True, video_place_name="Portugal"),
+            reply_text="Here's a video!",
+        )
+
+        get_travel_recommendation(
+            "posso ver um vídeo de Portugal?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("https://www.youtube.com/watch?v=PJdZ5_ZKD7Q", prompt)
+        self.assertIn("language: EN", prompt)
+        self.assertIn("Never invent a URL", prompt)
+
+    def test_resolves_a_destination_name_to_its_country(self):
+        Destination.objects.create(
+            slug="lisbon-pt",
+            name="Lisbon",
+            country="Portugal",
+            latitude=38.72,
+            longitude=-9.14,
+            trip_type="city",
+            cost_of_living=3,
+            best_season="Mar-Oct",
+            worst_season="Dec-Feb",
+            short_description="A hilly coastal capital.",
+            points_of_interest=[],
+        )
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_video_request=True, video_place_name="Lisbon"),
+            reply_text="Here's a video!",
+        )
+
+        get_travel_recommendation(
+            "quero ver um vídeo de Lisboa", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("https://www.youtube.com/watch?v=PJdZ5_ZKD7Q", prompt)
+
+    def test_no_video_on_file_is_honest_not_fabricated(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_video_request=True, video_place_name="Wakanda"),
+            reply_text="I don't have a video for that yet.",
+        )
+
+        get_travel_recommendation(
+            "posso ver um vídeo de Wakanda?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("No video is on file", prompt)
+        self.assertIn("Do not invent, guess, or describe", prompt)
+        self.assertNotIn("youtube.com", prompt)
+
+    def test_empty_videos_list_behaves_like_no_data(self):
+        CountryEntryRequirement.objects.create(country="Emptyland", videos=[])
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_video_request=True, video_place_name="Emptyland"),
+            reply_text="I don't have one yet.",
+        )
+
+        get_travel_recommendation(
+            "video de Emptyland?", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("No video is on file", prompt)
+
+    def test_not_a_video_request_still_searches_normally(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                month=10, min_temp_c=20.0, is_video_request=False
             ),
             reply_text="Here you go!",
         )
