@@ -155,6 +155,8 @@ def _intent(
     is_booking_request=False,
     is_video_request=False,
     video_place_name=None,
+    is_activity_question=False,
+    activity_place_name=None,
 ):
     return {
         "message_type": message_type,
@@ -178,6 +180,8 @@ def _intent(
         "is_booking_request": is_booking_request,
         "is_video_request": is_video_request,
         "video_place_name": video_place_name,
+        "is_activity_question": is_activity_question,
+        "activity_place_name": activity_place_name,
     }
 
 
@@ -1407,6 +1411,104 @@ class VideoRequestTests(TestCase):
         ai_provider = StubAIProvider(
             structured_response=_intent(
                 month=10, min_temp_c=20.0, is_video_request=False
+            ),
+            reply_text="Here you go!",
+        )
+
+        result = get_travel_recommendation(
+            "somewhere warm in October", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        self.assertEqual(len(result.recommendations), 1)
+
+
+class ActivityQuestionTests(TestCase):
+    """2026-09-07, direct user report: "ELE NAO me responde so fica
+    indicando cidade" - asking "mas o que tem de bom pra fazer la?" about
+    an already-established destination kept getting forced into the
+    destination-comparison-table format instead of an actual answer. This
+    intent flag bypasses generate_recommendations() entirely for a
+    follow-up activities/things-to-do question, per the already-approved
+    recommendation philosophy (2026-08-29: answer from general knowledge
+    for anything the deterministic model doesn't cover)."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+
+    def test_activity_question_skips_a_new_search(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_activity_question=True, activity_place_name="Hoi An"
+            ),
+            reply_text="Hoi An is great for its old town and tailors!",
+        )
+
+        result = get_travel_recommendation(
+            "mas o que tem de bom pra fazer la?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.recommendations, [])
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_activity_question_takes_priority_over_message_type(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="off_topic",
+                is_activity_question=True,
+                activity_place_name="Hoi An",
+            ),
+            reply_text="Here's what to do there!",
+        )
+
+        get_travel_recommendation(
+            "mas o que tem de bom pra fazer la?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_prompt_names_the_resolved_place_and_forbids_the_table_format(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_activity_question=True, activity_place_name="Hoi An"
+            ),
+            reply_text="Here's what to do there!",
+        )
+
+        get_travel_recommendation(
+            "mas o que tem de bom pra fazer la?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("Hoi An", prompt)
+        self.assertIn("NOT asking for new destination suggestions", prompt)
+        self.assertIn("do not force this into a destination-comparison table", prompt)
+
+    def test_no_place_named_falls_back_to_checking_history(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_activity_question=True, activity_place_name=None),
+            reply_text="Here's what to do there!",
+        )
+
+        get_travel_recommendation(
+            "e o que mais dá pra fazer?", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("check the history above for which place", prompt)
+
+    def test_not_an_activity_question_still_searches_normally(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                month=10, min_temp_c=20.0, is_activity_question=False
             ),
             reply_text="Here you go!",
         )

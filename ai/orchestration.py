@@ -310,7 +310,23 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "made ('sim', 'quero ver') without naming a place themselves, use "
     "the place YOU offered in your own prior reply (check the history "
     "above). Null if is_video_request is false, or if it's true but no "
-    "place can be identified either way."
+    "place can be identified either way.\n\n"
+    "--- is_activity_question (independent of message_type) ---\n"
+    "true when the traveler is asking what there is to see/do at a place "
+    "already established in this conversation (yours or theirs) - things "
+    "to do, sights, food, culture, day trips, safety, practicalities, "
+    "'what's it like there', etc - NOT asking where they should go. "
+    "Examples: 'o que tem de bom pra fazer lá?', 'what's there to see in "
+    "Hoi An?', 'vale a pena visitar os templos?', 'é seguro andar à "
+    "noite?'. This is about a place the traveler already has in mind - "
+    "if they're instead asking for new destination suggestions (even "
+    "with extra criteria like climate/budget/trip type), that's the "
+    "normal recommendation flow, not this. False for everything else.\n"
+    "activity_place_name: the place being asked about, as written in "
+    "this message if named there, otherwise the most recently discussed "
+    "specific place from the conversation above (your prior reply or "
+    "the traveler's). Null if is_activity_question is false, or if it's "
+    "true but no specific place can be identified either way."
 )
 
 INTENT_SCHEMA = {
@@ -349,6 +365,8 @@ INTENT_SCHEMA = {
             "is_booking_request": {"type": "boolean"},
             "is_video_request": {"type": "boolean"},
             "video_place_name": {"type": ["string", "null"]},
+            "is_activity_question": {"type": "boolean"},
+            "activity_place_name": {"type": ["string", "null"]},
         },
         "required": [
             "message_type",
@@ -372,6 +390,8 @@ INTENT_SCHEMA = {
             "is_video_request",
             "video_place_name",
             "is_booking_request",
+            "is_activity_question",
+            "activity_place_name",
         ],
         "additionalProperties": False,
     },
@@ -599,6 +619,24 @@ def stream_travel_recommendation(
             video_messages, message, ai_provider=ai_provider, remember=_remember
         )
         return StreamingOrchestrationResult([], video_reply)
+
+    # Checked next (2026-09-07, direct user report: "ELE NAO me responde so
+    # fica indicando cidade" - asking "mas o que tem de bom pra fazer la?"
+    # about an already-established destination kept getting forced into
+    # _build_explanation_messages's destination-comparison-table format
+    # instead of an actual answer). This bypasses generate_recommendations()
+    # and the table-building machinery entirely - per the already-approved
+    # recommendation philosophy (2026-08-29: for anything the deterministic
+    # scoring model doesn't cover, the AI answers from its own general
+    # knowledge rather than the app trying to model every category),
+    # activities/things-to-do at a place is exactly this kind of question,
+    # not a "where should I go" request.
+    if intent["is_activity_question"]:
+        activity_messages = _build_activity_question_messages(message, intent, history)
+        activity_reply = _stream_ai_reply(
+            activity_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult([], activity_reply)
 
     message_type = intent["message_type"]
 
@@ -1422,6 +1460,14 @@ def _validate_intent(data: dict) -> dict:
         video_place_name if isinstance(video_place_name, str) and video_place_name.strip() else None
     )
 
+    data["is_activity_question"] = bool(data.get("is_activity_question"))
+    activity_place_name = data.get("activity_place_name")
+    data["activity_place_name"] = (
+        activity_place_name
+        if isinstance(activity_place_name, str) and activity_place_name.strip()
+        else None
+    )
+
     return data
 
 
@@ -1821,6 +1867,45 @@ def _build_video_reply_messages(
                 "Reply in the same language the traveler has been using in "
                 "this conversation (check the history above, not just this "
                 "message)."
+            ),
+        )
+    )
+    return messages
+
+
+def _build_activity_question_messages(
+    message: str, intent: dict, history: list[dict] | None = None
+) -> list[AIMessage]:
+    """Built when intent extraction detects is_activity_question - the
+    traveler is asking what there is to see/do/know about a place already
+    established in the conversation, not asking for new destination
+    suggestions. Deliberately skips generate_recommendations() and the
+    comparison-table format entirely: per the already-approved
+    recommendation philosophy (2026-08-29), anything the deterministic
+    scoring model doesn't cover is answered from the model's own general
+    knowledge, and "what's good to do there" is exactly that kind of
+    question, not a request to pick between destinations."""
+    place_name = intent["activity_place_name"]
+    place_note = (
+        f' about "{place_name}"' if place_name else " (check the history above for which place)"
+    )
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler just said: "{message}" - a follow-up question'
+                f"{place_note}, asking about things to do/see, culture, food, "
+                "safety, or practicalities there, NOT asking for new "
+                "destination suggestions. Answer directly and conversationally "
+                "from your own general travel knowledge - do not force this "
+                "into a destination-comparison table or a list of alternative "
+                "places, and do not redirect to 'where should you go' framing. "
+                "A short, natural, genuinely useful answer is exactly right "
+                "here, the way a real travel-savvy friend would answer. Reply "
+                "in the same language the traveler has been using in this "
+                "conversation."
             ),
         )
     )
