@@ -72,6 +72,13 @@ class RecommendationRequest:
     # options - nothing here could express "Europe" as a hard constraint
     # at all before this field existed).
     continent: str | None = None
+    # A single specific country, free text matching Destination.country
+    # (2026-09-07, real production bug: asking for Thailand returned cards
+    # from Japan, Vietnam, Indonesia, and the Maldives alongside the one
+    # genuine Thai destination - continent="asia" alone can't express "just
+    # this one country", the same gap the continent field itself closed
+    # for "Eurotrip" above). None for no single-country constraint.
+    country: str | None = None
     excluded_slugs: frozenset = frozenset()
     user: object | None = None  # users.models.User or AnonymousUser; None for a bare request
 
@@ -132,6 +139,10 @@ def generate_recommendations(
         # to be silently included anyway (2026-09-04 bug: a "Eurotrip"
         # request's cards included Bali, Marrakech, Chiang Mai).
         candidates = candidates.filter(country__in=countries_in_continent(request.continent))
+    if request.country is not None:
+        # More specific than continent - a single named country should
+        # never quietly widen to its whole continent/region.
+        candidates = candidates.filter(country__icontains=request.country)
 
     preferred_trip_types = _preferred_trip_types(request.user)
     visited_slugs = _visited_destination_slugs(request.user)

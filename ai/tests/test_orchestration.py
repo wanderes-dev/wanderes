@@ -141,6 +141,7 @@ def _intent(
     max_cost_of_living=None,
     trip_type=None,
     continent=None,
+    country=None,
     excluded_place_names=None,
     feedback_destination_name=None,
     feedback_rating=None,
@@ -163,6 +164,7 @@ def _intent(
         "max_cost_of_living": max_cost_of_living,
         "trip_type": trip_type,
         "continent": continent,
+        "country": country,
         "excluded_place_names": excluded_place_names or [],
         "feedback_destination_name": feedback_destination_name,
         "feedback_rating": feedback_rating,
@@ -859,6 +861,57 @@ class ContinentTests(TestCase):
 
         slugs = {r.destination.slug for r in result.recommendations}
         self.assertEqual(slugs, {"lisbon"})
+
+
+class CountryTests(TestCase):
+    """2026-09-07, real production bug reported live: asking for Thailand
+    ("quero ir pra tailandia") returned cards from Japan, Vietnam,
+    Indonesia, and the Maldives too - continent="asia" alone can't express
+    "just this one country", the same gap the continent field itself
+    closed for "Eurotrip" (see ContinentTests above)."""
+
+    def setUp(self):
+        self.bangkok = _make_destination(
+            "bangkok", lat=13.0, lon=100.0, trip_type="city", country="Tailândia"
+        )
+        self.kyoto = _make_destination(
+            "kyoto", lat=35.0, lon=135.0, trip_type="culture", country="Japão"
+        )
+        self.climate = StubClimateProvider(
+            {
+                (13.0, 100.0): MonthlyClimateSummary(2025, 10, 32.0, 24.0, 20.0),
+                (35.0, 135.0): MonthlyClimateSummary(2025, 10, 24.0, 15.0, 10.0),
+            }
+        )
+
+    def test_country_filters_out_other_countries_in_the_same_continent(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, continent="asia", country="Tailândia")
+        )
+
+        result = get_travel_recommendation(
+            "quero ir pra tailandia pode me dar dicas?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"bangkok"})
+
+    def test_country_alone_is_enough_signal_to_search(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(country="Tailândia"),  # no month, no continent, no temp
+            reply_text="Here are some options in Thailand!",
+        )
+
+        result = get_travel_recommendation(
+            "quero ir pra tailandia",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"bangkok"})
 
 
 class RecommendationCapTests(TestCase):

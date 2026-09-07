@@ -225,6 +225,18 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "if no continent/region/country was named or implied, or if what was "
     "named doesn't map to a single continent (e.g. 'somewhere warm', "
     "'anywhere with beaches').\n"
+    "country: set this ONLY when the traveler names or clearly asks for "
+    "ONE specific country (e.g. 'quero ir pra Tailândia', 'somewhere in "
+    "Japan') - as written, in whatever language they used. This is "
+    "narrower and more specific than continent: naming a single country "
+    "sets BOTH country and continent together (e.g. 'Tailândia' sets "
+    "country='Tailândia' AND continent='asia'), since a single-country "
+    "request should never quietly return results from OTHER countries in "
+    "the same continent/region. Leave country null for anything broader "
+    "than one country - a multi-country region or colloquial regional "
+    "term ('Europe', 'Eurotrip', 'Southeast Asia', 'the Caribbean') sets "
+    "continent only, never country, since those genuinely span many "
+    "countries. Also null if no specific country was named at all.\n"
     "If the user asks to avoid or exclude specific places, countries, or "
     "regions, list the place/country names they mentioned in "
     "excluded_place_names (e.g. ['Marrakech', 'Morocco']). Leave it as an "
@@ -323,6 +335,7 @@ INTENT_SCHEMA = {
                 "type": ["string", "null"],
                 "enum": [*CONTINENT_CODES, None],
             },
+            "country": {"type": ["string", "null"]},
             "excluded_place_names": {"type": "array", "items": {"type": "string"}},
             "feedback_destination_name": {"type": ["string", "null"]},
             "feedback_rating": {"type": ["integer", "null"]},
@@ -345,6 +358,7 @@ INTENT_SCHEMA = {
             "max_cost_of_living",
             "trip_type",
             "continent",
+            "country",
             "excluded_place_names",
             "feedback_destination_name",
             "feedback_rating",
@@ -698,6 +712,7 @@ def stream_travel_recommendation(
         or intent["max_cost_of_living"] is not None
         or intent["trip_type"] is not None
         or intent["continent"] is not None
+        or intent["country"] is not None
     )
     if not has_enough_signal:
         logger.info(
@@ -744,6 +759,7 @@ def stream_travel_recommendation(
         max_cost_of_living=intent["max_cost_of_living"],
         trip_type=intent["trip_type"],
         continent=intent["continent"],
+        country=intent["country"],
         excluded_slugs=find_destination_slugs_by_name(intent["excluded_place_names"]),
         user=user,
     )
@@ -752,7 +768,7 @@ def stream_travel_recommendation(
     if not results:
         logger.info(
             "No destinations matched constraints. message=%r month=%s min_temp_c=%s "
-            "max_temp_c=%s max_cost_of_living=%s trip_type=%s continent=%s",
+            "max_temp_c=%s max_cost_of_living=%s trip_type=%s continent=%s country=%s",
             message,
             intent["month"],
             intent["min_temp_c"],
@@ -760,6 +776,7 @@ def stream_travel_recommendation(
             intent["max_cost_of_living"],
             intent["trip_type"],
             intent["continent"],
+            intent["country"],
         )
         # Rather than a dead-end canned reply, let the AI try to actually
         # help - reason from its own general knowledge (same recommendation
@@ -1374,6 +1391,9 @@ def _validate_intent(data: dict) -> dict:
     if data.get("trip_type") not in {*TRIP_TYPE_CODES, None}:
         data["trip_type"] = None
 
+    country = data.get("country")
+    data["country"] = country if isinstance(country, str) and country.strip() else None
+
     data["excluded_place_names"] = _clean_string_list(data.get("excluded_place_names"))
 
     feedback_rating = data.get("feedback_rating")
@@ -1969,6 +1989,8 @@ def _build_no_matches_messages(
         constraints.append(f"trip_type={intent['trip_type']}")
     if intent["continent"]:
         constraints.append(f"continent={intent['continent']}")
+    if intent["country"]:
+        constraints.append(f"country={intent['country']}")
     if intent["min_temp_c"] is not None:
         constraints.append(f"min_temp_c={intent['min_temp_c']}")
     if intent["max_temp_c"] is not None:
