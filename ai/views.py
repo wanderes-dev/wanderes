@@ -57,6 +57,10 @@ def _chat_i18n_json() -> str:
             "whyThisFitsYou": _("Why this fits you"),
             "avgTempSuffix": _("avg"),
             "saveThisTrip": _("Save this trip"),
+            "chooseThisTrip": _("Choose this trip"),
+            # {name} is substituted client-side (JS .replace()), not by
+            # Django - translators must keep the literal "{name}" token.
+            "tellMeMoreAbout": _("Tell me more about {name}"),
             "notSaving": _("(not saving)"),
             "deleteConversation": _("Delete conversation"),
             "noSavedConversationsYet": _("No saved conversations yet."),
@@ -98,7 +102,7 @@ def _parse_conversation_id(raw: str | None) -> int | None:
     return None
 
 
-def _recommendation_card_data(scored_destination):
+def _recommendation_card_data(scored_destination, *, detail_shown=False):
     """Shape one ScoredDestination into what the chat page's recommendation
     cards need (2026-09-01 UI/UX pass - `05_AI_DESIGN.md` §7 "never invent
     travel data" applies to the frontend too, so this only ever exposes
@@ -106,7 +110,13 @@ def _recommendation_card_data(scored_destination):
     facts). `fit_reasons` translates the scoring factors that are already
     used to rank destinations into safe, user-facing explanations - never
     exposes the AI's own reasoning or raw scores, matching the existing
-    "no internal chain-of-thought in the UI" boundary."""
+    "no internal chain-of-thought in the UI" boundary.
+
+    `detail_shown` (2026-09-08, "choose this trip" flow) tells the frontend
+    whether this card came from ai.orchestration's single-destination detail
+    path - if so it renders the real "Save this trip" link; otherwise it
+    renders "Choose this trip", which sends the traveler back into that
+    detail path instead of saving immediately."""
     destination = scored_destination.destination
     fit_reasons = []
     if scored_destination.preference_fit > 0:
@@ -124,6 +134,7 @@ def _recommendation_card_data(scored_destination):
         "cost_of_living": destination.get_cost_of_living_display(),
         "avg_high_c": scored_destination.avg_high_c,
         "fit_reasons": fit_reasons,
+        "detail_shown": detail_shown,
     }
 
 
@@ -166,6 +177,13 @@ def recommendations_stream(request):
         else:
             history_override = conversation.messages[-memory.MAX_HISTORY_MESSAGES :]
 
+    # "Choose this trip" (2026-09-08): sent only by the chat page's own
+    # button, which already knows the exact destination - no validation
+    # here, stream_travel_recommendation's own Destination lookup is the
+    # single source of truth, and a bogus/stale slug just falls through to
+    # normal message handling there.
+    focus_destination_slug = request.POST.get("focus_destination_slug", "").strip() or None
+
     # No explicit ai_provider passed - stream_travel_recommendation resolves
     # its own default lazily, same as before this feature (2026-09-02:
     # record_turn below does the same, for the same reason - constructing
@@ -176,6 +194,7 @@ def recommendations_stream(request):
         user=user,
         session_key=request.session.session_key,
         history_override=history_override,
+        focus_destination_slug=focus_destination_slug,
     )
     if result.recommendations:
         record_event(
@@ -199,7 +218,8 @@ def recommendations_stream(request):
             # future caller that doesn't pre-cap still can't flood the UI
             # with cards.
             payload = [
-                _recommendation_card_data(r) for r in result.recommendations[:MAX_RECOMMENDATIONS]
+                _recommendation_card_data(r, detail_shown=result.is_destination_detail)
+                for r in result.recommendations[:MAX_RECOMMENDATIONS]
             ]
             yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)
 

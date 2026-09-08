@@ -29,7 +29,9 @@
         {% endif %}
         <p class="auth-footer">
             {% trans "Already have an account?" %}
-            <a href="{% url 'users:login' %}">{% trans "Log in" %}</a>
+            {# Preserves ?next= across the register<->login hop (2026-09-09),
+               same reasoning as login.html's symmetric link. #}
+            <a href="{% url 'users:login' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">{% trans "Log in" %}</a>
         </p>
     </div>
 </div>
