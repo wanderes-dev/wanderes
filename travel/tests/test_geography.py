@@ -45,11 +45,11 @@ class ContinentClassificationCoversEveryCuratedCountryTests(TestCase):
 class CountriesInContinentTests(TestCase):
     def test_known_continent_returns_its_countries(self):
         self.assertIn("Portugal", countries_in_continent("europe"))
-        self.assertIn("Japão", countries_in_continent("asia"))
+        self.assertIn("Japan", countries_in_continent("asia"))
 
     def test_a_country_is_never_in_two_different_continents_result(self):
         self.assertNotIn("Portugal", countries_in_continent("asia"))
-        self.assertNotIn("Japão", countries_in_continent("europe"))
+        self.assertNotIn("Japan", countries_in_continent("europe"))
 
     def test_unknown_continent_code_returns_empty_set_rather_than_raising(self):
         self.assertEqual(countries_in_continent("not-a-real-continent"), frozenset())

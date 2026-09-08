@@ -159,7 +159,7 @@ class GenerateRecommendationsTests(TestCase):
             "lisbon", lat=40.0, lon=-9.0, trip_type="city", cost_of_living=2, country="Portugal"
         )
         bangkok = _make_destination(
-            "bangkok", lat=13.0, lon=100.0, trip_type="city", cost_of_living=2, country="Tailândia"
+            "bangkok", lat=13.0, lon=100.0, trip_type="city", cost_of_living=2, country="Thailand"
         )
         counting_climate = CountingClimateProvider(
             {
