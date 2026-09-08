@@ -1,5 +1,4 @@
 import json
-import logging
 
 from django.http import (
     HttpResponseBadRequest,
@@ -12,14 +11,11 @@ from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from analytics.services import record_event
-from integrations.videos import VideoProviderError, get_video_provider
 
 from . import memory
 from .conversations import record_turn
 from .models import SavedConversation
 from .orchestration import FALLBACK_REPLY, MAX_RECOMMENDATIONS, stream_travel_recommendation
-
-logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 2000
 
@@ -65,7 +61,6 @@ def _chat_i18n_json() -> str:
             # {name} is substituted client-side (JS .replace()), not by
             # Django - translators must keep the literal "{name}" token.
             "tellMeMoreAbout": _("Tell me more about {name}"),
-            "watchVideoOf": _("Watch a video of {name}"),
             "notSaving": _("(not saving)"),
             "deleteConversation": _("Delete conversation"),
             "noSavedConversationsYet": _("No saved conversations yet."),
@@ -107,7 +102,7 @@ def _parse_conversation_id(raw: str | None) -> int | None:
     return None
 
 
-def _recommendation_card_data(scored_destination, *, detail_shown=False, video=None):
+def _recommendation_card_data(scored_destination, *, detail_shown=False):
     """Shape one ScoredDestination into what the chat page's recommendation
     cards need (2026-09-01 UI/UX pass - `05_AI_DESIGN.md` §7 "never invent
     travel data" applies to the frontend too, so this only ever exposes
@@ -121,10 +116,7 @@ def _recommendation_card_data(scored_destination, *, detail_shown=False, video=N
     whether this card came from ai.orchestration's single-destination detail
     path - if so it renders the real "Save this trip" link; otherwise it
     renders "Choose this trip", which sends the traveler back into that
-    detail path instead of saving immediately. `video` (also 2026-09-08),
-    when present, is a real integrations.videos.DestinationVideo - only
-    ever attached by the caller when at most 2 destinations are in this
-    response (see recommendations_stream below)."""
+    detail path instead of saving immediately."""
     destination = scored_destination.destination
     fit_reasons = []
     if scored_destination.preference_fit > 0:
@@ -134,7 +126,7 @@ def _recommendation_card_data(scored_destination, *, detail_shown=False, video=N
     if scored_destination.temperature_fit > 0:
         fit_reasons.append("Great climate match")
 
-    data = {
+    return {
         "slug": destination.slug,
         "name": destination.name,
         "country": destination.country,
@@ -144,9 +136,6 @@ def _recommendation_card_data(scored_destination, *, detail_shown=False, video=N
         "fit_reasons": fit_reasons,
         "detail_shown": detail_shown,
     }
-    if video is not None:
-        data["video"] = {"title": video.title, "video_id": video.video_id}
-    return data
 
 
 @require_POST
@@ -228,34 +217,10 @@ def recommendations_stream(request):
             # slice is a defensive no-op for the current caller, kept so a
             # future caller that doesn't pre-cap still can't flood the UI
             # with cards.
-            capped = result.recommendations[:MAX_RECOMMENDATIONS]
-            # Video only when the response is narrow enough to actually
-            # look at each destination properly (2026-09-08, direct user
-            # request) - always true for the single-destination "choose
-            # this trip" detail path, and also covers a normal broad query
-            # that happens to narrow to 1-2 real matches. Fetched here,
-            # after full_reply has already streamed in full, so a slow or
-            # failed video lookup only delays the trailing footer, never
-            # the perceived reply itself.
-            attach_video = 0 < len(capped) <= 2
-            video_provider = get_video_provider() if attach_video else None
-            payload = []
-            for r in capped:
-                video = None
-                if attach_video:
-                    try:
-                        video = video_provider.get_destination_video(
-                            query=f"{r.destination.name} {r.destination.country} travel"
-                        )
-                    except VideoProviderError:
-                        logger.warning(
-                            "Video lookup failed for %s - omitting.", r.destination.slug
-                        )
-                payload.append(
-                    _recommendation_card_data(
-                        r, detail_shown=result.is_destination_detail, video=video
-                    )
-                )
+            payload = [
+                _recommendation_card_data(r, detail_shown=result.is_destination_detail)
+                for r in result.recommendations[:MAX_RECOMMENDATIONS]
+            ]
             yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)
 
         if user is not None:

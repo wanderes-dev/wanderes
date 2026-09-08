@@ -876,10 +876,10 @@ class CountryTests(TestCase):
 
     def setUp(self):
         self.bangkok = _make_destination(
-            "bangkok", lat=13.0, lon=100.0, trip_type="city", country="Tailândia"
+            "bangkok", lat=13.0, lon=100.0, trip_type="city", country="Thailand"
         )
         self.kyoto = _make_destination(
-            "kyoto", lat=35.0, lon=135.0, trip_type="culture", country="Japão"
+            "kyoto", lat=35.0, lon=135.0, trip_type="culture", country="Japan"
         )
         self.climate = StubClimateProvider(
             {
@@ -890,7 +890,7 @@ class CountryTests(TestCase):
 
     def test_country_filters_out_other_countries_in_the_same_continent(self):
         ai_provider = StubAIProvider(
-            structured_response=_intent(month=10, continent="asia", country="Tailândia")
+            structured_response=_intent(month=10, continent="asia", country="Thailand")
         )
 
         result = get_travel_recommendation(
@@ -904,7 +904,7 @@ class CountryTests(TestCase):
 
     def test_country_alone_is_enough_signal_to_search(self):
         ai_provider = StubAIProvider(
-            structured_response=_intent(country="Tailândia"),  # no month, no continent, no temp
+            structured_response=_intent(country="Thailand"),  # no month, no continent, no temp
             reply_text="Here are some options in Thailand!",
         )
 
@@ -1099,7 +1099,12 @@ class FocusDestinationTests(TestCase):
         )
         list(result.reply_chunks)
 
-        self.assertEqual(len(ai_provider.generate_structured_reply_calls), 1)
+        # 2, not 1: normal handling runs both the combined intent
+        # extraction and the isolated climate/budget signal extraction
+        # (see _extract_climate_budget_signal) - this test only cares that
+        # a bogus slug reaches normal handling at all, not the exact shape
+        # of that path's own calls.
+        self.assertEqual(len(ai_provider.generate_structured_reply_calls), 2)
         self.assertFalse(result.is_destination_detail)
 
     def test_climate_failure_still_returns_a_card(self):
@@ -1140,6 +1145,53 @@ class FocusDestinationTests(TestCase):
         history = memory.get_history(key)
         self.assertEqual(len(history), 2)
         self.assertEqual(history[0]["content"], "tell me more")
+
+    def test_grounds_a_real_video_offer_when_one_is_on_file(self):
+        CountryEntryRequirement.objects.create(
+            country="Testland",
+            videos=[["https://www.youtube.com/watch?v=abc123", "EN"]],
+        )
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0),
+            reply_text="Here's more, and a video too!",
+        )
+
+        result = stream_travel_recommendation(
+            "tell me more",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+            focus_destination_slug="warm-cheap",
+        )
+        list(result.reply_chunks)
+
+        sent_prompt = ai_provider.stream_reply_calls[0][-1].content
+        # The grounding note names the country, not the raw URL - the real
+        # URL is only ever surfaced later, through the existing
+        # is_video_request conversational flow (_build_video_reply_messages),
+        # exactly like _build_explanation_messages' own video note.
+        self.assertIn("A real video is on file for: Testland", sent_prompt)
+
+    def test_no_video_note_when_none_is_on_file(self):
+        # setUp's destination's country ("Testland") has no
+        # CountryEntryRequirement row at all here - confirms the grounding
+        # note is silently omitted (not a crash, not a fabricated offer)
+        # exactly like _build_explanation_messages already does.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0),
+            reply_text="Here's more.",
+        )
+
+        result = stream_travel_recommendation(
+            "tell me more",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+            focus_destination_slug="warm-cheap",
+        )
+        list(result.reply_chunks)
+
+        sent_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertNotIn("youtube.com", sent_prompt)
+        self.assertNotIn("real video is on file", sent_prompt)
 
 
 class VisaQuestionTests(TestCase):

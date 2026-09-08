@@ -678,36 +678,6 @@
                 card.appendChild(chooseButton);
             }
 
-            // Video (2026-09-08): only ever present when the server judged
-            // this response narrow enough (at most 2 destinations) to
-            // attach one - see ai/views.py. Lazily inserted on click, never
-            // auto-loaded with the card, to avoid loading external content
-            // (and bandwidth) for cards the traveler doesn't care to watch.
-            if (destination.video && destination.video.video_id) {
-                const videoToggle = document.createElement("button");
-                videoToggle.type = "button";
-                videoToggle.className = "btn btn-secondary video-toggle";
-                videoToggle.textContent =
-                    "▶ " + CHAT_I18N.watchVideoOf.replace("{name}", destination.name);
-                videoToggle.addEventListener("click", function () {
-                    if (videoToggle.dataset.expanded === "true") {
-                        return;
-                    }
-                    videoToggle.dataset.expanded = "true";
-                    const embedContainer = document.createElement("div");
-                    embedContainer.className = "video-embed-container";
-                    const iframe = document.createElement("iframe");
-                    iframe.src = "https://www.youtube.com/embed/" + encodeURIComponent(destination.video.video_id);
-                    iframe.title = destination.video.title || destination.name;
-                    iframe.allow =
-                        "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
-                    iframe.allowFullscreen = true;
-                    embedContainer.appendChild(iframe);
-                    videoToggle.replaceWith(embedContainer);
-                });
-                card.appendChild(videoToggle);
-            }
-
             container.appendChild(card);
         });
         messages.appendChild(container);

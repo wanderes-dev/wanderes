@@ -312,17 +312,6 @@ AI_PROVIDER = env("AI_PROVIDER", default="openai")
 AI_MODEL = env("AI_MODEL", default="gpt-4o-mini")
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 
-# Which video provider adapter backs integrations.videos.get_video_provider()
-# (2026-09-08, "choose this trip" detail flow - a real destination video,
-# not a curated/invented one). Unlike FLIGHT_PROVIDER/HOTEL_PROVIDER below,
-# this is a real working adapter, not a skeleton - YouTube Data API v3
-# needs only a free API key, no business-approval gate, so it's wired the
-# same "working now" way as CLIMATE_PROVIDER/AI_PROVIDER. With no
-# YOUTUBE_API_KEY set, get_destination_video() simply returns None (no
-# video shown) rather than raising - see integrations/videos/youtube.py.
-VIDEO_PROVIDER = env("VIDEO_PROVIDER", default="youtube")
-YOUTUBE_API_KEY = env("YOUTUBE_API_KEY", default="")
-
 # Which flight provider adapter backs integrations.flights.get_flight_provider().
 # 2026-09-02: interface scaffolded ahead of a concrete adapter (see
 # DECISIONS_PENDING.md §4) - default blank on purpose, since
