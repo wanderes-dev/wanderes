@@ -1,5 +1,5 @@
 {
-  "$schema_note": "Visa/vaccine/insurance entry-requirement guidance, requested by the user 2026-09-02 ('tabela de country regulation'). IMPORTANT, read before trusting or extending this file: this is compiled from general knowledge, not verified against each country's official government/embassy source, and is NOT exhaustive - it covers the 18 curated Destination countries plus roughly 25 other major destinations, not all ~195 UN member states. Some entries (flagged inline via 'confidence': 'low' where present) cover genuinely volatile situations (e.g. Brazil's reciprocal visa policy toward US/Canada/Australia has changed direction multiple times in recent years; Russia's visa relationships with Western countries are actively shifting; China has been expanding unilateral visa-free entry for various countries) where the general pattern described may already be stale. travel.services.ENTRY_REQUIREMENT_DISCLAIMER must accompany this data wherever it is shown - see travel/models.py's CountryEntryRequirement docstring for why. visa_required_nationalities lists are deliberately representative (major/commonly-relevant nationalities), not exhaustive enumerations of all countries - see each entry's visa_notes for the general exemption structure instead, which is the more reliable and more compact way to describe most countries' policies. Translated from the original Portuguese to English (canonical source language, matching curated_destinations.json) on 2026-09-08 - see DEVELOPMENT_LOG.md for why. The 'country' field must stay in sync with curated_destinations.json's country spellings - note this file uses 'USA' for the United States (not 'United States'), matching the original dataset's 'EUA' abbreviation once translated.",
+  "$schema_note": "Visa/vaccine/insurance entry-requirement guidance, requested by the user 2026-09-02 ('tabela de country regulation'). IMPORTANT, read before trusting or extending this file: this is compiled from general knowledge, not verified against each country's official government/embassy source, and is NOT exhaustive - it covers the 18 curated Destination countries plus roughly 25 other major destinations, not all ~195 UN member states. Some entries (flagged inline via 'confidence': 'low' where present) cover genuinely volatile situations (e.g. Brazil's reciprocal visa policy toward US/Canada/Australia has changed direction multiple times in recent years; Russia's visa relationships with Western countries are actively shifting; China has been expanding unilateral visa-free entry for various countries) where the general pattern described may already be stale. travel.services.ENTRY_REQUIREMENT_DISCLAIMER must accompany this data wherever it is shown - see travel/models.py's CountryEntryRequirement docstring for why. visa_required_nationalities lists are deliberately representative (major/commonly-relevant nationalities), not exhaustive enumerations of all countries - see each entry's visa_notes for the general exemption structure instead, which is the more reliable and more compact way to describe most countries' policies. Translated from the original Portuguese to English (canonical source language, matching curated_destinations.json) on 2026-09-08 - see DEVELOPMENT_LOG.md for why. The 'country' field must stay in sync with curated_destinations.json's country spellings - note this file uses 'USA' for the United States (not 'United States'), matching the original dataset's 'EUA' abbreviation once translated. 'videos' (added 2026-09-07, direct user request) is a separate, unrelated caveat of its own: real YouTube URLs found via live web search (never fabricated - each one was verified to exist in an actual search result before being added here), as [url, language_code] pairs - not vetted against an official tourism board catalog, and video availability/content can change or be taken down after the fact, so treat this the same as any other unverified-third-party-source field in this file.",
   "countries": [
     {
       "country": "Portugal",
@@ -20,6 +20,12 @@
       "insurance_notes": "Those who need a Schengen visa must show travel insurance with minimum coverage of €30,000 for medical emergencies.",
       "other_requirements": [
         "Passport valid for at least 3 months after the planned departure date"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=PJdZ5_ZKD7Q",
+          "EN"
+        ]
       ]
     },
     {
@@ -37,6 +43,12 @@
       "other_requirements": [
         "Passport valid for at least 6 months",
         "Proof of onward/return travel out of the country"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=3Khxdtvwhyw",
+          "EN"
+        ]
       ]
     },
     {
@@ -58,6 +70,12 @@
       "insurance_notes": "Same Schengen insurance requirement (minimum €30,000) for those who need a visa.",
       "other_requirements": [
         "Passport valid for at least 3 months after the planned departure date"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=u_f90pXw5sQ",
+          "EN"
+        ]
       ]
     },
     {
@@ -76,6 +94,12 @@
       "insurance_notes": "Not required for entry, but recommended.",
       "other_requirements": [
         "At least 2 blank pages in the passport"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=DjoL1ehafFw",
+          "EN"
+        ]
       ]
     },
     {
@@ -91,7 +115,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "Not required for entry, but recommended given the high cost of local healthcare.",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=jTOfOew316s",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Peru",
@@ -106,7 +136,13 @@
       ],
       "insurance_required": false,
       "insurance_notes": "Not required for entry, but recommended, especially for high-altitude treks.",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=pxKa2SWFbPo",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Morocco",
@@ -120,7 +156,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=_Hed085c-IA",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "New Zealand",
@@ -137,6 +179,12 @@
       "other_requirements": [
         "NZeTA (electronic authorization) mandatory even for nationalities exempt from a traditional visa",
         "Tourism conservation levy (IVL) paid together with the NZeTA"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=Atf_Af1q_5w",
+          "EN"
+        ]
       ]
     },
     {
@@ -149,7 +197,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "Not required for most tourist visas.",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=BWqB7KGHTq4",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Argentina",
@@ -162,7 +216,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=NrvXE1HbmEQ",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Greece",
@@ -183,6 +243,12 @@
       "insurance_notes": "Same Schengen insurance requirement (minimum €30,000) for those who need a visa.",
       "other_requirements": [
         "Passport valid for at least 3 months after the planned departure date"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=f4wBcKc2j8s",
+          "EN"
+        ]
       ]
     },
     {
@@ -202,6 +268,12 @@
       "insurance_notes": "Not required for entry, but strongly recommended given the high cost of healthcare.",
       "other_requirements": [
         "eTA mandatory even for nationalities exempt from a traditional visa"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=R-MvwRoC1qo",
+          "EN"
+        ]
       ]
     },
     {
@@ -213,7 +285,13 @@
       ],
       "insurance_required": false,
       "insurance_notes": "Not required for entry, but recommended, especially for safaris.",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=iixaoPpp54E",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "USA",
@@ -244,6 +322,12 @@
       "insurance_notes": "Not required for entry, but essential given the extremely high cost of healthcare in the US without insurance.",
       "other_requirements": [
         "ESTA mandatory (even without a visa) for VWP nationalities, applied for in advance"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=EhG21sZQN4Y",
+          "EN"
+        ]
       ]
     },
     {
@@ -257,7 +341,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=_tkBerWUTw8",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Croatia",
@@ -278,6 +368,12 @@
       "insurance_notes": "Same Schengen insurance requirement (minimum €30,000) for those who need a visa.",
       "other_requirements": [
         "Passport valid for at least 3 months after the planned departure date"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=cTLD9t5lSTQ",
+          "EN"
+        ]
       ]
     },
     {
@@ -291,7 +387,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=NyJW-f_rjzU",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Maldives",
@@ -302,6 +404,12 @@
       "insurance_notes": "",
       "other_requirements": [
         "Proof of accommodation booking and return ticket"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=0REj6oM2eSc",
+          "EN"
+        ]
       ]
     },
     {
@@ -318,6 +426,12 @@
       "insurance_notes": "Visitors don't have free access to the NHS - travel insurance strongly recommended.",
       "other_requirements": [
         "ETA mandatory even for nationalities exempt from a visa"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=TTmICp21R4E",
+          "EN"
+        ]
       ]
     },
     {
@@ -339,6 +453,12 @@
       "insurance_notes": "Same Schengen insurance requirement (minimum €30,000) for those who need a visa.",
       "other_requirements": [
         "Passport valid for at least 3 months after the planned departure date"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=rETpXdTbAzo",
+          "EN"
+        ]
       ]
     },
     {
@@ -360,6 +480,12 @@
       "insurance_notes": "Same Schengen insurance requirement (minimum €30,000) for those who need a visa.",
       "other_requirements": [
         "Passport valid for at least 3 months after the planned departure date"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=j32RezXacYM",
+          "EN"
+        ]
       ]
     },
     {
@@ -381,6 +507,12 @@
       "insurance_notes": "Same Schengen insurance requirement (minimum €30,000) for those who need a visa.",
       "other_requirements": [
         "Passport valid for at least 3 months after the planned departure date"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=eq7pkma3RgA",
+          "EN"
+        ]
       ]
     },
     {
@@ -402,6 +534,12 @@
       "insurance_notes": "Same Schengen insurance requirement (minimum €30,000) for those who need a visa.",
       "other_requirements": [
         "Passport valid for at least 3 months after the planned departure date"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=BH9YNaBl1W4",
+          "EN"
+        ]
       ]
     },
     {
@@ -423,6 +561,12 @@
       "insurance_notes": "Same Schengen insurance requirement (minimum €30,000) for those who need a visa.",
       "other_requirements": [
         "Passport valid for at least 3 months after the planned departure date"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=pfdb6u4HDoQ",
+          "EN"
+        ]
       ]
     },
     {
@@ -437,7 +581,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=7bQRRFDK4-A",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Australia",
@@ -451,7 +601,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "Not required, but strongly recommended given the high cost of healthcare for non-residents.",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=nFS1nvRUVkY",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "China",
@@ -467,7 +623,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=RfOzBVKvOv4",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "India",
@@ -476,7 +638,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=xUphsn5b1w8",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "United Arab Emirates",
@@ -488,7 +656,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=OjZPBDvvA-M",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Egypt",
@@ -499,7 +673,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=rsYXPoTi13I",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Turkey",
@@ -511,7 +691,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=MNMCqO7LIDg",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Brazil",
@@ -522,7 +708,13 @@
       ],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=GGPgvq06y40",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Russia",
@@ -537,7 +729,13 @@
       "vaccine_requirements": [],
       "insurance_required": true,
       "insurance_notes": "Travel insurance historically required as part of the visa process.",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=6PucIvOn964",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "South Korea",
@@ -552,6 +750,12 @@
       "insurance_notes": "",
       "other_requirements": [
         "K-ETA (electronic authorization) mandatory even for nationalities exempt from a visa"
+      ],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=rKMP8Gvj9Vk",
+          "EN"
+        ]
       ]
     },
     {
@@ -565,7 +769,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=pWH_R5ca-k4",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Colombia",
@@ -580,7 +790,13 @@
       ],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=czfKyc-HtF4",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Costa Rica",
@@ -593,7 +809,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=Zi2ClirjvMY",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Philippines",
@@ -606,7 +828,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=ADNgEHFDYzo",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Singapore",
@@ -618,7 +846,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=L8sPZIkKywA",
+          "EN"
+        ]
+      ]
     },
     {
       "country": "Malaysia",
@@ -631,7 +865,13 @@
       "vaccine_requirements": [],
       "insurance_required": false,
       "insurance_notes": "",
-      "other_requirements": []
+      "other_requirements": [],
+      "videos": [
+        [
+          "https://www.youtube.com/watch?v=6UguPyZalgI",
+          "EN"
+        ]
+      ]
     }
   ]
 }

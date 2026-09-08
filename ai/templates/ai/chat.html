@@ -491,10 +491,18 @@
     }
 
     function inlineFormat(text) {
-        // Only **bold** for now - the AI's own formatting stays simple by
-        // design (09_AI_ORCHESTRATION.md: short, natural replies), and
-        // tables/lists/bold cover everything asked for so far.
-        return text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+        // **bold** and [text](url) links (2026-09-07, direct request - a
+        // shared video link was rendering as plain escaped text, e.g.
+        // literal "[Watch here](https://...)" characters, not a clickable
+        // link). Only http(s) URLs - matches what the AI is ever actually
+        // given to share (real destination/video URLs), never anything
+        // that could produce a javascript: or other unsafe scheme.
+        let html = text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+        html = html.replace(
+            /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+            '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+        );
+        return html;
     }
 
     function splitTableRow(line) {

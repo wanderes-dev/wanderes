@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}Countries - Wanderes{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+
+{% block content %}
+<h1>{% trans "Countries" %}</h1>
+
+<section class="profile-section">
+    <p class="actions"><a href="{% url 'travel:country-create' %}" class="btn">{% trans "Add a new country" %}</a></p>
+
+    {% if countries %}
+    <ul class="item-list">
+        {% for country in countries %}
+        <li>
+            <a class="item-title" href="{% url 'travel:country-edit' country.pk %}">{{ country.country }}</a>
+            <span class="item-status">
+                {% blocktrans count counter=country.videos|length %}{{ counter }} video{% plural %}{{ counter }} videos{% endblocktrans %}
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">{% trans "No countries yet." %}</p>
+    {% endif %}
+</section>
+{% endblock %}

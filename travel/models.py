@@ -133,6 +133,19 @@ class CountryEntryRequirement(models.Model):
             "['Minimum 6 months passport validity', 'Proof of onward travel']."
         ),
     )
+    videos = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Travel videos for this country, as [url, language_code] pairs, "
+            "e.g. [['https://www.youtube.com/watch?v=...', 'EN']]. "
+            "language_code is whatever language the video itself is "
+            "actually in, not necessarily one of the site's own supported "
+            "UI languages. Sourced from web search (2026-09-07), not an "
+            "official tourism catalog - same 'general knowledge, not "
+            "verified' caveat already applied to the rest of this model."
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

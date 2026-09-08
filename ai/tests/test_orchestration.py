@@ -7,6 +7,8 @@ from ai.orchestration import (
     FALLBACK_REPLY,
     MAX_RECOMMENDATIONS,
     NEEDS_LOGIN_REPLY,
+    _extract_climate_budget_signal,
+    _validate_climate_budget,
     get_travel_recommendation,
     stream_travel_recommendation,
 )
@@ -67,6 +69,40 @@ class StubAIProvider:
             yield word + " "
 
 
+class SchemaAwareStubAIProvider:
+    """Like StubAIProvider, but generate_structured_reply's response
+    depends on which schema was requested. StubAIProvider returns the same
+    canned response for any schema, which can't simulate the combined
+    intent-extraction call ("travel_message") and the isolated climate/
+    budget call ("climate_budget_signal") returning genuinely different
+    things - exactly the scenario the 2026-09-06 structural fix needs to
+    be tested against (see ClimateBudgetSignalTests)."""
+
+    def __init__(self, *, responses_by_schema, reply_text="Here's my recommendation."):
+        self.responses_by_schema = responses_by_schema
+        self.reply_text = reply_text
+        self.generate_structured_reply_calls = []
+        self.stream_reply_calls = []
+
+    def generate_structured_reply(
+        self, messages, *, json_schema, max_tokens=None, temperature=None
+    ):
+        self.generate_structured_reply_calls.append(messages)
+        return self.responses_by_schema[json_schema["name"]]
+
+    def generate_reply(self, messages, *, max_tokens=None):
+        last_content = messages[-1].content
+        marker = "this applies just as much to English as to any other language: "
+        idx = last_content.find(marker)
+        content = last_content[idx + len(marker) :] if idx != -1 else last_content
+        return AIResponse(content=content, model="stub", prompt_tokens=0, completion_tokens=0)
+
+    def stream_reply(self, messages, *, max_tokens=None, temperature=None):
+        self.stream_reply_calls.append(messages)
+        for word in self.reply_text.split(" "):
+            yield word + " "
+
+
 class FailingAIProvider:
     def generate_structured_reply(
         self, messages, *, json_schema, max_tokens=None, temperature=None
@@ -105,6 +141,7 @@ def _intent(
     max_cost_of_living=None,
     trip_type=None,
     continent=None,
+    country=None,
     excluded_place_names=None,
     feedback_destination_name=None,
     feedback_rating=None,
@@ -116,6 +153,10 @@ def _intent(
     visa_question_country=None,
     visa_question_nationality=None,
     is_booking_request=False,
+    is_video_request=False,
+    video_place_name=None,
+    is_activity_question=False,
+    activity_place_name=None,
 ):
     return {
         "message_type": message_type,
@@ -125,6 +166,7 @@ def _intent(
         "max_cost_of_living": max_cost_of_living,
         "trip_type": trip_type,
         "continent": continent,
+        "country": country,
         "excluded_place_names": excluded_place_names or [],
         "feedback_destination_name": feedback_destination_name,
         "feedback_rating": feedback_rating,
@@ -136,6 +178,10 @@ def _intent(
         "visa_question_country": visa_question_country,
         "visa_question_nationality": visa_question_nationality,
         "is_booking_request": is_booking_request,
+        "is_video_request": is_video_request,
+        "video_place_name": video_place_name,
+        "is_activity_question": is_activity_question,
+        "activity_place_name": activity_place_name,
     }
 
 
@@ -821,6 +867,57 @@ class ContinentTests(TestCase):
         self.assertEqual(slugs, {"lisbon"})
 
 
+class CountryTests(TestCase):
+    """2026-09-07, real production bug reported live: asking for Thailand
+    ("quero ir pra tailandia") returned cards from Japan, Vietnam,
+    Indonesia, and the Maldives too - continent="asia" alone can't express
+    "just this one country", the same gap the continent field itself
+    closed for "Eurotrip" (see ContinentTests above)."""
+
+    def setUp(self):
+        self.bangkok = _make_destination(
+            "bangkok", lat=13.0, lon=100.0, trip_type="city", country="Tailândia"
+        )
+        self.kyoto = _make_destination(
+            "kyoto", lat=35.0, lon=135.0, trip_type="culture", country="Japão"
+        )
+        self.climate = StubClimateProvider(
+            {
+                (13.0, 100.0): MonthlyClimateSummary(2025, 10, 32.0, 24.0, 20.0),
+                (35.0, 135.0): MonthlyClimateSummary(2025, 10, 24.0, 15.0, 10.0),
+            }
+        )
+
+    def test_country_filters_out_other_countries_in_the_same_continent(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, continent="asia", country="Tailândia")
+        )
+
+        result = get_travel_recommendation(
+            "quero ir pra tailandia pode me dar dicas?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"bangkok"})
+
+    def test_country_alone_is_enough_signal_to_search(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(country="Tailândia"),  # no month, no continent, no temp
+            reply_text="Here are some options in Thailand!",
+        )
+
+        result = get_travel_recommendation(
+            "quero ir pra tailandia",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"bangkok"})
+
+
 class RecommendationCapTests(TestCase):
     """2026-09-02, direct user request: cap recommendations at
     MAX_RECOMMENDATIONS (10) regardless of how many real destinations
@@ -1287,6 +1384,240 @@ class BookingRequestTests(TestCase):
         ai_provider = StubAIProvider(
             structured_response=_intent(
                 month=10, min_temp_c=20.0, is_booking_request=False
+            ),
+            reply_text="Here you go!",
+        )
+
+        result = get_travel_recommendation(
+            "somewhere warm in October", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        self.assertEqual(len(result.recommendations), 1)
+
+
+class VideoRequestTests(TestCase):
+    """2026-09-07, direct request: the AI should offer/share real videos
+    from CountryEntryRequirement.videos, never invent a link, and be
+    honest when nothing is on file for the resolved country (no live
+    search fallback - a direct user decision, see DEVELOPMENT_LOG.md)."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+        self.requirement = CountryEntryRequirement.objects.create(
+            country="Portugal",
+            videos=[["https://www.youtube.com/watch?v=PJdZ5_ZKD7Q", "EN"]],
+        )
+
+    def test_video_request_skips_a_new_search(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_video_request=True, video_place_name="Portugal"),
+            reply_text="Here's a video of Portugal!",
+        )
+
+        result = get_travel_recommendation(
+            "posso ver um vídeo de Portugal?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.recommendations, [])
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_video_request_takes_priority_over_message_type(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="off_topic", is_video_request=True, video_place_name="Portugal"
+            ),
+            reply_text="Here's a video!",
+        )
+
+        get_travel_recommendation(
+            "posso ver um vídeo de Portugal?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_real_video_data_included_when_on_file(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_video_request=True, video_place_name="Portugal"),
+            reply_text="Here's a video!",
+        )
+
+        get_travel_recommendation(
+            "posso ver um vídeo de Portugal?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("https://www.youtube.com/watch?v=PJdZ5_ZKD7Q", prompt)
+        self.assertIn("language: EN", prompt)
+        self.assertIn("Never invent a URL", prompt)
+
+    def test_resolves_a_destination_name_to_its_country(self):
+        Destination.objects.create(
+            slug="lisbon-pt",
+            name="Lisbon",
+            country="Portugal",
+            latitude=38.72,
+            longitude=-9.14,
+            trip_type="city",
+            cost_of_living=3,
+            best_season="Mar-Oct",
+            worst_season="Dec-Feb",
+            short_description="A hilly coastal capital.",
+            points_of_interest=[],
+        )
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_video_request=True, video_place_name="Lisbon"),
+            reply_text="Here's a video!",
+        )
+
+        get_travel_recommendation(
+            "quero ver um vídeo de Lisboa", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("https://www.youtube.com/watch?v=PJdZ5_ZKD7Q", prompt)
+
+    def test_no_video_on_file_is_honest_not_fabricated(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_video_request=True, video_place_name="Wakanda"),
+            reply_text="I don't have a video for that yet.",
+        )
+
+        get_travel_recommendation(
+            "posso ver um vídeo de Wakanda?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("No video is on file", prompt)
+        self.assertIn("Do not invent, guess, or describe", prompt)
+        self.assertNotIn("youtube.com", prompt)
+
+    def test_empty_videos_list_behaves_like_no_data(self):
+        CountryEntryRequirement.objects.create(country="Emptyland", videos=[])
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_video_request=True, video_place_name="Emptyland"),
+            reply_text="I don't have one yet.",
+        )
+
+        get_travel_recommendation(
+            "video de Emptyland?", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("No video is on file", prompt)
+
+    def test_not_a_video_request_still_searches_normally(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                month=10, min_temp_c=20.0, is_video_request=False
+            ),
+            reply_text="Here you go!",
+        )
+
+        result = get_travel_recommendation(
+            "somewhere warm in October", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        self.assertEqual(len(result.recommendations), 1)
+
+
+class ActivityQuestionTests(TestCase):
+    """2026-09-07, direct user report: "ELE NAO me responde so fica
+    indicando cidade" - asking "mas o que tem de bom pra fazer la?" about
+    an already-established destination kept getting forced into the
+    destination-comparison-table format instead of an actual answer. This
+    intent flag bypasses generate_recommendations() entirely for a
+    follow-up activities/things-to-do question, per the already-approved
+    recommendation philosophy (2026-08-29: answer from general knowledge
+    for anything the deterministic model doesn't cover)."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+
+    def test_activity_question_skips_a_new_search(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_activity_question=True, activity_place_name="Hoi An"
+            ),
+            reply_text="Hoi An is great for its old town and tailors!",
+        )
+
+        result = get_travel_recommendation(
+            "mas o que tem de bom pra fazer la?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.recommendations, [])
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_activity_question_takes_priority_over_message_type(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="off_topic",
+                is_activity_question=True,
+                activity_place_name="Hoi An",
+            ),
+            reply_text="Here's what to do there!",
+        )
+
+        get_travel_recommendation(
+            "mas o que tem de bom pra fazer la?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_prompt_names_the_resolved_place_and_forbids_the_table_format(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_activity_question=True, activity_place_name="Hoi An"
+            ),
+            reply_text="Here's what to do there!",
+        )
+
+        get_travel_recommendation(
+            "mas o que tem de bom pra fazer la?",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("Hoi An", prompt)
+        self.assertIn("NOT asking for new destination suggestions", prompt)
+        self.assertIn("do not force this into a destination-comparison table", prompt)
+
+    def test_no_place_named_falls_back_to_checking_history(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(is_activity_question=True, activity_place_name=None),
+            reply_text="Here's what to do there!",
+        )
+
+        get_travel_recommendation(
+            "e o que mais dá pra fazer?", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("check the history above for which place", prompt)
+
+    def test_not_an_activity_question_still_searches_normally(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                month=10, min_temp_c=20.0, is_activity_question=False
             ),
             reply_text="Here you go!",
         )
@@ -1890,3 +2221,135 @@ class ConversationMemoryTests(TestCase):
         key = memory.conversation_key(user=None, session_key="session-stream")
         history = memory.get_history(key)
         self.assertEqual(history[-1], {"role": "assistant", "content": full_reply})
+
+
+class ClimateBudgetSignalTests(TestCase):
+    """2026-09-06 structural fix, round 2: min_temp_c/max_temp_c/
+    max_cost_of_living are now extracted from the current message alone
+    (no history), overwriting whatever the combined intent-extraction call
+    produced, and merged with an accumulator so real multi-turn
+    combining still works. See DEVELOPMENT_LOG.md for the two prior
+    (reverted) prompt-only attempts and why they weren't enough."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+
+    def test_validate_climate_budget_rejects_out_of_range_cost_tier(self):
+        result = _validate_climate_budget(
+            {"min_temp_c": None, "max_temp_c": None, "max_cost_of_living": 99}
+        )
+
+        self.assertIsNone(result["max_cost_of_living"])
+
+    def test_validate_climate_budget_drops_contradictory_temperature_range(self):
+        result = _validate_climate_budget(
+            {"min_temp_c": 30, "max_temp_c": 20, "max_cost_of_living": None}
+        )
+
+        self.assertIsNone(result["min_temp_c"])
+        self.assertIsNone(result["max_temp_c"])
+
+    def test_validate_climate_budget_passes_through_valid_values(self):
+        result = _validate_climate_budget(
+            {"min_temp_c": 22, "max_temp_c": 30, "max_cost_of_living": 3}
+        )
+
+        self.assertEqual(result, {"min_temp_c": 22, "max_temp_c": 30, "max_cost_of_living": 3})
+
+    def test_extract_climate_budget_signal_sends_no_history(self):
+        ai_provider = StubAIProvider(
+            structured_response={"min_temp_c": 22, "max_temp_c": None, "max_cost_of_living": None}
+        )
+
+        result = _extract_climate_budget_signal("somewhere warm", ai_provider=ai_provider)
+
+        self.assertEqual(result["min_temp_c"], 22)
+        # Just the system prompt + the current message - this call never
+        # receives conversation history, by design.
+        sent_messages = ai_provider.generate_structured_reply_calls[0]
+        self.assertEqual(len(sent_messages), 2)
+
+    def test_extract_climate_budget_signal_degrades_gracefully_on_provider_failure(self):
+        result = _extract_climate_budget_signal("somewhere warm", ai_provider=FailingAIProvider())
+
+        self.assertEqual(
+            result, {"min_temp_c": None, "max_temp_c": None, "max_cost_of_living": None}
+        )
+
+    def test_isolated_call_overrides_a_contaminated_combined_extraction(self):
+        # Simulates exactly the reported bug: the combined call (as if
+        # contaminated by destination names/descriptions in history) comes
+        # back with min_temp_c=28, but the isolated call - correctly,
+        # since the current message says nothing about climate - returns
+        # null. The isolated call's result must win.
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(
+                    message_type="recommendation", trip_type="beach", min_temp_c=28.0
+                ),
+                "climate_budget_signal": {
+                    "min_temp_c": None,
+                    "max_temp_c": None,
+                    "max_cost_of_living": None,
+                },
+            }
+        )
+
+        result = get_travel_recommendation(
+            "comer",
+            session_key="climate-budget-override",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertTrue(
+            all(r.temperature_fit == 0 for r in result.recommendations),
+            "expected no temperature fit - the isolated call said min_temp_c=None",
+        )
+
+    def test_climate_signal_from_an_earlier_turn_carries_forward(self):
+        first_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(message_type="recommendation", trip_type="beach"),
+                "climate_budget_signal": {
+                    "min_temp_c": 22,
+                    "max_temp_c": None,
+                    "max_cost_of_living": None,
+                },
+            },
+            reply_text="Here's a warm beach suggestion!",
+        )
+        get_travel_recommendation(
+            "somewhere warm and beachy",
+            session_key="climate-budget-carry",
+            ai_provider=first_provider,
+            climate_provider=self.climate,
+        )
+
+        # Second turn's own message says nothing about climate - the
+        # isolated call correctly returns null for it - but the earlier
+        # turn's min_temp_c=22 should still apply via the accumulator.
+        second_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(message_type="recommendation", trip_type="beach"),
+                "climate_budget_signal": {
+                    "min_temp_c": None,
+                    "max_temp_c": None,
+                    "max_cost_of_living": None,
+                },
+            }
+        )
+        result = get_travel_recommendation(
+            "comer",
+            session_key="climate-budget-carry",
+            ai_provider=second_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertTrue(
+            any(r.temperature_fit > 0 for r in result.recommendations),
+            "expected the earlier turn's min_temp_c=22 to still apply",
+        )

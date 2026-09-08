@@ -1,7 +1,11 @@
 from django.test import TestCase
 
 from travel.models import CountryEntryRequirement, Destination
-from travel.services import find_destination_slugs_by_name, get_entry_requirements
+from travel.services import (
+    find_destination_slugs_by_name,
+    get_entry_requirements,
+    resolve_country_name,
+)
 
 
 class FindDestinationSlugsByNameTests(TestCase):
@@ -83,3 +87,36 @@ class GetEntryRequirementsTests(TestCase):
 
     def test_empty_name_returns_none(self):
         self.assertIsNone(get_entry_requirements(""))
+
+
+class ResolveCountryNameTests(TestCase):
+    def setUp(self):
+        self.lisbon = Destination.objects.create(
+            slug="lisbon-pt",
+            name="Lisbon",
+            country="Portugal",
+            latitude=38.72,
+            longitude=-9.14,
+            trip_type="city",
+            cost_of_living=3,
+            best_season="Mar-Oct",
+            worst_season="Dec-Feb",
+            short_description="A hilly coastal capital.",
+            points_of_interest=[],
+        )
+
+    def test_resolves_a_destination_name_to_its_country(self):
+        self.assertEqual(resolve_country_name("Lisbon"), "Portugal")
+
+    def test_resolves_a_country_name_that_matches_a_destination(self):
+        self.assertEqual(resolve_country_name("Portugal"), "Portugal")
+
+    def test_is_case_insensitive(self):
+        self.assertEqual(resolve_country_name("lisbon"), "Portugal")
+
+    def test_falls_back_to_the_raw_input_when_nothing_matches(self):
+        self.assertEqual(resolve_country_name("Nowhereland"), "Nowhereland")
+
+    def test_empty_input_returns_none(self):
+        self.assertIsNone(resolve_country_name(""))
+        self.assertIsNone(resolve_country_name("   "))

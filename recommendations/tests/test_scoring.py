@@ -198,6 +198,63 @@ class GenerateRecommendationsTests(TestCase):
         self.assertIn("lisbon", slugs)
         self.assertIn("warm-cheap", slugs)
 
+    def test_country_excludes_non_matching_destinations(self):
+        # 2026-09-07, real production bug: asking for Thailand returned
+        # cards from Japan, Vietnam, Indonesia, and the Maldives too -
+        # continent="asia" alone can't express "just this one country",
+        # the same gap the continent field closed for "Eurotrip" above.
+        _make_destination(
+            "lisbon", lat=40.0, lon=-9.0, trip_type="city", cost_of_living=2, country="Portugal"
+        )
+        bangkok = _make_destination(
+            "bangkok", lat=13.0, lon=100.0, trip_type="city", cost_of_living=2, country="Tailândia"
+        )
+        climate = StubClimateProvider(
+            {
+                (40.0, -9.0): MonthlyClimateSummary(2025, 10, 22.0, 15.0, 5.0),
+                (13.0, 100.0): MonthlyClimateSummary(2025, 10, 32.0, 24.0, 20.0),
+            }
+        )
+        request = RecommendationRequest(month=10, country="Tailândia")
+
+        results = generate_recommendations(request, climate_provider=climate)
+
+        slugs = {r.destination.slug for r in results}
+        self.assertEqual(slugs, {bangkok.slug})
+
+    def test_country_matching_is_case_insensitive(self):
+        bangkok = _make_destination(
+            "bangkok", lat=13.0, lon=100.0, trip_type="city", cost_of_living=2, country="Tailândia"
+        )
+        climate = StubClimateProvider(
+            {(13.0, 100.0): MonthlyClimateSummary(2025, 10, 32.0, 24.0, 20.0)}
+        )
+        request = RecommendationRequest(month=10, country="tailândia")
+
+        results = generate_recommendations(request, climate_provider=climate)
+
+        self.assertEqual({r.destination.slug for r in results}, {bangkok.slug})
+
+    def test_no_country_applies_no_country_level_filtering(self):
+        _make_destination(
+            "lisbon", lat=40.0, lon=-9.0, trip_type="city", cost_of_living=2, country="Portugal"
+        )
+        climate = StubClimateProvider(
+            {
+                (40.0, -9.0): MonthlyClimateSummary(2025, 10, 22.0, 15.0, 5.0),
+                (10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0),
+                (20.0, 20.0): MonthlyClimateSummary(2025, 10, 26.0, 18.0, 10.0),
+                (30.0, 30.0): MonthlyClimateSummary(2025, 10, 5.0, -2.0, 40.0),
+            }
+        )
+        request = RecommendationRequest(month=10)
+
+        results = generate_recommendations(request, climate_provider=climate)
+
+        slugs = {r.destination.slug for r in results}
+        self.assertIn("lisbon", slugs)
+        self.assertIn("warm-cheap", slugs)
+
     def test_excluded_slugs_are_removed_from_candidates(self):
         request = RecommendationRequest(month=10, excluded_slugs=frozenset({"warm-cheap"}))
 

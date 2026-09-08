@@ -45,6 +45,7 @@ class Command(BaseCommand):
                     "insurance_required": entry.get("insurance_required", False),
                     "insurance_notes": entry.get("insurance_notes", ""),
                     "other_requirements": entry.get("other_requirements", []),
+                    "videos": entry.get("videos", []),
                 },
             )
             if created:

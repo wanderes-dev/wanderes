@@ -134,6 +134,13 @@ def robots_txt(request):
         "Disallow: /trips/",
         "Disallow: /api/",
         "Disallow: /health/",
+        # 2026-09-07: /travel/ only ever holds the staff-only country-videos
+        # editing tool (@staff_member_required) added 2026-09-06 - missed
+        # when this list was first written, since the travel app had no
+        # user-facing pages yet at that point. Same reasoning as every
+        # other disallowed path here: an unauthenticated crawler would just
+        # find a login redirect, nothing worth indexing.
+        "Disallow: /travel/",
         "",
         f"Sitemap: https://{settings.SITE_DOMAIN}{reverse('core:sitemap')}",
     ]

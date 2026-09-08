@@ -21,6 +21,7 @@ from travel.services import (
     ENTRY_REQUIREMENT_DISCLAIMER,
     find_destination_slugs_by_name,
     get_entry_requirements,
+    resolve_country_name,
 )
 from trips.models import FEEDBACK_TAG_CHOICES, Feedback, TravelHistoryEntry, Trip
 from users.currency import convert_to_usd
@@ -173,8 +174,12 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "min_temp_c stays null; do not reason 'they mentioned a month for a "
     "beach trip, so they probably want to know it'll be warm then' - only "
     "set min_temp_c when the message itself contains a temperature word "
-    "or number. Set these two fields only from words that are themselves "
-    "about temperature or money:\n"
+    "or number. The same applies when the message also mentions food, "
+    "relaxation, or a general vibe alongside the trip_type - e.g. 'a "
+    "relaxing beach trip with great food' names a trip_type and a mood, "
+    "but still no temperature word, so min_temp_c stays null there too; "
+    "'relaxing' describes pace, not warmth. Set these two fields only from "
+    "words that are themselves about temperature or money:\n"
     "- Temperature (min_temp_c): 'hot' -> 28, 'warm' -> 22, 'mild' -> 18. "
     "If the user wants somewhere cool or cold, or says nothing at all about "
     "temperature, leave min_temp_c null - this includes messages that only "
@@ -194,7 +199,13 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "'inexpensive' -> 3, 'moderate'/'mid-range' -> 4. If the user wants "
     "luxury, or says nothing at all about budget, leave max_cost_of_living "
     "null - this includes messages that only name a trip_type, "
-    "destination, or month with no budget words at all.\n"
+    "destination, or month with no budget words at all. Words describing "
+    "a travel style or atmosphere - 'refined'/'refinado', 'upscale', "
+    "'elegant', 'sophisticated', 'classy' - are NOT budget words: they "
+    "describe the kind of place someone wants, not what they're willing "
+    "to pay, and fall under the same 'wants luxury' case above - leave "
+    "max_cost_of_living null for these unless the message also contains "
+    "an actual price/affordability word from the anchors above.\n"
     "Only leave min_temp_c or max_cost_of_living null when the user gave no "
     "indication at all for that dimension - do not leave it null just "
     "because they used words instead of a number.\n"
@@ -204,7 +215,12 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "'culture' (history/museums/cultural immersion). Leave it null if the "
     "request doesn't clearly match one of these four, or matches more than "
     "one - do not force-fit a vibe like 'romantic' or 'family-friendly' "
-    "into one of these categories just because you have to pick something.\n"
+    "into one of these categories just because you have to pick something. "
+    "This includes 'a family trip with young children'/'viagem em família "
+    "com crianças pequenas' - having young kids says nothing about beach "
+    "vs. city vs. nature vs. culture (any of the four can be great for a "
+    "family), so trip_type stays null here too unless a real category word "
+    "is also present.\n"
     "continent: set this when the traveler names or clearly implies ONE "
     "continent/region as where they want to go - a continent name itself "
     "('Europe', 'Ásia'), a well-known colloquial term for a trip there "
@@ -215,6 +231,24 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "if no continent/region/country was named or implied, or if what was "
     "named doesn't map to a single continent (e.g. 'somewhere warm', "
     "'anywhere with beaches').\n"
+    "country: set this ONLY when the traveler names or clearly asks for "
+    "ONE specific country (e.g. 'quero ir pra Tailândia', 'somewhere in "
+    "Japan') - always translate it to Portuguese (e.g. 'Japan' -> "
+    "'Japão', 'Thailand' -> 'Tailândia', 'Germany' -> 'Alemanha'), "
+    "regardless of what language the traveler used, since this value is "
+    "matched against a destination catalog that stores every country "
+    "name in Portuguese - any other language's spelling would silently "
+    "match nothing and the traveler would wrongly get zero results. This "
+    "is narrower and more specific than continent: naming a single "
+    "country sets BOTH country and continent together (e.g. 'Thailand' "
+    "sets country='Tailândia' AND continent='asia'), since a single-"
+    "country request should never quietly return results from OTHER "
+    "countries in the same continent/region. Leave country null for "
+    "anything broader than one country - a multi-country region or "
+    "colloquial regional term ('Europe', 'Eurotrip', 'Southeast Asia', "
+    "'the Caribbean', 'Scandinavia'/'Escandinávia') sets continent only, "
+    "never country, since those genuinely span many countries. Also "
+    "null if no specific country was named at all.\n"
     "If the user asks to avoid or exclude specific places, countries, or "
     "regions, list the place/country names they mentioned in "
     "excluded_place_names (e.g. ['Marrakech', 'Morocco']). Leave it as an "
@@ -258,9 +292,13 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "the visa/entry question IS the point of the message, not an "
     "incidental filter on a search).\n"
     "visa_question_country: if the question names ONE specific "
-    "destination country, that country's name as written (e.g. "
-    "'Japão'). Null if the question is general/not about one specific "
-    "country, or if is_visa_or_entry_question is false.\n"
+    "destination country, that country's name translated to Portuguese "
+    "(e.g. 'Japan' -> 'Japão'), regardless of what language the traveler "
+    "used - the verified entry-requirements data is looked up by this "
+    "exact Portuguese name, so any other language's spelling would "
+    "silently find nothing even when real data exists. Null if the "
+    "question is general/not about one specific country, or if "
+    "is_visa_or_entry_question is false.\n"
     "visa_question_nationality: the traveler's own nationality/home "
     "country, ONLY if explicitly stated in THIS message (e.g. 'sendo "
     "brasileiro' -> 'Brazil', 'as a US citizen' -> 'United States'). "
@@ -275,7 +313,41 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "that's merely informational about flights/hotels/prices without "
     "asking to actually book anything (e.g. 'how much does a flight "
     "cost' or 'quais hotéis existem em Roma' is false - only an actual "
-    "request to book/reserve/purchase is true)."
+    "request to book/reserve/purchase is true).\n\n"
+    "--- is_video_request (independent of message_type) ---\n"
+    "true when the traveler wants to see a video of a place - either "
+    "asking unprompted ('tem algum vídeo do Japão?', 'can I see a video "
+    "of Portugal?') or agreeing to an offer YOU made earlier in the "
+    "conversation to show one (e.g. your prior reply asked 'gostaria de "
+    "ver um vídeo de Bali?' and the traveler just replied 'sim'/'quero'/"
+    "'show me'). False for everything else.\n"
+    "video_place_name: the place the traveler wants a video of. If they "
+    "simply agreed to an offer you made ('sim', 'quero ver') without "
+    "naming a place themselves, use the place YOU offered in your own "
+    "prior reply (check the history above). If the place is a country, "
+    "translate it to Portuguese (e.g. 'Japan' -> 'Japão'), same reason "
+    "as the country field above - the video data is looked up by its "
+    "Portuguese country name. If it's a city/landmark rather than a "
+    "whole country (e.g. 'Lisboa', 'Bali'), leave it as written - that "
+    "gets resolved to its country separately. Null if is_video_request "
+    "is false, or if it's true but no place can be identified either "
+    "way.\n\n"
+    "--- is_activity_question (independent of message_type) ---\n"
+    "true when the traveler is asking what there is to see/do at a place "
+    "already established in this conversation (yours or theirs) - things "
+    "to do, sights, food, culture, day trips, safety, practicalities, "
+    "'what's it like there', etc - NOT asking where they should go. "
+    "Examples: 'o que tem de bom pra fazer lá?', 'what's there to see in "
+    "Hoi An?', 'vale a pena visitar os templos?', 'é seguro andar à "
+    "noite?'. This is about a place the traveler already has in mind - "
+    "if they're instead asking for new destination suggestions (even "
+    "with extra criteria like climate/budget/trip type), that's the "
+    "normal recommendation flow, not this. False for everything else.\n"
+    "activity_place_name: the place being asked about, as written in "
+    "this message if named there, otherwise the most recently discussed "
+    "specific place from the conversation above (your prior reply or "
+    "the traveler's). Null if is_activity_question is false, or if it's "
+    "true but no specific place can be identified either way."
 )
 
 INTENT_SCHEMA = {
@@ -300,6 +372,7 @@ INTENT_SCHEMA = {
                 "type": ["string", "null"],
                 "enum": [*CONTINENT_CODES, None],
             },
+            "country": {"type": ["string", "null"]},
             "excluded_place_names": {"type": "array", "items": {"type": "string"}},
             "feedback_destination_name": {"type": ["string", "null"]},
             "feedback_rating": {"type": ["integer", "null"]},
@@ -311,6 +384,10 @@ INTENT_SCHEMA = {
             "visa_question_country": {"type": ["string", "null"]},
             "visa_question_nationality": {"type": ["string", "null"]},
             "is_booking_request": {"type": "boolean"},
+            "is_video_request": {"type": "boolean"},
+            "video_place_name": {"type": ["string", "null"]},
+            "is_activity_question": {"type": "boolean"},
+            "activity_place_name": {"type": ["string", "null"]},
         },
         "required": [
             "message_type",
@@ -320,6 +397,7 @@ INTENT_SCHEMA = {
             "max_cost_of_living",
             "trip_type",
             "continent",
+            "country",
             "excluded_place_names",
             "feedback_destination_name",
             "feedback_rating",
@@ -330,11 +408,87 @@ INTENT_SCHEMA = {
             "is_visa_or_entry_question",
             "visa_question_country",
             "visa_question_nationality",
+            "is_video_request",
+            "video_place_name",
             "is_booking_request",
+            "is_activity_question",
+            "activity_place_name",
         ],
         "additionalProperties": False,
     },
 }
+
+# 2026-09-06 structural fix, round 2: min_temp_c/max_temp_c/max_cost_of_living
+# are extracted a SECOND time here, from the current message ALONE - no
+# conversation history at all - and that result overwrites whatever
+# INTENT_SCHEMA's own combined call produced for these same three fields
+# (see the call site in stream_travel_recommendation). The regex-based
+# sanitize_reply_for_context() (ai/memory.py) closes the exact "AI repeats
+# its own literal numbers" vector, but live testing found the model can
+# still reconstruct a similar climate/budget assumption from destination
+# names/descriptions alone once history is involved at all (e.g. "Phuket"
+# implies warmth via general knowledge, no digits needed). Giving this
+# extraction no history whatsoever makes that structurally impossible,
+# not just discouraged by instruction - two separate attempts to fix this
+# by strengthening INTENT_EXTRACTION_SYSTEM_PROMPT's own history-handling
+# instructions were tried and reverted (see DEVELOPMENT_LOG.md) after each
+# one broke a different, previously-correct case. Multi-turn combining
+# ("praia" -> "orçamento baixo" across turns) is preserved via
+# ai.memory.update_climate_budget()'s accumulator, not by this call
+# remembering anything itself.
+CLIMATE_BUDGET_SCHEMA = {
+    "name": "climate_budget_signal",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "min_temp_c": {"type": ["number", "null"]},
+            "max_temp_c": {"type": ["number", "null"]},
+            "max_cost_of_living": {"type": ["integer", "null"]},
+        },
+        "required": ["min_temp_c", "max_temp_c", "max_cost_of_living"],
+        "additionalProperties": False,
+    },
+}
+
+CLIMATE_BUDGET_SYSTEM_PROMPT = (
+    "Extract a temperature preference and/or a budget preference from THIS "
+    "ONE MESSAGE ALONE. You are deliberately given no conversation history "
+    "and must judge only the words in front of you - if this message alone "
+    "doesn't state a climate or budget preference, leave the corresponding "
+    "field(s) null, even if you suspect earlier turns in the conversation "
+    "might have mentioned one; a separate mechanism outside this call "
+    "carries a real earlier preference forward, so you never need to (and "
+    "should not try to) guess or recall one here.\n"
+    "The traveler may write in any language - understand it and extract "
+    "from it the same way regardless of language.\n"
+    "- Temperature (min_temp_c): 'hot' -> 28, 'warm' -> 22, 'mild' -> 18. "
+    "If the user wants somewhere cool or cold, or says nothing at all "
+    "about temperature, leave min_temp_c null.\n"
+    "- Upper temperature bound (max_temp_c): the mirror image of "
+    "min_temp_c, for when the user wants an upper limit instead of (or as "
+    "well as) a lower one - 'not too hot'/'nothing extreme' -> 30, "
+    "'cool'/'mild, not hot' -> 22, 'cold'/'chilly'/'somewhere cool and "
+    "crisp' -> 15. Only set this from words that are themselves about an "
+    "upper temperature limit or wanting it cool/cold. A message can set "
+    "both min_temp_c and max_temp_c together (e.g. 'mild, not too hot and "
+    "not too cold') or just one.\n"
+    "- Budget (max_cost_of_living, a 1-5 scale where 1 is cheapest): "
+    "'very cheap'/'budget'/'affordable' -> 2, 'cheap'/'not too expensive'/"
+    "'inexpensive' -> 3, 'moderate'/'mid-range' -> 4. If the user wants "
+    "luxury, or says nothing at all about budget, leave max_cost_of_living "
+    "null. Words describing a travel style or atmosphere - 'refined'/"
+    "'refinado', 'upscale', 'elegant', 'sophisticated', 'classy' - are NOT "
+    "budget words: they describe the kind of place someone wants, not "
+    "what they're willing to pay, and fall under the same 'wants luxury' "
+    "case above - leave max_cost_of_living null for these too.\n"
+    "Naming a destination, a trip type (beach/city/nature/culture), or a "
+    "month never by itself implies a temperature or budget, no matter how "
+    "strongly it's stereotypically associated with one - only set these "
+    "fields from words that are themselves about temperature or money. If "
+    "min_temp_c and max_temp_c would contradict each other (min above "
+    "max), leave both null instead."
+)
 
 
 @dataclass(frozen=True)
@@ -504,6 +658,39 @@ def stream_travel_recommendation(
         )
         return StreamingOrchestrationResult([], booking_reply)
 
+    # Checked next (2026-09-07, direct request: the AI should proactively
+    # offer to show a video of a recommended place, and honor it when the
+    # traveler asks or agrees) - same "independent of message_type, handled
+    # with real verified data, never invented" pattern as the three checks
+    # above. Deliberately no live search fallback when nothing is on file
+    # for the resolved country (direct user decision, 2026-09-07) - a
+    # fabricated/guessed video link would be worse than admitting we don't
+    # have one yet, same principle already applied to entry requirements.
+    if intent["is_video_request"]:
+        video_messages = _build_video_reply_messages(message, intent, history)
+        video_reply = _stream_ai_reply(
+            video_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult([], video_reply)
+
+    # Checked next (2026-09-07, direct user report: "ELE NAO me responde so
+    # fica indicando cidade" - asking "mas o que tem de bom pra fazer la?"
+    # about an already-established destination kept getting forced into
+    # _build_explanation_messages's destination-comparison-table format
+    # instead of an actual answer). This bypasses generate_recommendations()
+    # and the table-building machinery entirely - per the already-approved
+    # recommendation philosophy (2026-08-29: for anything the deterministic
+    # scoring model doesn't cover, the AI answers from its own general
+    # knowledge rather than the app trying to model every category),
+    # activities/things-to-do at a place is exactly this kind of question,
+    # not a "where should I go" request.
+    if intent["is_activity_question"]:
+        activity_messages = _build_activity_question_messages(message, intent, history)
+        activity_reply = _stream_ai_reply(
+            activity_messages, message, ai_provider=ai_provider, remember=_remember
+        )
+        return StreamingOrchestrationResult([], activity_reply)
+
     message_type = intent["message_type"]
 
     if message_type == "off_topic":
@@ -595,12 +782,28 @@ def stream_travel_recommendation(
     # through the same AI-judgment "ask a genuine follow-up, or suggest if
     # they've explicitly invited a guess" path used for a fully blank
     # opener, unless there's actually enough to differentiate on.
+    #
+    # min_temp_c/max_temp_c/max_cost_of_living are re-derived here from
+    # THIS message alone (2026-09-06 structural fix, round 2 - see
+    # CLIMATE_BUDGET_SYSTEM_PROMPT), overwriting whatever the combined
+    # extraction above produced for these three fields, and merged with
+    # whatever this conversation already had accumulated so a real
+    # multi-turn preference still combines across turns even though this
+    # extraction itself never sees history.
+    climate_budget = _extract_climate_budget_signal(message, ai_provider=ai_provider)
+    if conv_key is not None:
+        climate_budget = memory.update_climate_budget(conv_key, **climate_budget)
+    intent["min_temp_c"] = climate_budget["min_temp_c"]
+    intent["max_temp_c"] = climate_budget["max_temp_c"]
+    intent["max_cost_of_living"] = climate_budget["max_cost_of_living"]
+
     has_enough_signal = (
         intent["min_temp_c"] is not None
         or intent["max_temp_c"] is not None
         or intent["max_cost_of_living"] is not None
         or intent["trip_type"] is not None
         or intent["continent"] is not None
+        or intent["country"] is not None
     )
     if not has_enough_signal:
         logger.info(
@@ -647,6 +850,7 @@ def stream_travel_recommendation(
         max_cost_of_living=intent["max_cost_of_living"],
         trip_type=intent["trip_type"],
         continent=intent["continent"],
+        country=intent["country"],
         excluded_slugs=find_destination_slugs_by_name(intent["excluded_place_names"]),
         user=user,
     )
@@ -655,7 +859,7 @@ def stream_travel_recommendation(
     if not results:
         logger.info(
             "No destinations matched constraints. message=%r month=%s min_temp_c=%s "
-            "max_temp_c=%s max_cost_of_living=%s trip_type=%s continent=%s",
+            "max_temp_c=%s max_cost_of_living=%s trip_type=%s continent=%s country=%s",
             message,
             intent["month"],
             intent["min_temp_c"],
@@ -663,6 +867,7 @@ def stream_travel_recommendation(
             intent["max_cost_of_living"],
             intent["trip_type"],
             intent["continent"],
+            intent["country"],
         )
         # Rather than a dead-end canned reply, let the AI try to actually
         # help - reason from its own general knowledge (same recommendation
@@ -1293,6 +1498,60 @@ def _extract_intent(
     return _validate_intent(data)
 
 
+def _extract_climate_budget_signal(message: str, *, ai_provider: AIProvider) -> dict:
+    """Derive min_temp_c/max_temp_c/max_cost_of_living from THIS message
+    alone - deliberately no conversation history at all. See
+    CLIMATE_BUDGET_SYSTEM_PROMPT's own comment and DEVELOPMENT_LOG.md
+    (2026-09-06) for why: a history-aware version of this extraction let
+    the model reconstruct a climate/budget assumption from destination
+    names/descriptions the AI itself had mentioned earlier, even after
+    sanitize_reply_for_context() stripped the literal numbers out of what
+    gets remembered. Giving this call no history closes that structurally
+    - not just by instruction - regardless of what the model would
+    otherwise infer."""
+    messages = [
+        AIMessage(role="system", content=CLIMATE_BUDGET_SYSTEM_PROMPT),
+        AIMessage(role="user", content=message),
+    ]
+    try:
+        data = ai_provider.generate_structured_reply(
+            messages, json_schema=CLIMATE_BUDGET_SCHEMA, temperature=0
+        )
+    except AIProviderError:
+        logger.warning(
+            "Could not extract an isolated climate/budget signal - AI provider failure. "
+            "message=%r",
+            message,
+        )
+        data = {"min_temp_c": None, "max_temp_c": None, "max_cost_of_living": None}
+    return _validate_climate_budget(data)
+
+
+def _validate_climate_budget(data: dict) -> dict:
+    """The max_cost_of_living range check and min_temp_c/max_temp_c
+    contradiction check - shared by _validate_intent (the combined call)
+    and _extract_climate_budget_signal (the isolated call), so both apply
+    the exact same rules rather than risking the two drifting apart."""
+    max_cost_of_living = data.get("max_cost_of_living")
+    if max_cost_of_living is not None and not (1 <= max_cost_of_living <= MAX_COST_OF_LIVING_TIER):
+        max_cost_of_living = None
+
+    min_temp_c = data.get("min_temp_c")
+    max_temp_c = data.get("max_temp_c")
+    if min_temp_c is not None and max_temp_c is not None and min_temp_c > max_temp_c:
+        # A contradictory extraction (e.g. "warm but not too hot" landing
+        # min > max) - drop both rather than pass a range hard_constraints
+        # in scoring.py would filter every destination out on.
+        min_temp_c = None
+        max_temp_c = None
+
+    return {
+        "min_temp_c": min_temp_c,
+        "max_temp_c": max_temp_c,
+        "max_cost_of_living": max_cost_of_living,
+    }
+
+
 def _validate_intent(data: dict) -> dict:
     # Response Validation (09_AI_ORCHESTRATION.md §9): never trust the
     # model's structured output blindly, even with a schema.
@@ -1316,21 +1575,13 @@ def _validate_intent(data: dict) -> dict:
         data["month"] = date.today().month
         data["month_was_assumed"] = True
 
-    max_cost_of_living = data.get("max_cost_of_living")
-    if max_cost_of_living is not None and not (1 <= max_cost_of_living <= MAX_COST_OF_LIVING_TIER):
-        data["max_cost_of_living"] = None
-
-    min_temp_c = data.get("min_temp_c")
-    max_temp_c = data.get("max_temp_c")
-    if min_temp_c is not None and max_temp_c is not None and min_temp_c > max_temp_c:
-        # A contradictory extraction (e.g. "warm but not too hot" landing
-        # min > max) - drop both rather than pass a range hard_constraints
-        # in scoring.py would filter every destination out on.
-        data["min_temp_c"] = None
-        data["max_temp_c"] = None
+    data.update(_validate_climate_budget(data))
 
     if data.get("trip_type") not in {*TRIP_TYPE_CODES, None}:
         data["trip_type"] = None
+
+    country = data.get("country")
+    data["country"] = country if isinstance(country, str) and country.strip() else None
 
     data["excluded_place_names"] = _clean_string_list(data.get("excluded_place_names"))
 
@@ -1353,6 +1604,20 @@ def _validate_intent(data: dict) -> dict:
         visa_nationality if isinstance(visa_nationality, str) and visa_nationality.strip() else None
     )
     data["is_booking_request"] = bool(data.get("is_booking_request"))
+
+    data["is_video_request"] = bool(data.get("is_video_request"))
+    video_place_name = data.get("video_place_name")
+    data["video_place_name"] = (
+        video_place_name if isinstance(video_place_name, str) and video_place_name.strip() else None
+    )
+
+    data["is_activity_question"] = bool(data.get("is_activity_question"))
+    activity_place_name = data.get("activity_place_name")
+    data["activity_place_name"] = (
+        activity_place_name
+        if isinstance(activity_place_name, str) and activity_place_name.strip()
+        else None
+    )
 
     return data
 
@@ -1402,6 +1667,36 @@ def _build_profile_confirmation_messages(
     return messages
 
 
+def _video_availability_note(destinations: list[Destination]) -> str:
+    """Which of these candidates' countries have a real video on file
+    (CountryEntryRequirement.videos, 2026-09-07) - lets the explanation
+    offer to show a video with actual confidence there's something real
+    behind it, rather than a blind guess that might dead-end into "sorry,
+    no video" on the very next turn. Live testing found the model rarely
+    volunteered the offer at all when it had no idea whether one existed;
+    naming a real, deliverable candidate here makes the offer both more
+    likely and more trustworthy - it's never invented, same as every
+    other note built this way (see _entry_requirements_note above)."""
+    countries_with_videos = []
+    seen_countries = set()
+    for destination in destinations:
+        country = destination.country
+        if country in seen_countries:
+            continue
+        seen_countries.add(country)
+        requirement = get_entry_requirements(country)
+        if requirement is not None and requirement.videos:
+            countries_with_videos.append(country)
+    if not countries_with_videos:
+        return ""
+    countries_list = ", ".join(countries_with_videos)
+    return (
+        f"\n\nA real video is on file for: {countries_list} - a good, "
+        "grounded candidate to offer showing (see the closing-question "
+        "instruction below), since we can actually deliver on it."
+    )
+
+
 def _build_explanation_messages(
     message: str,
     results: list[ScoredDestination],
@@ -1430,6 +1725,7 @@ def _build_explanation_messages(
     entry_requirements_note = _entry_requirements_note(
         profile, [r.destination for r in top_results]
     )
+    video_note = _video_availability_note([r.destination for r in top_results])
     # 2026-09-02, direct user request: when the real match count exceeds
     # what we ever show (MAX_RECOMMENDATIONS), say so honestly rather than
     # silently presenting the capped list as if it were everything -
@@ -1458,6 +1754,7 @@ def _build_explanation_messages(
                 f"{assumed_month_note}"
                 f"{traveler_note}"
                 f"{entry_requirements_note}"
+                f"{video_note}"
                 f"{more_matches_note}\n\n"
                 "This ranking is by climate/cost/trip-type fit only - it "
                 "does not filter by region or country. If the traveler's "
@@ -1478,15 +1775,23 @@ def _build_explanation_messages(
                 "time. A short sentence or two of context before or after "
                 "the table is fine, but the comparison itself belongs in "
                 "the table, not paragraphs of prose. After the table, "
-                "don't just stop at the options - also ask one genuine "
-                "follow-up question that would help narrow the search "
-                "further (something not yet known: a preference, a "
-                "priority between the options, anything relevant) the way "
-                "a real consultant keeps refining even after giving a "
-                "first real answer. Reply in the same language the "
-                "traveler has been using in this conversation (check the "
-                "history above, not just this message) - this applies "
-                "just as much to English as to any other language."
+                "don't just stop at the options - close with ONE genuine "
+                "next step: normally a follow-up question that would help "
+                "narrow the search further (something not yet known: a "
+                "preference, a priority between the options, anything "
+                "relevant) the way a real consultant keeps refining even "
+                "after giving a first real answer. If a real video is "
+                "noted as being on file above for one of the destinations "
+                "you're presenting, prefer offering to show it instead "
+                "(e.g. 'gostaria de ver um vídeo de Bali?') - it's a good, "
+                "concrete thing you can actually deliver on. Don't stack "
+                "both in the same reply; pick whichever single one fits, "
+                "and only offer a video when one was actually noted as "
+                "available above - never offer one speculatively. Reply "
+                "in the same language the traveler has been using in "
+                "this conversation (check the history above, not just "
+                "this message) - this applies just as much to English as "
+                "to any other language."
             ),
         )
     )
@@ -1667,6 +1972,97 @@ def _build_booking_request_messages(
     return messages
 
 
+def _build_video_reply_messages(
+    message: str, intent: dict, history: list[dict] | None = None
+) -> list[AIMessage]:
+    """Built when intent extraction detects is_video_request - hands the
+    model real, verified CountryEntryRequirement.videos data (2026-09-07)
+    when any exists for the resolved country, never left to invent a link.
+    Deliberately no live search fallback when nothing is on file (direct
+    user decision) - same 'be honest about the gap' framing already used
+    by _build_visa_question_messages for missing entry-requirement data."""
+    place_name = intent["video_place_name"]
+    country = resolve_country_name(place_name) if place_name else None
+    requirement = get_entry_requirements(country) if country else None
+    videos = requirement.videos if requirement is not None else []
+
+    if videos:
+        videos_summary = "\n".join(f"- {url} (language: {lang})" for url, lang in videos)
+        data_note = (
+            f"\n\nReal videos on file for {country}, each with the language "
+            f"it's actually in:\n{videos_summary}\n\n"
+            "Share the most relevant one (or a couple, if more than one "
+            "fits). Never invent a URL beyond what's listed above. If the "
+            "video's own language doesn't match the language the traveler "
+            "has been using in this conversation, say so honestly (e.g. "
+            "'this one's in English') rather than implying it matches - "
+            "still share it, just don't misrepresent its language."
+        )
+    else:
+        where = f" for {country}" if country else ""
+        data_note = (
+            f"\n\nNo video is on file{where} yet - say so honestly and "
+            "plainly. Do not invent, guess, or describe a video/URL that "
+            "wasn't given to you above."
+        )
+
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler asked: "{message}" - wanting to see a video of a '
+                f"place (check the conversation above if the place isn't named "
+                f"here directly).{data_note}\n\n"
+                "Reply in the same language the traveler has been using in "
+                "this conversation (check the history above, not just this "
+                "message)."
+            ),
+        )
+    )
+    return messages
+
+
+def _build_activity_question_messages(
+    message: str, intent: dict, history: list[dict] | None = None
+) -> list[AIMessage]:
+    """Built when intent extraction detects is_activity_question - the
+    traveler is asking what there is to see/do/know about a place already
+    established in the conversation, not asking for new destination
+    suggestions. Deliberately skips generate_recommendations() and the
+    comparison-table format entirely: per the already-approved
+    recommendation philosophy (2026-08-29), anything the deterministic
+    scoring model doesn't cover is answered from the model's own general
+    knowledge, and "what's good to do there" is exactly that kind of
+    question, not a request to pick between destinations."""
+    place_name = intent["activity_place_name"]
+    place_note = (
+        f' about "{place_name}"' if place_name else " (check the history above for which place)"
+    )
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler just said: "{message}" - a follow-up question'
+                f"{place_note}, asking about things to do/see, culture, food, "
+                "safety, or practicalities there, NOT asking for new "
+                "destination suggestions. Answer directly and conversationally "
+                "from your own general travel knowledge - do not force this "
+                "into a destination-comparison table or a list of alternative "
+                "places, and do not redirect to 'where should you go' framing. "
+                "A short, natural, genuinely useful answer is exactly right "
+                "here, the way a real travel-savvy friend would answer. Reply "
+                "in the same language the traveler has been using in this "
+                "conversation."
+            ),
+        )
+    )
+    return messages
+
+
 def _build_off_topic_messages(message: str, history: list[dict] | None = None) -> list[AIMessage]:
     """Built when the message isn't about travel at all. SYSTEM_PROMPT
     already tells the model how to handle this naturally - briefly and
@@ -1817,11 +2213,28 @@ def _build_no_matches_messages(
 
     Per the Phase 11 recommendation philosophy and direct user feedback
     (2026-08-30 - never just ask for more when a real answer is possible),
-    this always tries to actually help rather than dead-ending or asking
-    another question: reason from general travel knowledge instead, and
-    treat whichever constraint made everything unmatchable as the one to
-    relax, exactly like a hard filter our own scoring never even had to
-    apply here would have been treated as a soft preference."""
+    this tries to actually help rather than dead-ending: reason from
+    general travel knowledge instead, and treat whichever constraint made
+    everything unmatchable as the one to relax, exactly like a hard filter
+    our own scoring never even had to apply here would have been treated
+    as a soft preference.
+
+    Revised 2026-09-08, direct user feedback on a real conversation ("neve,
+    talvez no Egito" - snow, maybe in Egypt): the reply confidently listed
+    3 specific unverified destinations (one, "Amina Moutiers, França",
+    isn't even a real place) in a table with fake-precise numbers ("Frio
+    (setembro)", specific cost tiers) as if it were real climate-provider
+    data, for a request the traveler themselves had already hedged as
+    uncertain ("talvez"). Direct instruction: "o chat não deve sugerir
+    destinos se a informação for duvidosa, deve confirmar com o usuário
+    sempre" - don't suggest destinations when the underlying data is
+    dubious, always confirm with the user first. This only reverses the
+    2026-08-30 "lead with confident help" framing for the specific
+    sub-case where the request itself is contradictory or the traveler
+    signaled their own uncertainty - a real, coherent request that our
+    catalog simply doesn't happen to cover still gets a real (but now
+    honestly-framed, non-tabular) answer, per the original 2026-08-30
+    decision."""
     constraints = []
     if intent["month"]:
         constraints.append(f"month={intent['month']}")
@@ -1829,6 +2242,8 @@ def _build_no_matches_messages(
         constraints.append(f"trip_type={intent['trip_type']}")
     if intent["continent"]:
         constraints.append(f"continent={intent['continent']}")
+    if intent["country"]:
+        constraints.append(f"country={intent['country']}")
     if intent["min_temp_c"] is not None:
         constraints.append(f"min_temp_c={intent['min_temp_c']}")
     if intent["max_temp_c"] is not None:
@@ -1864,45 +2279,49 @@ def _build_no_matches_messages(
                 "can't find a good match there instead of substituting "
                 "somewhere else silently)."
                 f"{traveler_note}\n\n"
-                "Suggest 1-3 real destinations from your own general "
-                "travel knowledge that fit the traveler's request as well "
-                "as possible, relaxing whichever constraint seems least "
-                "essential to what they actually care about (never ask "
-                "them to do this for you). Every destination you name "
-                "must be a real, actual place you're genuinely confident "
-                "exists - never invent a plausible-sounding name to "
-                "satisfy a constraint literally, especially when the "
-                "constraint itself doesn't make physical sense for the "
-                "trip type (e.g. no beach is ever anywhere near freezing) "
-                "- in that case, say so honestly in a sentence and then "
-                "suggest real places that get as close as an actual "
-                "destination realistically can, rather than inventing "
-                "one that supposedly matches exactly. Present them as a compact "
-                "Markdown table (standard pipe syntax) comparing them "
-                "side by side - pick columns that actually matter here "
-                "(e.g. destination, climate, cost, a standout pro, a real "
-                "downside or trade-off) rather than paragraphs of prose. "
-                "Lead with real, confident help - do NOT open by saying "
-                "you don't have data or apologizing for lacking specific "
-                "information (never start with something like "
-                "'unfortunately I don't have data for this'); a real "
-                "travel consultant asked about something outside their "
-                "usual reference material just helps, the same way. "
-                "Mention that these particular suggestions come from your "
-                "own knowledge rather than our verified dataset briefly "
-                "and in passing - so the traveler knows to double-check "
-                "current details - not as an apology or a caveat that "
-                "opens the reply. After the table, also ask one genuine "
-                "follow-up question that would help narrow the search "
-                "further, the way a real consultant keeps refining even "
-                "after giving a first real answer. Only ask a clarifying "
-                "question INSTEAD of suggesting if the message truly gives "
-                "you nothing at all to go on (not even a vibe, place "
-                "type, or timing) - this should be rare. Reply in the "
-                "same language the traveler has been using in this "
-                "conversation (check the history above, not just this "
-                "message) - this applies just as much to English as to "
-                "any other language."
+                "First, decide whether the request itself is coherent, or "
+                "whether it doesn't really add up (e.g. asking for snow "
+                "in a country that never gets any, a beach in a "
+                "landlocked place) or the traveler themselves signaled "
+                "uncertainty about it ('talvez'/'maybe', 'não sei bem', "
+                "'ou seja lá o que for').\n\n"
+                "If the request doesn't add up or the traveler hedged it "
+                "themselves: do NOT substitute your own guess for real "
+                "destinations. Say plainly and specifically what doesn't "
+                "add up (e.g. 'o Egito não tem neve'), and ask directly "
+                "what they'd actually like instead (e.g. a cold "
+                "destination elsewhere, or Egypt without the snow) - "
+                "confirm with them before naming any place. This is "
+                "always better than presenting invented-sounding "
+                "specifics as if they were a real answer.\n\n"
+                "If the request IS coherent and just isn't something our "
+                "own catalog happens to cover (a real, sensible "
+                "combination of month/budget/place that's simply outside "
+                "what we track): still genuinely help, relaxing whichever "
+                "constraint seems least essential to what they actually "
+                "care about (never ask them to do this for you). Every "
+                "destination you name must be a real, actual place you're "
+                "genuinely confident exists - never invent a "
+                "plausible-sounding name. Since you have no real "
+                "climate-provider or cost data for these (that's exactly "
+                "why they're not in our own results), describe them in "
+                "plain prose using qualitative terms ('bastante frio', "
+                "'custo alto') rather than specific numbers or a "
+                "comparison table - a precise-looking figure you made up "
+                "yourself would misrepresent a guess as measured data. "
+                "State clearly, as part of the answer (not a caveat that "
+                "opens the reply, and never starting with something like "
+                "'unfortunately I don't have data for this'), that these "
+                "come from your own general knowledge rather than our "
+                "verified dataset, so the traveler knows to double-check "
+                "current details. Ask one genuine follow-up question "
+                "afterward that would help narrow the search further, the "
+                "way a real consultant keeps refining even after giving a "
+                "first real answer.\n\n"
+                "Reply in the same language the traveler has been using "
+                "in this conversation (check the history above, not just "
+                "this message) - this applies just as much to English as "
+                "to any other language."
             ),
         )
     )
