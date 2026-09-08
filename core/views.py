@@ -46,12 +46,17 @@ def landing(request):
     # preview (2026-09-01, second UX pass, §4: "show the product, not
     # just describe it") - reuses the exact same .chat-bubble/
     # .recommendation-card markup as the real chat page, so this is a
-    # real product screenshot in spirit, not a disconnected mockup. Picks
-    # a beach/nature destination specifically since that's what the
-    # accompanying example message describes - falls back to whatever
-    # exists if the curated set ever stops including one.
+    # real product screenshot in spirit, not a disconnected mockup.
+    # Pinned to Bali specifically (2026-09-09 UX pass) rather than
+    # "whatever beach/nature destination sorts first" - the fit-reasons
+    # copy in landing.html now names Bali and its real crowd/quiet-area
+    # tradeoff directly, so the destination shown must always be Bali,
+    # not just resemble the kind of place the copy describes. Falls back
+    # to the old generic lookup only if the curated set ever stops
+    # including Bali (e.g. an incompletely-seeded dev database).
     preview_destination = (
-        Destination.objects.filter(trip_type__in=["beach", "nature"]).order_by("id").first()
+        Destination.objects.filter(slug="bali-id").first()
+        or Destination.objects.filter(trip_type__in=["beach", "nature"]).order_by("id").first()
         or Destination.objects.order_by("id").first()
     )
     return render(

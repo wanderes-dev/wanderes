@@ -1,7 +1,9 @@
 from django.contrib import messages
-from django.contrib.auth import login
+from django.contrib.auth import REDIRECT_FIELD_NAME, login
 from django.contrib.auth.decorators import login_required
+from django.http import HttpResponseRedirect
 from django.shortcuts import redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext as _
 
 from analytics.models import Event
@@ -9,6 +11,25 @@ from analytics.services import record_event
 
 from .forms import TravelerProfileForm, UserRegistrationForm
 from .models import TravelerProfile
+
+
+def _safe_next_url(request):
+    """Mirrors django.contrib.auth.views.RedirectURLMixin.get_redirect_url()
+    exactly (2026-09-09, contextual account-creation fix) - registration
+    previously always landed on users:account, silently dropping a
+    ?next= a visitor arrived with (e.g. from trip_create's @login_required
+    redirect when saving a recommendation anonymously). Checking POST
+    before GET and validating with url_has_allowed_host_and_scheme, same
+    as LoginView, avoids both losing a legitimate destination and
+    open-redirecting to an attacker-controlled host."""
+    next_url = request.POST.get(REDIRECT_FIELD_NAME) or request.GET.get(REDIRECT_FIELD_NAME)
+    if next_url and url_has_allowed_host_and_scheme(
+        url=next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return next_url
+    return None
 
 
 def register(request):
@@ -28,6 +49,9 @@ def register(request):
             # form, never a social signup.
             login(request, user, backend="django.contrib.auth.backends.ModelBackend")
             record_event("user_registered", user=user)
+            next_url = _safe_next_url(request)
+            if next_url:
+                return HttpResponseRedirect(next_url)
             return redirect("users:account")
     else:
         form = UserRegistrationForm()

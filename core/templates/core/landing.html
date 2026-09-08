@@ -41,20 +41,17 @@
                         <span class="tag">{{ preview_destination.get_trip_type_display }}</span>
                         <span class="tag tag-accent">{{ preview_destination.get_cost_of_living_display }}</span>
                     </div>
-                    <div class="fit-reasons-label">{% trans "Strong match for your trip" %}</div>
+                    <p class="fit-match-strength">{% trans "Strong match for your trip" %}</p>
+                    <div class="fit-reasons-label">{% trans "Why this fits you" %}</div>
                     <ul class="fit-reasons">
                         <li>{% trans "Warm during your travel period" %}</li>
-                        <li>{% blocktrans with trip_type=preview_destination.get_trip_type_display|lower %}Strong {{ trip_type }} fit{% endblocktrans %}</li>
-                        <li>{% trans "Compatible with your budget" %}</li>
-                        <li>{% trans "Good match for your preferred pace" %}</li>
+                        <li>{% trans "Strong fit for food and nature" %}</li>
+                        <li>{% trans "Comfortable for your budget" %}</li>
+                        <li>{% trans "Matches your preferred travel pace" %}</li>
                     </ul>
+                    <div class="fit-reasons-label">{% trans "Worth knowing" %}</div>
                     <p class="fit-tradeoff">
-                        <strong>{% trans "Tradeoff:" %}</strong>
-                        {% trans "Popular spots can get crowded, so quieter areas nearby may suit a traveler who wants a calmer pace." %}
-                    </p>
-                    <div class="fit-reasons-label">{% trans "Why this fits you" %}</div>
-                    <p class="fit-explanation">
-                        {% blocktrans with name=preview_destination.name trip_type=preview_destination.get_trip_type_display|lower %}Based on wanting somewhere warm, relaxed, and not too crowded, {{ name }} fits that climate window, leans toward {{ trip_type }} experiences rather than nightlife, and fits comfortably within a typical travel budget - with a heads-up that its most popular spots can get busy, so it's worth asking about quieter alternatives nearby.{% endblocktrans %}
+                        {% blocktrans with name=preview_destination.name %}Popular parts of {{ name }} can get busy. Based on your preference for fewer crowds, Wanderes would steer you toward quieter areas instead.{% endblocktrans %}
                     </p>
                     <span class="btn btn-secondary" aria-hidden="true">{% trans "Save this trip" %}</span>
                 </div>

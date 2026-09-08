@@ -338,20 +338,6 @@
     }
 </style>
 
-{% if not user.is_authenticated %}
-<dialog id="login-prompt-modal" class="simple-modal">
-    <div class="simple-modal-body">
-        <h2>{% trans "Save your trips as you go" %}</h2>
-        <p>{% trans "Log in to keep your recommendations, save trips, and get better suggestions over time." %}</p>
-        <div class="simple-modal-actions">
-            <a href="{% url 'users:login' %}" class="btn">{% trans "Log in" %}</a>
-            <a href="{% url 'users:register' %}" class="btn btn-secondary">{% trans "Create an account" %}</a>
-            <button type="button" id="login-prompt-skip" class="simple-modal-dismiss">{% trans "Continue without an account" %}</button>
-        </div>
-    </div>
-</dialog>
-{% endif %}
-
 {% if user.is_authenticated %}
 <!-- Saved-conversation limit notices (2026-09-02, direct request): both
      are one-time, informational, and never block the conversation itself
@@ -472,10 +458,6 @@
     let currentConversationId = null;
     let saveBlockedForThread = false;
     let currentConversationIsFull = false;
-    // Assigned below (login-prompt-modal setup) if #login-prompt-modal
-    // exists in the DOM (i.e. an anonymous visitor) - stays null for
-    // authenticated users, who never see this modal at all.
-    let maybeShowLoginPrompt = null;
 
     function addBubble(text, className) {
         const bubble = document.createElement("div");
@@ -1134,14 +1116,6 @@
 
         setLoading(false);
         input.focus();
-
-        // Only nudge signed-out visitors toward an account once they've
-        // actually received a reply (see maybeShowLoginPrompt() below) -
-        // never on page load, so "Start planning" leads straight into the
-        // conversation with no account-related decision in the way.
-        if (maybeShowLoginPrompt) {
-            maybeShowLoginPrompt();
-        }
     }
 
     form.addEventListener("submit", function (event) {
@@ -1165,63 +1139,6 @@
         });
     });
 
-    // Login prompt modal (2026-09-02, direct request; retimed 2026-09-06 -
-    // see maybeShowLoginPrompt() call in sendMessage()) - a soft nudge for
-    // signed-out visitors, never a hard gate: chat already works fully
-    // anonymously, so dismissing this (by choice, backdrop click, or Esc)
-    // just lets the conversation continue exactly as before. Shown once
-    // per browser session, not on every visit - sessionStorage rather
-    // than a cookie/DB flag since this is purely a per-tab-session UI
-    // nicety, nothing worth persisting server-side or across devices.
-    //
-    // Deliberately NOT shown on page load: a first-time visitor arriving
-    // from the landing page's "Start planning" CTA should be able to type
-    // and send a message immediately, with no account-related choice in
-    // the way. Instead this only opens after the traveler has actually
-    // sent a message and received a reply (see the maybeShowLoginPrompt()
-    // call at the end of sendMessage() above) - i.e. once they've gotten
-    // real value out of the conversation, matching the same "introduce
-    // account creation contextually" principle already used by the
-    // save-a-trip/feedback/future-intent login gates elsewhere.
-    const loginModal = document.getElementById("login-prompt-modal");
-    if (loginModal) {
-        const SESSION_KEY = "wanderes:loginPromptSeen";
-
-        maybeShowLoginPrompt = function () {
-            try {
-                if (!sessionStorage.getItem(SESSION_KEY)) {
-                    loginModal.showModal();
-                }
-            } catch (storageError) {
-                // Private-browsing/storage-disabled contexts throw - just skip
-                // the modal rather than blocking chat over a UI nicety.
-            }
-        };
-
-        // Called directly from every dismissal path below, rather than
-        // relying solely on the dialog's own "close" event - confirmed
-        // live that a script-driven .close() doesn't reliably fire it in
-        // every environment, so this can't be the only place the session
-        // flag gets recorded.
-        function markSeenAndClose() {
-            try {
-                sessionStorage.setItem(SESSION_KEY, "1");
-            } catch (storageError) {
-                // Nothing to do - worst case the modal reappears next visit.
-            }
-            if (loginModal.open) {
-                loginModal.close();
-            }
-        }
-        document.getElementById("login-prompt-skip").addEventListener("click", markSeenAndClose);
-        loginModal.addEventListener("cancel", markSeenAndClose);
-        loginModal.addEventListener("close", markSeenAndClose);
-        loginModal.addEventListener("click", function (event) {
-            if (event.target === loginModal) {
-                markSeenAndClose();
-            }
-        });
-    }
 })();
 </script>
 {% endblock %}

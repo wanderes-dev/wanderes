@@ -789,6 +789,21 @@ button:focus-visible, .btn:focus-visible {
     margin-top: -0.35rem;
 }
 
+/* Short overall verdict (e.g. "Strong match for your trip"), sitting
+   between the destination's own facts and the "why this fits you"
+   breakdown - deliberately not .fit-reasons-label (that's a section
+   header for the list/paragraph beneath it; this is a one-line verdict
+   with nothing beneath it directly), so the two don't read as duplicate
+   captions when both appear back to back (2026-09-09, landing preview
+   card). Reuses --color-primary, same token as the fit-reasons
+   checkmarks below, rather than introducing a new color. */
+.recommendation-card .fit-match-strength {
+    margin: 0.1rem 0 0.15rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-primary);
+}
+
 /* "Why this fits you" - visually separated from the destination's own
    facts (name/country/tags above) per direct request: the personalized
    rationale should read as clearly distinct from generic description. */
@@ -822,13 +837,6 @@ button:focus-visible, .btn:focus-visible {
     margin: 0;
     font-size: 0.85rem;
     color: var(--color-text-muted);
-}
-
-.recommendation-card .fit-explanation {
-    margin: 0;
-    font-size: 0.85rem;
-    line-height: 1.45;
-    color: var(--color-text);
 }
 
 .recommendation-card .btn {

@@ -36,30 +36,38 @@ class ChatPageTests(TestCase):
         self.assertContains(response, "message-input")
         self.assertContains(response, "chat-form")
 
-    def test_login_prompt_modal_shown_to_anonymous_users(self):
-        # 2026-09-02, direct request: a soft, dismissible nudge for
-        # signed-out visitors - never a hard gate (chat still works fully
-        # anonymously either way, per the "no account needed" landing
-        # page promise).
+    def test_no_login_prompt_modal_for_anonymous_users(self):
+        # 2026-09-09, direct request: the soft "Save your trips as you go"
+        # nudge modal (2026-09-02, previously retimed to open once a first
+        # reply completed - 2026-09-06) is removed entirely. Anonymous
+        # visitors should reach /chat/ with zero account-related decision
+        # in the way, at any point - account creation is now only
+        # surfaced contextually, at the moment of actually saving a trip
+        # (trips.views.trip_create's existing @login_required + ?next=
+        # redirect - see trips/tests/test_trip_views.py). Anonymous users
+        # render no <dialog> at all (the saved-conversation limit notices
+        # are login-gated too), so this asserts the strongest version of
+        # "no modal" rather than just the login-prompt's own strings.
         response = self.client.get(reverse("ai:chat"))
 
-        self.assertContains(response, "<dialog")
-        self.assertContains(response, "Continue without an account")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "chat-form")
+        self.assertNotContains(response, "<dialog")
+        self.assertNotContains(response, "Save your trips as you go")
+        self.assertNotContains(response, "Continue without an account")
 
-    def test_login_prompt_modal_not_shown_to_authenticated_users(self):
-        # The #login-prompt-modal CSS *rule* itself is always present (it's
-        # in the page's unconditional <style> block), and - since 2026-09-02
-        # - authenticated users now render other <dialog> elements of their
-        # own (the saved-conversation limit notices) too, so a bare "no
-        # <dialog> tag at all" assertion is no longer meaningful here.
-        # Assert on the login dialog's own opening tag (its quoted id
-        # attribute, not the CSS selector spelling) and its content instead.
+    def test_no_login_prompt_modal_for_authenticated_users(self):
+        # Authenticated users do render other <dialog> elements (the
+        # saved-conversation limit notices), so this can't assert "no
+        # dialog at all" like the anonymous case above - just that the
+        # removed login-prompt modal's own content is gone.
         user = User.objects.create_user(email="traveler@example.com", password="testpass123")
         self.client.force_login(user)
 
         response = self.client.get(reverse("ai:chat"))
 
         self.assertNotContains(response, 'id="login-prompt-modal"')
+        self.assertNotContains(response, "Save your trips as you go")
         self.assertNotContains(response, "Continue without an account")
 
     def test_saved_conversation_ui_shown_to_authenticated_users(self):
