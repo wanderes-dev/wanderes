@@ -73,6 +73,16 @@ services:
         value: gpt-4o-mini
       - key: CLIMATE_PROVIDER
         value: open_meteo
+      # Video feature (2026-09-08, "choose this trip" detail flow) - web
+      # service only, never the worker, since a video lookup only ever
+      # happens inside the synchronous chat request/response flow, never a
+      # Celery task. Blank until entered manually here (see .env.example
+      # for where to get a real key) - the feature already degrades to "no
+      # video shown" rather than erroring when unset (verified live).
+      - key: VIDEO_PROVIDER
+        value: youtube
+      - key: YOUTUBE_API_KEY
+        sync: false
       # Custom domain wanderes.com now exists (2026-09-01) - production.py
       # otherwise falls back to Render's own RENDER_EXTERNAL_HOSTNAME env
       # var (set automatically), which only covers the onrender.com

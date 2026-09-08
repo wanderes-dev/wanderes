@@ -643,11 +643,62 @@
                 card.appendChild(list);
             }
 
-            const link = document.createElement("a");
-            link.className = "btn btn-secondary";
-            link.href = "/trips/create/?destination=" + encodeURIComponent(destination.slug);
-            link.textContent = CHAT_I18N.saveThisTrip;
-            card.appendChild(link);
+            // "Choose this trip" (2026-09-08): browse-stage cards (from a
+            // normal recommendation) get a button that sends the traveler
+            // back into the chat for a real, detailed conversation about
+            // this one destination, instead of jumping straight to saving
+            // it. Only the card that comes back from that detail reply
+            // (detail_shown: true, set server-side by
+            // ai.orchestration.StreamingOrchestrationResult.is_destination_detail)
+            // shows the actual "Save this trip" link - deterministic, not
+            // an AI guess about whether the traveler seems ready.
+            if (destination.detail_shown) {
+                const link = document.createElement("a");
+                link.className = "btn btn-secondary";
+                link.href = "/trips/create/?destination=" + encodeURIComponent(destination.slug);
+                link.textContent = CHAT_I18N.saveThisTrip;
+                card.appendChild(link);
+            } else {
+                const chooseButton = document.createElement("button");
+                chooseButton.type = "button";
+                chooseButton.className = "btn btn-secondary";
+                chooseButton.textContent = CHAT_I18N.chooseThisTrip;
+                chooseButton.addEventListener("click", function () {
+                    const text = CHAT_I18N.tellMeMoreAbout.replace("{name}", destination.name);
+                    sendMessage(text, { focusDestinationSlug: destination.slug });
+                });
+                card.appendChild(chooseButton);
+            }
+
+            // Video (2026-09-08): only ever present when the server judged
+            // this response narrow enough (at most 2 destinations) to
+            // attach one - see ai/views.py. Lazily inserted on click, never
+            // auto-loaded with the card, to avoid loading external content
+            // (and bandwidth) for cards the traveler doesn't care to watch.
+            if (destination.video && destination.video.video_id) {
+                const videoToggle = document.createElement("button");
+                videoToggle.type = "button";
+                videoToggle.className = "btn btn-secondary video-toggle";
+                videoToggle.textContent =
+                    "▶ " + CHAT_I18N.watchVideoOf.replace("{name}", destination.name);
+                videoToggle.addEventListener("click", function () {
+                    if (videoToggle.dataset.expanded === "true") {
+                        return;
+                    }
+                    videoToggle.dataset.expanded = "true";
+                    const embedContainer = document.createElement("div");
+                    embedContainer.className = "video-embed-container";
+                    const iframe = document.createElement("iframe");
+                    iframe.src = "https://www.youtube.com/embed/" + encodeURIComponent(destination.video.video_id);
+                    iframe.title = destination.video.title || destination.name;
+                    iframe.allow =
+                        "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+                    iframe.allowFullscreen = true;
+                    embedContainer.appendChild(iframe);
+                    videoToggle.replaceWith(embedContainer);
+                });
+                card.appendChild(videoToggle);
+            }
 
             container.appendChild(card);
         });
@@ -1019,7 +1070,12 @@
 
     fetchSidebarList();
 
-    async function sendMessage(message) {
+    async function sendMessage(message, options) {
+        // options.focusDestinationSlug (2026-09-08, "Choose this trip"):
+        // set only by addRecommendationCards' choose button, which already
+        // knows the exact destination - forwarded as-is, the server does
+        // its own lookup/validation (see ai/views.py::recommendations_stream).
+        const focusDestinationSlug = (options && options.focusDestinationSlug) || "";
         if (emptyState && emptyState.parentNode) {
             emptyState.remove();
         }
@@ -1040,7 +1096,8 @@
                 },
                 body: "message=" + encodeURIComponent(message) +
                     "&save=" + (shouldSave ? "true" : "false") +
-                    "&conversation_id=" + (currentConversationId || ""),
+                    "&conversation_id=" + (currentConversationId || "") +
+                    "&focus_destination_slug=" + encodeURIComponent(focusDestinationSlug),
             });
         } catch (networkError) {
             loadingBubble.remove();

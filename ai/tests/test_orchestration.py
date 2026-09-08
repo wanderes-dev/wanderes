@@ -936,6 +936,115 @@ class RecallRequestTests(TestCase):
         self.assertEqual(len(result.recommendations), 1)
 
 
+class FocusDestinationTests(TestCase):
+    """2026-09-08, "choose this trip" flow: the chat page's own button
+    already knows the exact destination slug, so this skips intent
+    extraction entirely and goes straight to a grounded, detailed reply
+    about that one place - see stream_travel_recommendation's
+    focus_destination_slug parameter."""
+
+    def setUp(self):
+        self.destination = Destination.objects.create(
+            slug="warm-cheap",
+            name="Warmcheapville",
+            country="Testland",
+            latitude=10.0,
+            longitude=10.0,
+            trip_type="beach",
+            cost_of_living=1,
+            best_season="Nov-Mar",
+            worst_season="Jun-Aug",
+            short_description="A famously relaxed beach town with great food.",
+            points_of_interest=["Old Lighthouse", "Sunset Market"],
+        )
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+
+    def test_valid_slug_skips_intent_extraction_and_grounds_the_reply(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0),
+            reply_text="Warmcheapville is wonderful!",
+        )
+
+        result = stream_travel_recommendation(
+            "tell me more",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+            focus_destination_slug="warm-cheap",
+        )
+        reply = "".join(result.reply_chunks)
+
+        self.assertEqual(ai_provider.generate_structured_reply_calls, [])
+        self.assertEqual(len(result.recommendations), 1)
+        self.assertEqual(result.recommendations[0].destination, self.destination)
+        self.assertTrue(result.is_destination_detail)
+        self.assertEqual(reply, "Warmcheapville is wonderful! ")
+
+        sent_prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("A famously relaxed beach town with great food.", sent_prompt)
+        self.assertIn("Old Lighthouse", sent_prompt)
+        self.assertIn("Sunset Market", sent_prompt)
+        self.assertIn("Nov-Mar", sent_prompt)
+        self.assertIn("Jun-Aug", sent_prompt)
+
+    def test_bogus_slug_falls_through_to_normal_handling(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0),
+            reply_text="Here you go!",
+        )
+
+        result = stream_travel_recommendation(
+            "somewhere warm",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+            focus_destination_slug="not-a-real-slug",
+        )
+        list(result.reply_chunks)
+
+        self.assertEqual(len(ai_provider.generate_structured_reply_calls), 1)
+        self.assertFalse(result.is_destination_detail)
+
+    def test_climate_failure_still_returns_a_card(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0),
+            reply_text="Let me tell you about it.",
+        )
+        empty_climate = StubClimateProvider({})
+
+        result = stream_travel_recommendation(
+            "tell me more",
+            ai_provider=ai_provider,
+            climate_provider=empty_climate,
+            focus_destination_slug="warm-cheap",
+        )
+        list(result.reply_chunks)
+
+        self.assertEqual(len(result.recommendations), 1)
+        self.assertIsNone(result.recommendations[0].avg_high_c)
+        self.assertIsNone(result.recommendations[0].avg_low_c)
+
+    def test_conversation_memory_still_records_the_turn(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0),
+            reply_text="Sure, here's more detail.",
+        )
+
+        result = stream_travel_recommendation(
+            "tell me more",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+            session_key="test-session",
+            focus_destination_slug="warm-cheap",
+        )
+        list(result.reply_chunks)
+
+        key = memory.conversation_key(user=None, session_key="test-session")
+        history = memory.get_history(key)
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0]["content"], "tell me more")
+
+
 class VisaQuestionTests(TestCase):
     """2026-09-03 QA finding: a bare informational visa question got zero
     access to travel.CountryEntryRequirement, answering entirely from the

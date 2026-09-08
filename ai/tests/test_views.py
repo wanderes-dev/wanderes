@@ -1,7 +1,7 @@
 import json
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from ai.models import SavedConversation
@@ -183,6 +183,7 @@ class RecommendationsStreamViewTests(TestCase):
                     "cost_of_living": "Medium",
                     "avg_high_c": 24.0,
                     "fit_reasons": [],
+                    "detail_shown": False,
                 }
             ],
         )
@@ -257,6 +258,211 @@ class RecommendationsStreamViewTests(TestCase):
         _, kwargs = mock_stream.call_args
         self.assertTrue(kwargs["session_key"])
         self.assertEqual(kwargs["session_key"], self.client.session.session_key)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_focus_destination_slug_is_forwarded(self, mock_stream):
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter(["Hi!"])
+        )
+
+        self.client.post(
+            reverse("ai:recommendations-api"),
+            {"message": "tell me more", "focus_destination_slug": "bali-id"},
+        )
+
+        _, kwargs = mock_stream.call_args
+        self.assertEqual(kwargs["focus_destination_slug"], "bali-id")
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_blank_focus_destination_slug_is_passed_as_none(self, mock_stream):
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter(["Hi!"])
+        )
+
+        self.client.post(reverse("ai:recommendations-api"), {"message": "somewhere warm"})
+
+        _, kwargs = mock_stream.call_args
+        self.assertIsNone(kwargs["focus_destination_slug"])
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_destination_detail_result_shows_detail_shown_true(self, mock_stream):
+        destination = Destination.objects.create(
+            slug="bali-id",
+            name="Bali",
+            country="Indonesia",
+            latitude="-8.34000",
+            longitude="115.09000",
+            trip_type="beach",
+            cost_of_living=1,
+            best_season="Apr-Oct",
+            worst_season="Dec-Mar",
+            short_description="A tropical island.",
+            points_of_interest=[],
+        )
+        scored = ScoredDestination(
+            destination=destination,
+            avg_high_c=None,
+            avg_low_c=None,
+            preference_fit=0,
+            budget_fit=0,
+            temperature_fit=0,
+            repetition_penalty=0,
+            score=0,
+        )
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[scored],
+            reply_chunks=iter(["Here's more about Bali."]),
+            is_destination_detail=True,
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"),
+            {"message": "tell me more", "focus_destination_slug": "bali-id"},
+        )
+
+        content = b"".join(response.streaming_content).decode()
+        _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
+        parsed = json.loads(json_part)
+        self.assertTrue(parsed[0]["detail_shown"])
+
+    @patch("integrations.videos.youtube.requests.get")
+    @patch("ai.views.stream_travel_recommendation")
+    @override_settings(YOUTUBE_API_KEY="test-key")
+    def test_video_attached_when_at_most_two_destinations(self, mock_stream, mock_get):
+        destination = Destination.objects.create(
+            slug="bali-id",
+            name="Bali",
+            country="Indonesia",
+            latitude="-8.34000",
+            longitude="115.09000",
+            trip_type="beach",
+            cost_of_living=1,
+            best_season="Apr-Oct",
+            worst_season="Dec-Mar",
+            short_description="A tropical island.",
+            points_of_interest=[],
+        )
+        scored = ScoredDestination(
+            destination=destination,
+            avg_high_c=30.0,
+            avg_low_c=24.0,
+            preference_fit=0,
+            budget_fit=0,
+            temperature_fit=0,
+            repetition_penalty=0,
+            score=0,
+        )
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.json.return_value = {
+            "items": [
+                {
+                    "id": {"videoId": "abc123"},
+                    "snippet": {"title": "Bali Guide", "channelTitle": "Travel Channel"},
+                }
+            ]
+        }
+        mock_get.return_value = mock_response
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[scored], reply_chunks=iter(["Try Bali!"])
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "somewhere warm"}
+        )
+
+        content = b"".join(response.streaming_content).decode()
+        _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
+        parsed = json.loads(json_part)
+        self.assertEqual(parsed[0]["video"], {"title": "Bali Guide", "video_id": "abc123"})
+
+    @patch("integrations.videos.youtube.requests.get")
+    @patch("ai.views.stream_travel_recommendation")
+    @override_settings(YOUTUBE_API_KEY="test-key")
+    def test_video_not_attached_when_more_than_two_destinations(self, mock_stream, mock_get):
+        scored_list = [
+            ScoredDestination(
+                destination=Destination.objects.create(
+                    slug=f"dest-{i}",
+                    name=f"Destination {i}",
+                    country="Testland",
+                    latitude="1.00000",
+                    longitude="1.00000",
+                    trip_type="beach",
+                    cost_of_living=1,
+                    best_season="Jan-Dec",
+                    worst_season="None",
+                    short_description="A test destination.",
+                    points_of_interest=[],
+                ),
+                avg_high_c=25.0,
+                avg_low_c=15.0,
+                preference_fit=0,
+                budget_fit=0,
+                temperature_fit=0,
+                repetition_penalty=0,
+                score=0,
+            )
+            for i in range(3)
+        ]
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=scored_list, reply_chunks=iter(["Here are some options!"])
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "somewhere warm"}
+        )
+
+        content = b"".join(response.streaming_content).decode()
+        _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
+        parsed = json.loads(json_part)
+        mock_get.assert_not_called()
+        for card in parsed:
+            self.assertNotIn("video", card)
+
+    @patch("ai.views.get_video_provider")
+    @patch("ai.views.stream_travel_recommendation")
+    def test_video_lookup_failure_degrades_gracefully(self, mock_stream, mock_get_provider):
+        from integrations.videos.base import VideoProviderError
+
+        destination = Destination.objects.create(
+            slug="bali-id",
+            name="Bali",
+            country="Indonesia",
+            latitude="-8.34000",
+            longitude="115.09000",
+            trip_type="beach",
+            cost_of_living=1,
+            best_season="Apr-Oct",
+            worst_season="Dec-Mar",
+            short_description="A tropical island.",
+            points_of_interest=[],
+        )
+        scored = ScoredDestination(
+            destination=destination,
+            avg_high_c=30.0,
+            avg_low_c=24.0,
+            preference_fit=0,
+            budget_fit=0,
+            temperature_fit=0,
+            repetition_penalty=0,
+            score=0,
+        )
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[scored], reply_chunks=iter(["Try Bali!"])
+        )
+        mock_video_provider = mock_get_provider.return_value
+        mock_video_provider.get_destination_video.side_effect = VideoProviderError("boom")
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "somewhere warm"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        content = b"".join(response.streaming_content).decode()
+        _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
+        parsed = json.loads(json_part)
+        self.assertNotIn("video", parsed[0])
 
 
 class RecommendationsStreamAnalyticsTests(TestCase):

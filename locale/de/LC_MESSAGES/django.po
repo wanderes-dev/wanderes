@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-06 03:09+0000\n"
+"POT-Creation-Date: 2026-09-08 16:29+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -101,7 +101,7 @@ msgstr ""
 msgid "History"
 msgstr "Verlauf"
 
-#: ai/templates/ai/chat.html:394 ai/views.py:64
+#: ai/templates/ai/chat.html:394 ai/views.py:73
 msgid "New conversation"
 msgstr "Neue Unterhaltung"
 
@@ -109,7 +109,7 @@ msgstr "Neue Unterhaltung"
 msgid "Save this conversation"
 msgstr "Diese Unterhaltung speichern"
 
-#: ai/templates/ai/chat.html:401 ai/views.py:62
+#: ai/templates/ai/chat.html:401 ai/views.py:71
 msgid "No saved conversations yet."
 msgstr "Noch keine gespeicherten Unterhaltungen."
 
@@ -156,53 +156,67 @@ msgstr "Nachricht"
 msgid "Send"
 msgstr "Senden"
 
-#: ai/views.py:52
+#: ai/views.py:56
 msgid "Finding destinations that fit your preferences..."
 msgstr "Reiseziele werden gesucht, die zu deinen Vorlieben passen..."
 
-#: ai/views.py:53
+#: ai/views.py:57
 msgid "Thinking about the best options for your trip..."
 msgstr "Die besten Optionen für deine Reise werden durchdacht..."
 
-#: ai/views.py:54
+#: ai/views.py:58
 msgid "Comparing possibilities..."
 msgstr "Möglichkeiten werden verglichen..."
 
-#: ai/views.py:55
+#: ai/views.py:59
 msgid "Looking at climate and costs for you..."
 msgstr "Klima und Kosten werden für dich geprüft..."
 
-#: ai/views.py:57 core/templates/core/landing.html:55
+#: ai/views.py:61 core/templates/core/landing.html:55
 msgid "Why this fits you"
 msgstr "Warum das zu dir passt"
 
-#: ai/views.py:58
+#: ai/views.py:62
 msgid "avg"
 msgstr "Ø"
 
-#: ai/views.py:59 core/templates/core/landing.html:59
+#: ai/views.py:63 core/templates/core/landing.html:59
 msgid "Save this trip"
 msgstr "Diese Reise speichern"
 
-#: ai/views.py:60
+#: ai/views.py:64
+msgid "Choose this trip"
+msgstr "Diese Reise wählen"
+
+#: ai/views.py:67
+#, python-brace-format
+msgid "Tell me more about {name}"
+msgstr "Erzähl mir mehr über {name}"
+
+#: ai/views.py:68
+#, python-brace-format
+msgid "Watch a video of {name}"
+msgstr "Video zu {name} ansehen"
+
+#: ai/views.py:69
 msgid "(not saving)"
 msgstr "(wird nicht gespeichert)"
 
-#: ai/views.py:61
+#: ai/views.py:70
 msgid "Delete conversation"
 msgstr "Unterhaltung löschen"
 
-#: ai/views.py:63
+#: ai/views.py:72
 msgid "Couldn't load that conversation."
 msgstr "Diese Unterhaltung konnte nicht geladen werden."
 
-#: ai/views.py:66
+#: ai/views.py:75
 msgid "Couldn't reach the server. Check your connection and try again."
 msgstr ""
 "Der Server konnte nicht erreicht werden. Überprüfe deine Verbindung und "
 "versuche es erneut."
 
-#: ai/views.py:68
+#: ai/views.py:77
 msgid "Something went wrong on our end. Please try again."
 msgstr "Auf unserer Seite ist etwas schiefgelaufen. Bitte versuche es erneut."
 
@@ -268,7 +282,9 @@ msgstr ""
 msgid ""
 "I want somewhere warm, good food, nature, not too crowded, and I don't want "
 "to spend a lot."
-msgstr "Ich möchte irgendwo Warmes, mit gutem Essen, Natur, nicht zu überlaufen, und ich möchte nicht viel ausgeben."
+msgstr ""
+"Ich möchte irgendwo Warmes, mit gutem Essen, Natur, nicht zu überlaufen, und "
+"ich möchte nicht viel ausgeben."
 
 #: core/templates/core/landing.html:44
 msgid "Strong match for your trip"
@@ -299,7 +315,9 @@ msgstr "Kompromiss:"
 msgid ""
 "Popular spots can get crowded, so quieter areas nearby may suit a traveler "
 "who wants a calmer pace."
-msgstr "Beliebte Orte können überlaufen sein, ruhigere Gegenden in der Nähe passen daher oft besser zu Reisenden, die ein entspannteres Tempo suchen."
+msgstr ""
+"Beliebte Orte können überlaufen sein, ruhigere Gegenden in der Nähe passen "
+"daher oft besser zu Reisenden, die ein entspannteres Tempo suchen."
 
 #: core/templates/core/landing.html:57
 #, python-format
@@ -309,7 +327,12 @@ msgid ""
 "nightlife, and fits comfortably within a typical travel budget - with a "
 "heads-up that its most popular spots can get busy, so it's worth asking "
 "about quieter alternatives nearby."
-msgstr "Da du dir etwas Warmes, Entspanntes und nicht zu Überlaufenes wünschst, passt %(name)s zu diesem Klimafenster, setzt eher auf %(trip_type)s-Erlebnisse als auf Nachtleben und passt gut in ein typisches Reisebudget - ein Hinweis: Die beliebtesten Orte können voll werden, es lohnt sich also, nach ruhigeren Alternativen in der Nähe zu fragen."
+msgstr ""
+"Da du dir etwas Warmes, Entspanntes und nicht zu Überlaufenes wünschst, "
+"passt %(name)s zu diesem Klimafenster, setzt eher auf %(trip_type)s-"
+"Erlebnisse als auf Nachtleben und passt gut in ein typisches Reisebudget - "
+"ein Hinweis: Die beliebtesten Orte können voll werden, es lohnt sich also, "
+"nach ruhigeren Alternativen in der Nähe zu fragen."
 
 #: core/templates/core/landing.html:68
 msgid "How it works"
@@ -335,7 +358,9 @@ msgstr "Erhalte passende Reiseziele"
 msgid ""
 "Real recommendations grounded in destination, climate, and travel-cost data "
 "- not a generic list of trending places."
-msgstr "Echte Empfehlungen basierend auf echten Reisezielen, Klima- und Reisekostendaten - keine generische Liste angesagter Orte."
+msgstr ""
+"Echte Empfehlungen basierend auf echten Reisezielen, Klima- und "
+"Reisekostendaten - keine generische Liste angesagter Orte."
 
 #: core/templates/core/landing.html:82
 msgid "See exactly why"
@@ -375,7 +400,11 @@ msgid ""
 "trip and get real destination recommendations, grounded in destination, "
 "climate, and travel-cost data, with an honest explanation for every "
 "suggestion."
-msgstr "Wanderes ist ein intelligenter Reiseberater. Sag ihm, was du von einer Reise erwartest, und erhalte echte Reiseziel-Empfehlungen, basierend auf Reiseziel-, Klima- und Reisekostendaten, mit einer ehrlichen Erklärung für jeden Vorschlag."
+msgstr ""
+"Wanderes ist ein intelligenter Reiseberater. Sag ihm, was du von einer Reise "
+"erwartest, und erhalte echte Reiseziel-Empfehlungen, basierend auf "
+"Reiseziel-, Klima- und Reisekostendaten, mit einer ehrlichen Erklärung für "
+"jeden Vorschlag."
 
 #: templates/base.html:40
 msgid "Chat"

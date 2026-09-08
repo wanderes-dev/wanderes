@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from analytics.services import record_event
+from integrations.climate import ClimateProviderError, get_climate_provider
 from recommendations.scoring import (
     RecommendationRequest,
     ScoredDestination,
@@ -346,6 +347,12 @@ class OrchestrationResult:
 class StreamingOrchestrationResult:
     recommendations: list[ScoredDestination]
     reply_chunks: Iterator[str]
+    # True only for _handle_focus_destination's single-destination "choose
+    # this trip" detail reply (2026-09-08) - lets ai/views.py tell that
+    # card apart from a normal browse-stage recommendation card without
+    # re-deriving it from context, so it can show "Save this trip" instead
+    # of "Choose this trip" for exactly this one response.
+    is_destination_detail: bool = False
 
 
 def stream_travel_recommendation(
@@ -356,6 +363,7 @@ def stream_travel_recommendation(
     ai_provider: AIProvider | None = None,
     climate_provider=None,
     history_override: list[dict] | None = None,
+    focus_destination_slug: str | None = None,
 ) -> StreamingOrchestrationResult:
     """Handle one chat message: a recommendation request, feedback about a
     past visit, a stated future travel intention, or an off-topic message.
@@ -401,6 +409,16 @@ def stream_travel_recommendation(
     this function skips reading *and writing* ai.memory entirely for that
     call, leaving Redis memory exclusively for conversations that are not
     (or not yet) saved.
+
+    `focus_destination_slug` (2026-09-08, "choose this trip" flow): set
+    only by the chat page's "Choose this trip" button, which already knows
+    the exact destination (it built the card), so this bypasses intent
+    extraction entirely rather than asking the AI to re-guess which
+    destination "tell me more" refers to from free text - deterministic
+    where the answer is already known, the same principle behind every
+    hard constraint in recommendations.scoring. A bogus/stale slug (e.g. a
+    card from an expired conversation) falls straight through to normal
+    message handling below, exactly as if this had never been sent.
     """
     ai_provider = ai_provider or get_ai_provider()
     profile = _traveler_profile(user)
@@ -414,6 +432,21 @@ def stream_travel_recommendation(
     def _remember(reply: str) -> None:
         if conv_key is not None:
             memory.append_turn(conv_key, user_message=message, assistant_reply=reply)
+
+    if focus_destination_slug:
+        destination = Destination.objects.filter(slug=focus_destination_slug).first()
+        if destination is not None:
+            return _handle_focus_destination(
+                message,
+                destination,
+                profile=profile,
+                history=history,
+                ai_provider=ai_provider,
+                climate_provider=climate_provider,
+                remember=_remember,
+            )
+        # else: bogus/stale slug - fall through to normal intent-based
+        # handling below.
 
     try:
         intent = _extract_intent(message, ai_provider=ai_provider, history=history)
@@ -668,6 +701,104 @@ def stream_travel_recommendation(
         results,
         _stream_ai_reply(messages, message, ai_provider=ai_provider, remember=_remember),
     )
+
+
+def _handle_focus_destination(
+    message: str,
+    destination: Destination,
+    *,
+    profile: TravelerProfile | None,
+    history: list[dict] | None,
+    ai_provider: AIProvider,
+    climate_provider,
+    remember,
+) -> StreamingOrchestrationResult:
+    """The "choose this trip" detail path (2026-09-08): the traveler
+    already picked one specific destination from a browse-stage
+    recommendation card, so there's nothing left to search for or rank -
+    just a real, grounded conversation about this one place, using fields
+    (best_season/worst_season/short_description/points_of_interest) the
+    generic explanation path never surfaces (see _build_explanation_messages
+    above, which only ever sends name/country/avg_high_c/cost_of_living/
+    trip_type). "Save this trip" only becomes available in the UI once this
+    reply comes back (ai/views.py keys off StreamingOrchestrationResult.
+    is_destination_detail) - deterministic, not an AI judgment call about
+    whether the traveler "seems ready."""
+    climate_provider = climate_provider or get_climate_provider()
+    try:
+        summary = climate_provider.get_monthly_climate(
+            latitude=float(destination.latitude),
+            longitude=float(destination.longitude),
+            month=date.today().month,
+        )
+        avg_high_c, avg_low_c = summary.avg_high_c, summary.avg_low_c
+    except ClimateProviderError:
+        avg_high_c, avg_low_c = None, None
+
+    scored = ScoredDestination(
+        destination=destination,
+        avg_high_c=avg_high_c,
+        avg_low_c=avg_low_c,
+        preference_fit=0,
+        budget_fit=0,
+        temperature_fit=0,
+        repetition_penalty=0,
+        score=0,
+    )
+    messages = _build_destination_detail_messages(
+        message, destination, avg_high_c=avg_high_c, profile=profile, history=history
+    )
+    reply = _stream_ai_reply(messages, message, ai_provider=ai_provider, remember=remember)
+    return StreamingOrchestrationResult([scored], reply, is_destination_detail=True)
+
+
+def _build_destination_detail_messages(
+    message: str,
+    destination: Destination,
+    *,
+    avg_high_c: float | None,
+    profile: TravelerProfile | None,
+    history: list[dict] | None,
+) -> list[AIMessage]:
+    poi = ", ".join(destination.points_of_interest) if destination.points_of_interest else ""
+    climate_line = f"\n- Current typical avg high: {avg_high_c}C" if avg_high_c is not None else ""
+    traveler_note = _traveler_context_note(profile)
+    entry_requirements_note = _entry_requirements_note(profile, [destination])
+
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler chose to hear more about {destination.name}, '
+                f'{destination.country} (they clicked "Choose this trip" on it). '
+                "Here is everything real we know about it - do not invent any "
+                "other facts beyond what is listed here:\n"
+                f"- Trip type: {destination.get_trip_type_display()}\n"
+                f"- Cost of living: {destination.get_cost_of_living_display()}\n"
+                f"- Best season: {destination.best_season}\n"
+                f"- Worst season: {destination.worst_season}\n"
+                f"- Description: {destination.short_description}\n"
+                f"- Points of interest: {poi}"
+                f"{climate_line}"
+                f"{traveler_note}"
+                f"{entry_requirements_note}\n\n"
+                f'Their message alongside choosing it was: "{message}"\n\n'
+                "Have a genuine, detailed conversation about this one place - "
+                "bring the description and points of interest to life, answer "
+                "naturally, and invite a real follow-up question, the way a "
+                "thoughtful travel consultant would once a client has settled "
+                "on somewhere to talk through in depth. Do not mention saving "
+                "this as a trip or any button/UI element - the interface "
+                "already offers that separately once you reply. Reply in the "
+                "same language the traveler has been using in this "
+                "conversation (check the history above, not just this "
+                "message)."
+            ),
+        )
+    )
+    return messages
 
 
 def _stream_ai_reply(

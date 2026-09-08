@@ -80,11 +80,18 @@ class RecommendationRequest:
 class ScoredDestination:
     """A candidate destination that survived hard constraints, with its score
     broken into the individual factors that produced it - so a future AI
-    explanation layer can describe *why*, rather than re-deriving it."""
+    explanation layer can describe *why*, rather than re-deriving it.
+
+    avg_high_c/avg_low_c are `float | None` (not just `float`) to
+    accommodate ai.orchestration's "choose this trip" destination-detail
+    path (2026-09-08), the one caller that can legitimately have no climate
+    data (a ClimateProviderError for that one lookup) but still needs to
+    return a card - generate_recommendations() below always supplies real
+    floats, unaffected by the widened type."""
 
     destination: Destination
-    avg_high_c: float
-    avg_low_c: float
+    avg_high_c: float | None
+    avg_low_c: float | None
     preference_fit: float
     budget_fit: float
     temperature_fit: float

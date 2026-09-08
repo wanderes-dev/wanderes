@@ -838,6 +838,30 @@ button:focus-visible, .btn:focus-visible {
     padding: 0.45rem 0.9rem;
 }
 
+/* Real video for a destination (2026-09-08) - the toggle sits below the
+   choose/save action; the iframe is only inserted on click (see chat.html),
+   so this container only ever appears once a traveler actually asks for it. */
+.recommendation-card .video-toggle {
+    margin-top: 0;
+}
+
+.recommendation-card .video-embed-container {
+    position: relative;
+    width: 100%;
+    padding-top: 56.25%;
+    border-radius: var(--radius-md, 6px);
+    overflow: hidden;
+}
+
+.recommendation-card .video-embed-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
 @media (max-width: 480px) {
     .chat-bubble { max-width: 95%; }
     .recommendation-cards { grid-template-columns: 1fr; }
