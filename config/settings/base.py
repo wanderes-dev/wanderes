@@ -343,6 +343,38 @@ FLIGHT_PROVIDER = env("FLIGHT_PROVIDER", default="")
 # something tries to use this before it's set.
 HOTEL_PROVIDER = env("HOTEL_PROVIDER", default="")
 
+# CJ Affiliate personal access token (2026-09-09) - authenticates against
+# CJ's own developer API (link/product search, commission reporting),
+# NOT Booking.com's Demand API - see documentation/10_EXTERNAL_INTEGRATIONS.md
+# §13.8: CJ program approval does not grant Booking.com Demand API
+# access, and that access was NOT confirmed as of the last check.
+# Nothing reads this setting yet - integrations/hotels/booking_com.py
+# stays the deliberate NotImplementedError skeleton it already was.
+# Default blank on purpose, same "unset means not configured, not
+# silently faked" convention as every other provider setting here.
+CJ_API_TOKEN = env("CJ_API_TOKEN", default="")
+
+# Your CJ Website ID / Property ID (PID) - a SEPARATE credential from
+# CJ_API_TOKEN above, tied to which registered CJ "website" a generated
+# link should be attributed to. Required by CJ's Link Search API (see
+# integrations/affiliates/cj.py) alongside the token; get it from the CJ
+# Account Manager (Account > Websites). Default blank on purpose -
+# CJAffiliateProvider raises a clear ImproperlyConfigured error rather
+# than making a call that's missing a required parameter.
+CJ_WEBSITE_ID = env("CJ_WEBSITE_ID", default="")
+
+# Which affiliate-network adapter backs
+# integrations.affiliates.get_affiliate_network_provider() - same
+# settings-driven provider-selection pattern as AI_PROVIDER/
+# CLIMATE_PROVIDER/FLIGHT_PROVIDER/HOTEL_PROVIDER above. "cj" (CJ
+# Affiliate, 2026-09-09) is the one real, working adapter registered so
+# far - see integrations/affiliates/cj.py. This is CJ's OWN Link Search
+# API (link/product discovery + tracked deep links), NOT Booking.com's
+# Demand API (real property/price/availability search, still not
+# confirmed as granted - documentation/10_EXTERNAL_INTEGRATIONS.md
+# §13.8) - do not assume this setting unlocks live hotel search.
+AFFILIATE_PROVIDER = env("AFFILIATE_PROVIDER", default="")
+
 # Email (2026-09-04, password reset via emailed token) - deliberately
 # provider-agnostic, the same pattern as every other external service in
 # this project: settings/env vars, never a specific vendor hardcoded, so
