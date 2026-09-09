@@ -691,6 +691,36 @@ class StreamTravelRecommendationTests(TestCase):
         self.assertEqual("".join(chunks), "Try the warm cheap destination ")
         self.assertEqual(len(result.recommendations), 1)
 
+    def test_valid_request_populates_recommendation_constraints(self):
+        # 2026-09-09: lets ai/views.py enrich recommendation_generated's
+        # analytics metadata without needing to know anything about intent
+        # extraction itself.
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0, trip_type="beach"),
+            reply_text="Try the warm cheap destination",
+        )
+
+        result = stream_travel_recommendation(
+            "somewhere warm in October", ai_provider=ai_provider, climate_provider=self.climate
+        )
+        list(result.reply_chunks)
+
+        self.assertEqual(result.recommendation_constraints["month"], 10)
+        self.assertEqual(result.recommendation_constraints["trip_type"], "beach")
+
+    def test_off_topic_reply_has_no_recommendation_constraints(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(message_type="off_topic"),
+            reply_text="Paris!",
+        )
+
+        result = stream_travel_recommendation(
+            "what's the capital of France?", ai_provider=ai_provider, climate_provider=self.climate
+        )
+        list(result.reply_chunks)
+
+        self.assertIsNone(result.recommendation_constraints)
+
     def test_mid_stream_failure_appends_fallback_chunk(self):
         class MidStreamFailingProvider:
             def generate_structured_reply(
@@ -725,6 +755,99 @@ class StreamTravelRecommendationTests(TestCase):
         self.assertGreater(len(chunks), 1)
         self.assertEqual("".join(chunks), "Paris! Now, where are you thinking of traveling? ")
         self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+
+class LlmRequestInstrumentationTests(TestCase):
+    """2026-09-09: latency/success telemetry for the AI-provider calls -
+    deliberately not tokens/model/cost, see analytics.instrumentation's
+    own docstring for why."""
+
+    def setUp(self):
+        self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
+        self.climate = StubClimateProvider(
+            {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
+        )
+
+    def test_successful_recommendation_records_extract_intent_and_stream_reply(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0),
+            reply_text="Try the warm cheap destination",
+        )
+
+        result = stream_travel_recommendation(
+            "somewhere warm in October", ai_provider=ai_provider, climate_provider=self.climate
+        )
+        list(result.reply_chunks)
+
+        operations = set(
+            Event.objects.filter(event_type="llm_request_completed").values_list(
+                "metadata__operation", flat=True
+            )
+        )
+        self.assertIn("extract_intent", operations)
+        self.assertIn("stream_reply", operations)
+        for event in Event.objects.filter(event_type="llm_request_completed"):
+            self.assertTrue(event.metadata["success"])
+            self.assertGreaterEqual(event.metadata["latency_ms"], 0)
+            self.assertIsNone(event.user)
+            self.assertIsNone(event.anonymized_ip)
+
+    def test_intent_extraction_failure_records_a_failed_event(self):
+        class FailingProvider:
+            def generate_structured_reply(
+                self, messages, *, json_schema, max_tokens=None, temperature=None
+            ):
+                raise AIProviderError("down")
+
+        stream_travel_recommendation(
+            "somewhere warm", ai_provider=FailingProvider(), climate_provider=self.climate
+        )
+
+        event = Event.objects.get(
+            event_type="llm_request_completed", metadata__operation="extract_intent"
+        )
+        self.assertFalse(event.metadata["success"])
+        self.assertEqual(event.metadata["error_type"], "AIProviderError")
+
+    def test_mid_stream_failure_records_a_failed_stream_reply_event(self):
+        class MidStreamFailingProvider:
+            def generate_structured_reply(
+                self, messages, *, json_schema, max_tokens=None, temperature=None
+            ):
+                return _intent(month=10, min_temp_c=20.0)
+
+            def stream_reply(self, messages, *, max_tokens=None, temperature=None):
+                yield "Partial reply... "
+                raise AIProviderError("connection dropped")
+
+        result = stream_travel_recommendation(
+            "somewhere warm in October",
+            ai_provider=MidStreamFailingProvider(),
+            climate_provider=self.climate,
+        )
+        list(result.reply_chunks)
+
+        event = Event.objects.get(
+            event_type="llm_request_completed", metadata__operation="stream_reply"
+        )
+        self.assertFalse(event.metadata["success"])
+        self.assertEqual(event.metadata["error_type"], "AIProviderError")
+
+    def test_analytics_failure_does_not_break_the_recommendation_flow(self):
+        from unittest.mock import patch
+
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=10, min_temp_c=20.0),
+            reply_text="Try the warm cheap destination",
+        )
+
+        with patch("analytics.services.Event.objects.create", side_effect=RuntimeError("boom")):
+            result = stream_travel_recommendation(
+                "somewhere warm in October", ai_provider=ai_provider, climate_provider=self.climate
+            )
+            chunks = list(result.reply_chunks)  # must not raise
+
+        self.assertEqual("".join(chunks), "Try the warm cheap destination ")
 
 
 class TripTypeAndExclusionTests(TestCase):

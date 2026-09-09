@@ -64,3 +64,55 @@ class RecordEventTests(TestCase):
             record_event("user_registered", user=self.user)  # must not raise
 
         self.assertFalse(Event.objects.exists())
+
+    def test_conversation_key_and_locale_are_stored(self):
+        record_event(
+            "travel_question_submitted",
+            user=self.user,
+            conversation_key="chat-history:user:1",
+            locale="pt",
+        )
+
+        event = Event.objects.get()
+        self.assertEqual(event.conversation_key, "chat-history:user:1")
+        self.assertEqual(event.locale, "pt")
+
+    def test_conversation_key_and_locale_default_to_empty(self):
+        record_event("user_registered", user=self.user)
+
+        event = Event.objects.get()
+        self.assertIsNone(event.conversation_key)
+        self.assertEqual(event.locale, "")
+
+
+class OperationalEventTests(TestCase):
+    """2026-09-09: llm_request_completed/provider_request_completed are
+    system telemetry about the AI/provider layers, not user behavior - they
+    must record successfully with neither a user nor a request/IP, unlike
+    every other event type (RecordEventTests above confirms those still
+    require one or the other, unchanged)."""
+
+    def test_operational_event_requires_no_actor(self):
+        record_event(
+            "llm_request_completed",
+            metadata={"latency_ms": 842, "success": True, "operation": "extract_intent"},
+        )
+
+        event = Event.objects.get()
+        self.assertIsNone(event.user)
+        self.assertIsNone(event.anonymized_ip)
+        self.assertEqual(event.metadata["operation"], "extract_intent")
+
+    def test_operational_event_ignores_a_passed_request(self):
+        # Even if a caller had a request handy and passed it along, an
+        # operational event must never resolve/store an IP - attribution
+        # isn't its purpose, and doing so would blur the "no actor" contract.
+        factory = RequestFactory()
+        request = factory.post("/api/v1/recommendations/")
+        request.META["REMOTE_ADDR"] = "203.0.113.42"
+
+        record_event("provider_request_completed", request=request, metadata={"success": False})
+
+        event = Event.objects.get()
+        self.assertIsNone(event.user)
+        self.assertIsNone(event.anonymized_ip)

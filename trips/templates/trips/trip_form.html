@@ -8,6 +8,9 @@
 <h1>{% if is_edit %}{% trans "Edit trip" %}{% else %}{% trans "Create a trip" %}{% endif %}</h1>
 <form method="post">
     {% csrf_token %}
+    {% if source == "chat_recommendation" %}
+    <input type="hidden" name="source" value="chat_recommendation">
+    {% endif %}
     {{ form.as_p }}
     <button type="submit" class="btn">{% trans "Save" %}</button>
 </form>

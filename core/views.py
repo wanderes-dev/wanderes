@@ -146,6 +146,10 @@ def robots_txt(request):
         # other disallowed path here: an unauthenticated crawler would just
         # find a login redirect, nothing worth indexing.
         "Disallow: /travel/",
+        # 2026-09-09: the staff-only internal analytics dashboard - added
+        # to this list from day one this time (unlike /travel/ above,
+        # which was reactively fixed after already shipping crawlable).
+        "Disallow: /analytics/",
         "",
         f"Sitemap: https://{settings.SITE_DOMAIN}{reverse('core:sitemap')}",
     ]

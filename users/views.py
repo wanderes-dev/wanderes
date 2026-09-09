@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth import REDIRECT_FIELD_NAME, login
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import LoginView as _LoginView
 from django.http import HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -55,8 +56,33 @@ def register(request):
             return redirect("users:account")
     else:
         form = UserRegistrationForm()
+        # Pairs with user_registered for a real signup funnel (2026-09-09) -
+        # directional, not exact (a page refresh fires it again), same
+        # caveat as any funnel-entry pageview signal.
+        record_event("signup_started", user=None, request=request)
 
     return render(request, "users/register.html", {"form": form})
+
+
+class LoginView(_LoginView):
+    """Wraps Django's own LoginView (2026-09-09, analytics pass) to stash
+    the visitor's pre-login session key on the request before form_valid()
+    calls Django's login(), which immediately rotates the session key via
+    request.session.cycle_key() - by the time the user_logged_in signal
+    fires, request.session.session_key already refers to the *new*
+    session, so a receiver reading it directly would always look up an
+    anonymous conversation under a key that was never actually written
+    to. Stashing the real pre-login key here, for
+    users.signals.track_anonymous_conversion to read, is the only way to
+    tell whether this visitor had an active anonymous chat conversation at
+    all. Every other LoginView behavior (form handling, redirect
+    resolution) is untouched - this only adds one attribute before
+    delegating, same "wrap, don't replace" pattern already used for
+    core.views.set_language."""
+
+    def form_valid(self, form):
+        self.request._pre_login_session_key = self.request.session.session_key
+        return super().form_valid(form)
 
 
 @login_required

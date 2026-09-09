@@ -4,6 +4,8 @@ from datetime import date
 import requests
 from django.core.cache import cache
 
+from analytics.instrumentation import track_provider_call
+
 from .base import ClimateProvider, ClimateProviderError, MonthlyClimateSummary
 
 ARCHIVE_API_URL = "https://archive-api.open-meteo.com/v1/archive"
@@ -42,27 +44,36 @@ class OpenMeteoClimateProvider(ClimateProvider):
     def _fetch(
         self, latitude: float, longitude: float, month: int, year: int
     ) -> MonthlyClimateSummary:
-        start_date = date(year, month, 1)
-        end_date = date(year, month, calendar.monthrange(year, month)[1])
+        # Instrumented here, not the public get_monthly_climate() above
+        # (2026-09-09) - that entry point is called once per surviving
+        # candidate destination during scoring (up to ~384 times for a
+        # single chat message) and ~4,600 times per 3-day cache-warming
+        # run, but almost all of those are cache hits. _fetch() only runs
+        # on an actual miss, which is what "a provider request" honestly
+        # means here - instrumenting the public method would have
+        # multiplied write volume for zero new signal.
+        with track_provider_call(operation="open_meteo_monthly_climate"):
+            start_date = date(year, month, 1)
+            end_date = date(year, month, calendar.monthrange(year, month)[1])
 
-        try:
-            response = requests.get(
-                ARCHIVE_API_URL,
-                params={
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "start_date": start_date.isoformat(),
-                    "end_date": end_date.isoformat(),
-                    "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
-                    "timezone": "auto",
-                },
-                timeout=REQUEST_TIMEOUT_SECONDS,
-            )
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            raise ClimateProviderError("Unable to reach the climate data provider.") from exc
+            try:
+                response = requests.get(
+                    ARCHIVE_API_URL,
+                    params={
+                        "latitude": latitude,
+                        "longitude": longitude,
+                        "start_date": start_date.isoformat(),
+                        "end_date": end_date.isoformat(),
+                        "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
+                        "timezone": "auto",
+                    },
+                    timeout=REQUEST_TIMEOUT_SECONDS,
+                )
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                raise ClimateProviderError("Unable to reach the climate data provider.") from exc
 
-        return self._normalize(response.json(), year=year, month=month)
+            return self._normalize(response.json(), year=year, month=month)
 
     @staticmethod
     def _normalize(payload: dict, *, year: int, month: int) -> MonthlyClimateSummary:

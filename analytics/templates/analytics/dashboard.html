@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}Analytics - Wanderes{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+{% block content_class %}content-wide{% endblock %}
+
+{% block content %}
+<h1>{% trans "Analytics" %}</h1>
+
+{% if freshness_stale %}
+<p class="empty-state">
+    {% blocktrans %}The daily metrics haven't refreshed in over 26 hours - the scheduled job may have stalled.{% endblocktrans %}
+</p>
+{% elif not latest %}
+<p class="empty-state">{% trans "No daily metrics yet - the nightly refresh job hasn't run." %}</p>
+{% endif %}
+
+<section class="profile-section">
+    <h2>{% blocktrans %}Last {{ lookback_days }} days{% endblocktrans %}</h2>
+    {% if daily_metrics %}
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>{% trans "Date" %}</th>
+                    <th>{% trans "Conversations" %}</th>
+                    <th>{% trans "Messages" %}</th>
+                    <th>{% trans "Reached rec." %}</th>
+                    <th>{% trans "Selected" %}</th>
+                    <th>{% trans "Saved" %}</th>
+                    <th>{% trans "Signups" %}</th>
+                    <th>{% trans "AI failures" %}</th>
+                    <th>{% trans "AI p95 (ms)" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in daily_metrics %}
+                <tr>
+                    <td>{{ row.date|date:"Y-m-d" }}</td>
+                    <td>{{ row.conversations_started }}</td>
+                    <td>{{ row.messages_sent }}</td>
+                    <td>{{ row.conversations_reached_recommendation }}</td>
+                    <td>{{ row.destinations_selected }}</td>
+                    <td>{{ row.destinations_saved }}</td>
+                    <td>{{ row.signups_completed }} / {{ row.signups_started }}</td>
+                    <td>{{ row.ai_requests_failed }} / {{ row.ai_requests_total }}</td>
+                    <td>{{ row.ai_latency_p95_ms|default:"-" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty-state">{% trans "No data yet." %}</p>
+    {% endif %}
+</section>
+
+<section class="profile-section">
+    <h2>{% trans "Destination performance" %}</h2>
+    <p class="landing-preview-caption">
+        {% trans "Which destinations get recommended, chosen, and saved - approximate, session-based correlation (see documentation)." %}
+    </p>
+    {% if destination_performance %}
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>{% trans "Destination" %}</th>
+                    <th>{% trans "Country" %}</th>
+                    <th>{% trans "Recommended" %}</th>
+                    <th>{% trans "Selected" %}</th>
+                    <th>{% trans "Saved" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in destination_performance %}
+                <tr>
+                    <td>{{ row.name }}</td>
+                    <td>{{ row.country }}</td>
+                    <td>{{ row.times_recommended }}</td>
+                    <td>{{ row.times_selected }}</td>
+                    <td>{{ row.times_saved }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty-state">{% trans "No data yet." %}</p>
+    {% endif %}
+</section>
+
+<section class="profile-section">
+    <h2>{% trans "AI operational health" %}</h2>
+    {% if ai_operations %}
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>{% trans "Operation" %}</th>
+                    <th>{% trans "Type" %}</th>
+                    <th>{% trans "Total" %}</th>
+                    <th>{% trans "Failed" %}</th>
+                    <th>{% trans "p50 (ms)" %}</th>
+                    <th>{% trans "p95 (ms)" %}</th>
+                    <th>{% trans "p99 (ms)" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in ai_operations %}
+                <tr>
+                    <td>{{ row.operation }}</td>
+                    <td>{{ row.event_type }}</td>
+                    <td>{{ row.total }}</td>
+                    <td>{{ row.failed }}</td>
+                    <td>{{ row.p50_ms|default:"-" }}</td>
+                    <td>{{ row.p95_ms|default:"-" }}</td>
+                    <td>{{ row.p99_ms|default:"-" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty-state">{% trans "No data yet." %}</p>
+    {% endif %}
+</section>
+
+<section class="profile-section">
+    <h2>{% trans "Locales" %}</h2>
+    {% if locale_breakdown %}
+    <ul class="item-list">
+        {% for row in locale_breakdown %}
+        <li>
+            <span class="item-title">{{ row.locale }}</span>
+            <span class="item-status">{{ row.conversations }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">{% trans "No data yet." %}</p>
+    {% endif %}
+</section>
+{% endblock %}

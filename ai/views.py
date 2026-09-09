@@ -149,17 +149,29 @@ def recommendations_stream(request):
         return HttpResponseBadRequest("Message is too long.")
 
     user = request.user if request.user.is_authenticated else None
-    # Any chat interaction counts, regardless of what it turns out to be
-    # (recommendation, feedback, future intent, or off-topic) - Phase 17
-    # decision, 2026-08-30.
-    record_event("travel_question_submitted", user=user, request=request)
 
     # Anonymous conversation memory (ai.memory) is keyed by the Django
     # session, which is otherwise unused for anonymous visitors - force it
     # to exist now rather than waiting for some other write to create it,
-    # so the very first message already has a stable key.
+    # so the very first message already has a stable key. Moved ahead of
+    # the analytics call below (2026-09-09) so conversation_key is already
+    # resolvable on this request's very first event, not just from the
+    # second message onward.
     if not request.session.session_key:
         request.session.save()
+    conversation_key = memory.conversation_key(user=user, session_key=request.session.session_key)
+    locale = request.LANGUAGE_CODE
+
+    # Any chat interaction counts, regardless of what it turns out to be
+    # (recommendation, feedback, future intent, or off-topic) - Phase 17
+    # decision, 2026-08-30.
+    record_event(
+        "travel_question_submitted",
+        user=user,
+        request=request,
+        conversation_key=conversation_key,
+        locale=locale,
+    )
 
     # Saved conversations (2026-09-02, direct request) - registered users
     # only; the checkbox itself isn't even rendered for anonymous visitors,
@@ -197,12 +209,35 @@ def recommendations_stream(request):
         focus_destination_slug=focus_destination_slug,
     )
     if result.recommendations:
-        record_event(
-            "recommendation_generated",
-            user=user,
-            request=request,
-            metadata={"result_count": len(result.recommendations)},
-        )
+        if result.is_destination_detail:
+            # The "Choose this trip" detail reply (2026-09-08) - a real,
+            # deliberate user action, distinct from a normal browse-stage
+            # recommendation_generated. Its single ScoredDestination isn't
+            # itself a fresh recommendation_generated event (it grew out of
+            # one already recorded on an earlier turn).
+            record_event(
+                "destination_selected",
+                user=user,
+                request=request,
+                metadata={"destination_slug": result.recommendations[0].destination.slug},
+                conversation_key=conversation_key,
+                locale=locale,
+            )
+        else:
+            record_event(
+                "recommendation_generated",
+                user=user,
+                request=request,
+                metadata={
+                    "result_count": len(result.recommendations),
+                    "destination_slugs": [
+                        r.destination.slug for r in result.recommendations[:MAX_RECOMMENDATIONS]
+                    ],
+                    "constraints": result.recommendation_constraints,
+                },
+                conversation_key=conversation_key,
+                locale=locale,
+            )
 
     def _chunks_with_footers():
         collected = []

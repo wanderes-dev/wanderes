@@ -7,7 +7,11 @@ app_name = "users"
 
 urlpatterns = [
     path("register/", views.register, name="register"),
-    path("login/", auth_views.LoginView.as_view(template_name="users/login.html"), name="login"),
+    # views.LoginView (2026-09-09), not auth_views.LoginView directly - see
+    # its own docstring for why (captures the pre-login session key before
+    # Django's login() rotates it, for the anonymous_user_authenticated
+    # analytics event).
+    path("login/", views.LoginView.as_view(template_name="users/login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("account/", views.account, name="account"),
     path("profile/", views.profile, name="profile"),
