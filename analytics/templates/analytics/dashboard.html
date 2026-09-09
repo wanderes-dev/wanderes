@@ -9,14 +9,14 @@
 <h1>{% trans "Analytics" %}</h1>
 
 {% if freshness_stale %}
-<p class="empty-state">
+<p class="dashboard-freshness-notice">
     {% blocktrans %}The daily metrics haven't refreshed in over 26 hours - the scheduled job may have stalled.{% endblocktrans %}
 </p>
 {% elif not latest %}
-<p class="empty-state">{% trans "No daily metrics yet - the nightly refresh job hasn't run." %}</p>
+<p class="dashboard-freshness-notice">{% trans "No daily metrics yet - the nightly refresh job hasn't run. Real numbers will appear here once there's real chat activity and the job has run at least once." %}</p>
 {% endif %}
 
-<section class="profile-section">
+<section class="dashboard-section">
     <h2>{% blocktrans %}Last {{ lookback_days }} days{% endblocktrans %}</h2>
     {% if daily_metrics %}
     <div style="overflow-x: auto;">
@@ -56,9 +56,9 @@
     {% endif %}
 </section>
 
-<section class="profile-section">
+<section class="dashboard-section">
     <h2>{% trans "Destination performance" %}</h2>
-    <p class="landing-preview-caption">
+    <p class="profile-section-hint">
         {% trans "Which destinations get recommended, chosen, and saved - approximate, session-based correlation (see documentation)." %}
     </p>
     {% if destination_performance %}
@@ -91,7 +91,7 @@
     {% endif %}
 </section>
 
-<section class="profile-section">
+<section class="dashboard-section">
     <h2>{% trans "AI operational health" %}</h2>
     {% if ai_operations %}
     <div style="overflow-x: auto;">
@@ -127,7 +127,7 @@
     {% endif %}
 </section>
 
-<section class="profile-section">
+<section class="dashboard-section">
     <h2>{% trans "Locales" %}</h2>
     {% if locale_breakdown %}
     <ul class="item-list">

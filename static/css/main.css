@@ -1297,3 +1297,59 @@ button:focus-visible, .btn:focus-visible {
         grid-template-columns: 1fr;
     }
 }
+
+/* Analytics dashboard (2026-09-09). .profile-section alone (a thin
+   divider between stacked form sections) reads as an unstructured wall
+   of text for a data-dense page like this - live-reported as "layout is
+   quite bad." .dashboard-section reuses the exact same panel treatment
+   already established for recommendation cards (surface/border/radius/
+   shadow) instead of introducing a new visual language, and adds real
+   table styling, which nothing in this stylesheet had before (no page
+   used a plain <table> until this one). */
+.dashboard-section {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.dashboard-section h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.15rem;
+}
+
+.dashboard-freshness-notice {
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.dashboard-section table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+.dashboard-section th,
+.dashboard-section td {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+}
+
+.dashboard-section thead th {
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.dashboard-section tbody tr:hover {
+    background: var(--color-bg);
+}
