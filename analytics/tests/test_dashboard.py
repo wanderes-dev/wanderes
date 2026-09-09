@@ -43,6 +43,20 @@ class DashboardRenderingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "No daily metrics yet")
 
+    def test_sections_use_the_styled_card_class_not_the_bare_profile_section(self):
+        # 2026-09-09, direct live report: the dashboard "loads but the
+        # layout is quite bad" - .profile-section alone (a thin divider
+        # between stacked form sections) reads as an unstyled wall of
+        # text for a data-dense page like this. Locks in the fix
+        # (.dashboard-section, a real card with border/shadow/padding -
+        # see static/css/main.css) rather than letting a future edit
+        # quietly revert to the bare class.
+        response = self.client.get(reverse("analytics:dashboard"))
+        content = response.content.decode()
+
+        self.assertIn('class="dashboard-section"', content)
+        self.assertNotIn('class="profile-section"', content)
+
     def test_renders_daily_metrics_row(self):
         DailyProductMetrics.objects.create(
             date="2026-09-01",
