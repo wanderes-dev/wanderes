@@ -1,7 +1,7 @@
 import ipaddress
 import logging
 
-from .models import EVENT_TYPE_CHOICES, Event
+from .models import EVENT_TYPE_CHOICES, OPERATIONAL_EVENT_TYPES, Event
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,15 @@ IPV4_ANONYMIZATION_PREFIX = 24
 IPV6_ANONYMIZATION_PREFIX = 48
 
 
-def record_event(event_type: str, *, user=None, request=None, metadata=None) -> None:
+def record_event(
+    event_type: str,
+    *,
+    user=None,
+    request=None,
+    metadata=None,
+    conversation_key: str | None = None,
+    locale: str = "",
+) -> None:
     """Record one product-analytics event.
 
     Never raises: analytics is a non-critical side channel (Phase 16's own
@@ -29,21 +37,37 @@ def record_event(event_type: str, *, user=None, request=None, metadata=None) -> 
     case, to resolve and anonymize the visitor's IP (per the Phase 17
     decision to track anonymous chat interactions by IP rather than a
     session identifier) - it's ignored for authenticated events.
+
+    `event_type in OPERATIONAL_EVENT_TYPES` (2026-09-09 addition) is the one
+    exception to the "must resolve user or IP" rule below: these are system
+    telemetry about the AI/provider layers, not a specific visitor's
+    behavior, so attribution isn't their point - both `user` and
+    `anonymized_ip` stay None for these, which Event's model already
+    supports (see its own docstring).
+
+    `conversation_key`/`locale` (2026-09-09) are optional, small structured
+    dimensions - a caller passes them when already available (e.g. the chat
+    view already has both), never worth resolving specially just for this.
     """
     if event_type not in EVENT_TYPE_KEYS:
         logger.warning("Ignoring unknown analytics event_type=%r", event_type)
         return
 
-    is_authenticated = user is not None and user.is_authenticated
-    anonymized_ip = None
-    if not is_authenticated:
+    if event_type in OPERATIONAL_EVENT_TYPES:
         user = None
-        anonymized_ip = _anonymize_ip(_client_ip(request)) if request is not None else None
-        if anonymized_ip is None:
-            logger.warning(
-                "Could not resolve a client IP for anonymous event_type=%r - skipping.", event_type
-            )
-            return
+        anonymized_ip = None
+    else:
+        is_authenticated = user is not None and user.is_authenticated
+        anonymized_ip = None
+        if not is_authenticated:
+            user = None
+            anonymized_ip = _anonymize_ip(_client_ip(request)) if request is not None else None
+            if anonymized_ip is None:
+                logger.warning(
+                    "Could not resolve a client IP for anonymous event_type=%r - skipping.",
+                    event_type,
+                )
+                return
 
     try:
         Event.objects.create(
@@ -51,6 +75,8 @@ def record_event(event_type: str, *, user=None, request=None, metadata=None) -> 
             user=user,
             anonymized_ip=anonymized_ip,
             metadata=metadata or {},
+            conversation_key=conversation_key,
+            locale=locale,
         )
     except Exception:
         logger.warning("Failed to record analytics event_type=%r", event_type, exc_info=True)

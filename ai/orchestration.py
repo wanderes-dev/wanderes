@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
 
+from analytics.instrumentation import track_llm_call
 from analytics.services import record_event
 from integrations.climate import ClimateProviderError, get_climate_provider
 from recommendations.scoring import (
@@ -507,6 +508,13 @@ class StreamingOrchestrationResult:
     # re-deriving it from context, so it can show "Save this trip" instead
     # of "Choose this trip" for exactly this one response.
     is_destination_detail: bool = False
+    # The deterministic constraints behind `recommendations` (2026-09-09,
+    # analytics pass) - populated only on the successful recommendation
+    # path below, so ai/views.py can enrich the recommendation_generated
+    # analytics event with more than a bare count without ai/views.py
+    # needing to know anything about intent extraction itself. None
+    # everywhere else (every other branch has no such constraints).
+    recommendation_constraints: dict | None = None
 
 
 def stream_travel_recommendation(
@@ -598,12 +606,14 @@ def stream_travel_recommendation(
                 ai_provider=ai_provider,
                 climate_provider=climate_provider,
                 remember=_remember,
+                conversation_key=conv_key,
             )
         # else: bogus/stale slug - fall through to normal intent-based
         # handling below.
 
     try:
-        intent = _extract_intent(message, ai_provider=ai_provider, history=history)
+        with track_llm_call(operation="extract_intent", conversation_key=conv_key):
+            intent = _extract_intent(message, ai_provider=ai_provider, history=history)
     except AIProviderError:
         logger.warning("Could not extract intent - AI provider failure. message=%r", message)
         _remember(FALLBACK_REPLY)
@@ -620,7 +630,11 @@ def stream_travel_recommendation(
     if intent["is_recall_request"]:
         recall_messages = _build_recall_messages(message, history)
         recall_reply = _stream_ai_reply(
-            recall_messages, message, ai_provider=ai_provider, remember=_remember
+            recall_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
         )
         return StreamingOrchestrationResult([], recall_reply)
 
@@ -641,7 +655,12 @@ def stream_travel_recommendation(
         # creative one, so unlike every other _stream_ai_reply call here,
         # variety is actively undesirable.
         visa_reply = _stream_ai_reply(
-            visa_messages, message, ai_provider=ai_provider, remember=_remember, temperature=0
+            visa_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
+            temperature=0,
         )
         return StreamingOrchestrationResult([], visa_reply)
 
@@ -654,7 +673,11 @@ def stream_travel_recommendation(
     if intent["is_booking_request"]:
         booking_messages = _build_booking_request_messages(message, history)
         booking_reply = _stream_ai_reply(
-            booking_messages, message, ai_provider=ai_provider, remember=_remember
+            booking_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
         )
         return StreamingOrchestrationResult([], booking_reply)
 
@@ -669,7 +692,11 @@ def stream_travel_recommendation(
     if intent["is_video_request"]:
         video_messages = _build_video_reply_messages(message, intent, history)
         video_reply = _stream_ai_reply(
-            video_messages, message, ai_provider=ai_provider, remember=_remember
+            video_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
         )
         return StreamingOrchestrationResult([], video_reply)
 
@@ -687,7 +714,11 @@ def stream_travel_recommendation(
     if intent["is_activity_question"]:
         activity_messages = _build_activity_question_messages(message, intent, history)
         activity_reply = _stream_ai_reply(
-            activity_messages, message, ai_provider=ai_provider, remember=_remember
+            activity_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
         )
         return StreamingOrchestrationResult([], activity_reply)
 
@@ -701,7 +732,11 @@ def stream_travel_recommendation(
         # how to handle this naturally; just hand it the message.
         off_topic_messages = _build_off_topic_messages(message, history)
         off_topic_reply = _stream_ai_reply(
-            off_topic_messages, message, ai_provider=ai_provider, remember=_remember
+            off_topic_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
         )
         return StreamingOrchestrationResult([], off_topic_reply)
 
@@ -723,7 +758,11 @@ def stream_travel_recommendation(
             message, intent["feedback_destination_name"], history
         )
         unrecognized_feedback_reply = _stream_ai_reply(
-            unrecognized_feedback_messages, message, ai_provider=ai_provider, remember=_remember
+            unrecognized_feedback_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
         )
         return StreamingOrchestrationResult([], unrecognized_feedback_reply)
 
@@ -749,7 +788,11 @@ def stream_travel_recommendation(
             message, intent["future_destination_name"], history
         )
         unrecognized_reply = _stream_ai_reply(
-            unrecognized_messages, message, ai_provider=ai_provider, remember=_remember
+            unrecognized_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
         )
         return StreamingOrchestrationResult([], unrecognized_reply)
 
@@ -790,7 +833,9 @@ def stream_travel_recommendation(
     # whatever this conversation already had accumulated so a real
     # multi-turn preference still combines across turns even though this
     # extraction itself never sees history.
-    climate_budget = _extract_climate_budget_signal(message, ai_provider=ai_provider)
+    climate_budget = _extract_climate_budget_signal(
+        message, ai_provider=ai_provider, conversation_key=conv_key
+    )
     if conv_key is not None:
         climate_budget = memory.update_climate_budget(conv_key, **climate_budget)
     intent["min_temp_c"] = climate_budget["min_temp_c"]
@@ -816,7 +861,11 @@ def stream_travel_recommendation(
         )
         open_ended_messages = _build_open_ended_messages(message, intent, history, profile)
         open_ended_reply = _stream_ai_reply(
-            open_ended_messages, message, ai_provider=ai_provider, remember=_remember
+            open_ended_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
         )
         return StreamingOrchestrationResult([], open_ended_reply)
 
@@ -833,13 +882,15 @@ def stream_travel_recommendation(
     # proceeds straight to real suggestions regardless of how the traveler
     # answered, matching that same low-friction philosophy.
     confirmation_key = memory.conversation_key(user=user, session_key=session_key)
-    if _has_confirmable_profile_data(profile) and not memory.is_profile_confirmed(
-        confirmation_key
-    ):
+    if _has_confirmable_profile_data(profile) and not memory.is_profile_confirmed(confirmation_key):
         memory.mark_profile_confirmed(confirmation_key)
         confirmation_messages = _build_profile_confirmation_messages(message, profile, history)
         confirmation_reply = _stream_ai_reply(
-            confirmation_messages, message, ai_provider=ai_provider, remember=_remember
+            confirmation_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
         )
         return StreamingOrchestrationResult([], confirmation_reply)
 
@@ -878,7 +929,11 @@ def stream_travel_recommendation(
         # can attempt a real answer instead).
         no_match_messages = _build_no_matches_messages(message, intent, history, profile)
         no_match_reply = _stream_ai_reply(
-            no_match_messages, message, ai_provider=ai_provider, remember=_remember
+            no_match_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
         )
         return StreamingOrchestrationResult([], no_match_reply)
 
@@ -904,7 +959,19 @@ def stream_travel_recommendation(
     )
     return StreamingOrchestrationResult(
         results,
-        _stream_ai_reply(messages, message, ai_provider=ai_provider, remember=_remember),
+        _stream_ai_reply(
+            messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
+        ),
+        recommendation_constraints={
+            "month": intent["month"],
+            "trip_type": intent["trip_type"],
+            "continent": intent["continent"],
+            "country": intent["country"],
+        },
     )
 
 
@@ -917,6 +984,7 @@ def _handle_focus_destination(
     ai_provider: AIProvider,
     climate_provider,
     remember,
+    conversation_key: str | None = None,
 ) -> StreamingOrchestrationResult:
     """The "choose this trip" detail path (2026-09-08): the traveler
     already picked one specific destination from a browse-stage
@@ -953,7 +1021,13 @@ def _handle_focus_destination(
     messages = _build_destination_detail_messages(
         message, destination, avg_high_c=avg_high_c, profile=profile, history=history
     )
-    reply = _stream_ai_reply(messages, message, ai_provider=ai_provider, remember=remember)
+    reply = _stream_ai_reply(
+        messages,
+        message,
+        ai_provider=ai_provider,
+        remember=remember,
+        conversation_key=conversation_key,
+    )
     return StreamingOrchestrationResult([scored], reply, is_destination_detail=True)
 
 
@@ -977,7 +1051,7 @@ def _build_destination_detail_messages(
         AIMessage(
             role="user",
             content=(
-                f'The traveler chose to hear more about {destination.name}, '
+                f"The traveler chose to hear more about {destination.name}, "
                 f'{destination.country} (they clicked "Choose this trip" on it). '
                 "Here is everything real we know about it - do not invent any "
                 "other facts beyond what is listed here:\n"
@@ -1017,6 +1091,7 @@ def _stream_ai_reply(
     ai_provider: AIProvider,
     remember,
     temperature: float | None = None,
+    conversation_key: str | None = None,
 ) -> Iterator[str]:
     """Stream one AI reply, saving the full text to conversation memory once
     fully produced (or on a mid-stream failure) - shared by both the normal
@@ -1027,12 +1102,24 @@ def _stream_ai_reply(
     existing caller - variety is fine, sometimes preferred, in a normal
     explanation or open-ended suggestion. Pass 0 only for a call whose job
     is to faithfully relay already-verified facts rather than write
-    creatively (see the visa-question caller)."""
+    creatively (see the visa-question caller).
+
+    2026-09-09: the sole call site of AIProvider.stream_reply in this
+    codebase - wrapping it here with track_llm_call covers every branch
+    (recall/visa/booking/video/activity/off-topic/feedback/future-intent/
+    explanation/focus-destination/etc.) for free. If the caller abandons
+    the stream early (e.g. a client disconnect), Python raises
+    GeneratorExit at the yield point below - that's not an Exception
+    subclass, so track_llm_call's own except clause doesn't catch it and
+    no event gets recorded for that turn, same as if this instrumentation
+    didn't exist; the pre-existing `finally: remember(...)` below still
+    always runs regardless."""
     collected = []
     try:
-        for chunk in ai_provider.stream_reply(messages, temperature=temperature):
-            collected.append(chunk)
-            yield chunk
+        with track_llm_call(operation="stream_reply", conversation_key=conversation_key):
+            for chunk in ai_provider.stream_reply(messages, temperature=temperature):
+                collected.append(chunk)
+                yield chunk
     except AIProviderError:
         # A partial reply may already have been yielded before a mid-stream
         # failure (09_AI_ORCHESTRATION.md §12: "Interrupted streams" must be
@@ -1335,9 +1422,7 @@ def _has_confirmable_profile_data(profile: TravelerProfile | None) -> bool:
     )
 
 
-def _traveler_context_note(
-    profile: TravelerProfile | None, *, always_mention: bool = False
-) -> str:
+def _traveler_context_note(profile: TravelerProfile | None, *, always_mention: bool = False) -> str:
     """A short free-text note the AI can factor into its reasoning when
     relevant - never a hard constraint (recommendations.scoring's hard
     filters stay message-only, per RecommendationRequest). budget_amount
@@ -1391,8 +1476,7 @@ def _traveler_context_note(
         bits.append(f"traveling from {profile.home_country}")
     if profile.travelers_count:
         bits.append(
-            f"usually travels with {profile.travelers_count} "
-            "people total (including themselves)"
+            f"usually travels with {profile.travelers_count} people total (including themselves)"
         )
     if profile.budget_amount and profile.budget_period and profile.budget_currency:
         # Deliberately a separate, lowercase, mid-sentence phrasing rather
@@ -1496,13 +1580,13 @@ def _extract_intent(
     # different fields (e.g. month) on different calls (a real bug found
     # live: an already-established value from one turn silently disappeared
     # on the very next, unprompted by anything the traveler said differently).
-    data = ai_provider.generate_structured_reply(
-        messages, json_schema=INTENT_SCHEMA, temperature=0
-    )
+    data = ai_provider.generate_structured_reply(messages, json_schema=INTENT_SCHEMA, temperature=0)
     return _validate_intent(data)
 
 
-def _extract_climate_budget_signal(message: str, *, ai_provider: AIProvider) -> dict:
+def _extract_climate_budget_signal(
+    message: str, *, ai_provider: AIProvider, conversation_key: str | None = None
+) -> dict:
     """Derive min_temp_c/max_temp_c/max_cost_of_living from THIS message
     alone - deliberately no conversation history at all. See
     CLIMATE_BUDGET_SYSTEM_PROMPT's own comment and DEVELOPMENT_LOG.md
@@ -1518,13 +1602,21 @@ def _extract_climate_budget_signal(message: str, *, ai_provider: AIProvider) -> 
         AIMessage(role="user", content=message),
     ]
     try:
-        data = ai_provider.generate_structured_reply(
-            messages, json_schema=CLIMATE_BUDGET_SCHEMA, temperature=0
-        )
+        # Wrapped here, inside the try/except, rather than around this
+        # whole function's call site (2026-09-09) - this function already
+        # catches AIProviderError itself and degrades to an all-None
+        # signal, so the exception never propagates out; instrumenting
+        # only from outside would always record success=True even on a
+        # real provider failure.
+        with track_llm_call(
+            operation="extract_climate_budget_signal", conversation_key=conversation_key
+        ):
+            data = ai_provider.generate_structured_reply(
+                messages, json_schema=CLIMATE_BUDGET_SCHEMA, temperature=0
+            )
     except AIProviderError:
         logger.warning(
-            "Could not extract an isolated climate/budget signal - AI provider failure. "
-            "message=%r",
+            "Could not extract an isolated climate/budget signal - AI provider failure. message=%r",
             message,
         )
         data = {"min_temp_c": None, "max_temp_c": None, "max_cost_of_living": None}
@@ -2253,7 +2345,9 @@ def _build_no_matches_messages(
     if intent["max_temp_c"] is not None:
         constraints.append(f"max_temp_c={intent['max_temp_c']}")
     if intent["max_cost_of_living"] is not None:
-        constraints.append(f"max_cost_of_living={intent['max_cost_of_living']}/{MAX_COST_OF_LIVING_TIER}")
+        constraints.append(
+            f"max_cost_of_living={intent['max_cost_of_living']}/{MAX_COST_OF_LIVING_TIER}"
+        )
     if intent["excluded_place_names"]:
         constraints.append(f"excluded={', '.join(intent['excluded_place_names'])}")
     constraints_summary = ", ".join(constraints) if constraints else "no specific constraints"

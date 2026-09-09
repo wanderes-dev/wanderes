@@ -73,6 +73,59 @@ class TripViewsTests(TestCase):
             ).exists()
         )
 
+    def test_create_from_chat_recommendation_records_that_source(self):
+        # 2026-09-09: distinguishes "saved via the chat recommendation
+        # flow" (the "Save this trip" link) from any other entry point
+        # (e.g. trip_list.html's plain "Create a new trip" link) - the
+        # source is round-tripped through a hidden form field since GET's
+        # ?source= wouldn't otherwise survive the POST.
+        self.client.force_login(self.user)
+        get_response = self.client.get(
+            reverse("trips:trip-create")
+            + f"?destination={self.destination.slug}&source=chat_recommendation"
+        )
+        self.assertContains(get_response, 'name="source" value="chat_recommendation"')
+
+        self.client.post(
+            reverse("trips:trip-create"),
+            {
+                "name": "Summer in Lisbon",
+                "destination": self.destination.pk,
+                "status": "planned",
+                "start_date": "",
+                "end_date": "",
+                "source": "chat_recommendation",
+            },
+        )
+
+        self.assertTrue(
+            Event.objects.filter(
+                user=self.user,
+                event_type="trip_created",
+                metadata__source="chat_recommendation",
+            ).exists()
+        )
+
+    def test_create_ignores_an_unrecognized_source_value(self):
+        # An arbitrary echoed string must not land verbatim in analytics
+        # metadata - only the one allow-listed value is honored.
+        self.client.force_login(self.user)
+
+        self.client.post(
+            reverse("trips:trip-create"),
+            {
+                "name": "Summer in Lisbon",
+                "destination": self.destination.pk,
+                "status": "planned",
+                "start_date": "",
+                "end_date": "",
+                "source": "<script>totally-not-a-real-source</script>",
+            },
+        )
+
+        event = Event.objects.get(user=self.user, event_type="trip_created")
+        self.assertEqual(event.metadata["source"], "form")
+
     def test_create_prefills_destination_from_query_param(self):
         self.client.force_login(self.user)
 

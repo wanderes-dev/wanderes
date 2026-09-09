@@ -14,6 +14,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -248,6 +249,17 @@ CELERY_BEAT_SCHEDULE = {
     "warm-climate-cache": {
         "task": "integrations.tasks.warm_climate_cache",
         "schedule": timedelta(days=3),
+    },
+    # 2026-09-09: recomputes analytics.models.DailyProductMetrics for
+    # yesterday (UTC) - a fixed daily time (crontab), unlike the interval
+    # schedule above, since "once a day" genuinely means a specific time
+    # here, not "every N days from whenever the worker last restarted."
+    # May occasionally queue behind warm-climate-cache's up-to-90-minute
+    # runtime on the free-tier worker's 2-concurrency limit - accepted,
+    # not a guaranteed-exact-time job (Celery queues, doesn't drop).
+    "refresh-daily-product-metrics": {
+        "task": "analytics.tasks.refresh_daily_metrics",
+        "schedule": crontab(hour=2, minute=0),
     },
 }
 

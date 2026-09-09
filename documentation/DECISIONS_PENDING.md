@@ -237,6 +237,25 @@ Create an account with any email provider or agree to their terms - the same bou
 
 ---
 
+## 8. Analytics/Data-Engineering Evolution (extends Phase 17) — ✅ RESOLVED 2026-09-09
+
+**Decision process:** a thorough report was presented before any code was written (existing infrastructure, captured/missing events, data-quality risks, proposed architecture, technologies recommended for and against adding, migration risks), followed by a validated implementation plan (an adversarial Plan-agent pass caught three real bugs in the first draft before implementation started - see `16_ANALYTICS_ARCHITECTURE.md` §5.1 for the most important one). The user approved the plan as presented via the standard plan-mode review, then it was implemented in full.
+
+**What was decided, extending Phase 17's original analytics approach rather than replacing it:**
+- **New event types**: `destination_selected`, `signup_started`, `anonymous_user_authenticated`, `llm_request_completed`, `provider_request_completed` (5 new, added to the same self-hosted `Event` table - see full taxonomy in `16_ANALYTICS_ARCHITECTURE.md` §3). `recommendation_viewed`/`recommendation_rejected` from the guide's own candidate list were evaluated and explicitly NOT built - no real UI action exists to instrument for either.
+- **New `Event` dimensions**: `conversation_key`, `locale`.
+- **Transformation layer: Postgres views, not dbt.** dbt was specifically evaluated (the user named it as a technology of interest) and explicitly deferred, not rejected outright - see `16_ANALYTICS_ARCHITECTURE.md` §10 for the full reasoning and the concrete conditions under which to revisit it (view count exceeding ~15, transformation logic getting hand-duplicated, or a second contributor needing to write independent transformations - none true today).
+- **Orchestration: Celery Beat, not Airflow** - one new scheduled job (a nightly mart refresh) on infrastructure that already exists and already works.
+- **No separate analytics database/schema** - views live in the same Postgres instance as the application tables; a concrete trigger for revisiting this is documented (§12).
+- **One genuinely materialized table** (`analytics.models.DailyProductMetrics`, refreshed nightly) - everything else is a live view, recomputed on read.
+- **A new staff-only internal dashboard** (`/analytics/dashboard/`) - the smallest useful surface, plain server-rendered tables, no JS charting library, following the exact existing `@staff_member_required` pattern already used for `/travel/admin-tools/`.
+
+**Full technical detail, architecture diagram, canonical model definitions, metric definitions, data-quality strategy, privacy decisions, and known limitations**: `documentation/16_ANALYTICS_ARCHITECTURE.md` (new document, this pass). Full implementation record: `DEVELOPMENT_LOG.md`'s corresponding entry.
+
+**Reference:** `analytics/` app in full (models, services, instrumentation, tasks, views, warehouse/), `ai/orchestration.py`, `ai/views.py`, `integrations/climate/open_meteo.py`, `users/views.py`/`signals.py`, `trips/views.py`.
+
+---
+
 ## How to unblock
 
 Reply with your decision(s) — even a partial one (e.g., "let's start with just a destination dataset and Anthropic Claude, defer flights/hotels") is enough to resume work. Claude Code will then:

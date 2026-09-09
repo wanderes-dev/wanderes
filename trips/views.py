@@ -81,26 +81,41 @@ def trip_create(request):
         if destination:
             initial["destination"] = destination.pk
 
+    # Distinguishes "saved via the chat recommendation flow" from any other
+    # entry point (2026-09-09, analytics pass) - a real, separate one
+    # exists (trip_list.html's plain "Create a new trip" link), so
+    # `source="form"` alone previously couldn't tell the two apart.
+    # Round-tripped through a hidden form field (GET -> template -> POST)
+    # since this view has no other query-string-preserving mechanism;
+    # constrained to an exact allow-listed value rather than trusting
+    # arbitrary echoed input for an analytics field.
+    source = "chat_recommendation" if request.GET.get("source") == "chat_recommendation" else "form"
+
     if request.method == "POST":
         form = TripForm(request.POST)
         if form.is_valid():
             trip = form.save(commit=False)
             trip.user = request.user
             trip.save()
+            posted_source = request.POST.get("source")
             record_event(
                 "trip_created",
                 user=request.user,
                 metadata={
                     "destination_slug": trip.destination.slug,
                     "status": trip.status,
-                    "source": "form",
+                    "source": "chat_recommendation"
+                    if posted_source == "chat_recommendation"
+                    else "form",
                 },
             )
             messages.success(request, _("Trip saved."))
             return redirect("trips:trip-detail", pk=trip.pk)
     else:
         form = TripForm(initial=initial)
-    return render(request, "trips/trip_form.html", {"form": form, "is_edit": False})
+    return render(
+        request, "trips/trip_form.html", {"form": form, "is_edit": False, "source": source}
+    )
 
 
 @login_required

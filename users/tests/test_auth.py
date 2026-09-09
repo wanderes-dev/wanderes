@@ -26,6 +26,12 @@ class RegistrationTests(TestCase):
             Event.objects.filter(user=user, event_type="user_registered").exists()
         )
 
+    def test_register_page_records_signup_started(self):
+        # 2026-09-09: pairs with user_registered for a real signup funnel.
+        self.client.get(reverse("users:register"))
+
+        self.assertTrue(Event.objects.filter(event_type="signup_started").exists())
+
     def test_register_rejects_mismatched_passwords(self):
         response = self.client.post(
             reverse("users:register"),
@@ -103,6 +109,71 @@ class LoginLogoutTests(TestCase):
 
         self.assertRedirects(response, reverse("users:login"))
         self.assertFalse(response.wsgi_request.user.is_authenticated)
+
+
+class AnonymousConversionTests(TestCase):
+    """2026-09-09: anonymous_user_authenticated must check the visitor's
+    PRE-login session key, not the post-login one Django's login() rotates
+    it to via cycle_key() - the whole point of users.views.LoginView's
+    override. These tests exercise the real login view end-to-end (not
+    just the signal in isolation) so a regression in that wiring would
+    actually fail here."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(email="traveler@example.com", password="testpass123")
+
+    def test_login_after_anonymous_chat_records_had_conversation_true(self):
+        from ai.memory import append_turn, conversation_key
+
+        session = self.client.session
+        session.save()
+        pre_login_session_key = session.session_key
+        key = conversation_key(user=None, session_key=pre_login_session_key)
+        append_turn(key, user_message="somewhere warm", assistant_reply="Try Lisbon!")
+
+        self.client.post(
+            reverse("users:login"),
+            {"username": "traveler@example.com", "password": "testpass123"},
+        )
+
+        event = Event.objects.get(event_type="anonymous_user_authenticated")
+        self.assertEqual(event.user, self.user)
+        self.assertTrue(event.metadata["had_anonymous_conversation"])
+
+    def test_login_with_no_prior_chat_records_had_conversation_false(self):
+        self.client.post(
+            reverse("users:login"),
+            {"username": "traveler@example.com", "password": "testpass123"},
+        )
+
+        event = Event.objects.get(event_type="anonymous_user_authenticated")
+        self.assertFalse(event.metadata["had_anonymous_conversation"])
+
+    def test_registration_does_not_also_record_anonymous_authenticated(self):
+        # django.contrib.auth.login() sends user_logged_in unconditionally,
+        # including from register()'s own call to it - must not double-fire
+        # since user_registered already covers this moment.
+        self.client.post(
+            reverse("users:register"),
+            {
+                "email": "newtraveler@example.com",
+                "password1": "a-strong-password-123",
+                "password2": "a-strong-password-123",
+            },
+        )
+
+        self.assertFalse(
+            Event.objects.filter(event_type="anonymous_user_authenticated").exists()
+        )
+
+    def test_failed_login_does_not_record_anything(self):
+        self.client.post(
+            reverse("users:login"), {"username": "traveler@example.com", "password": "wrongpass"}
+        )
+
+        self.assertFalse(
+            Event.objects.filter(event_type="anonymous_user_authenticated").exists()
+        )
 
 
 class NextParamCrossLinkTests(TestCase):

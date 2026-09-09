@@ -645,7 +645,8 @@
             if (destination.detail_shown) {
                 const link = document.createElement("a");
                 link.className = "btn btn-secondary";
-                link.href = "/trips/create/?destination=" + encodeURIComponent(destination.slug);
+                link.href = "/trips/create/?destination=" + encodeURIComponent(destination.slug) +
+                    "&source=chat_recommendation";
                 link.textContent = CHAT_I18N.saveThisTrip;
                 card.appendChild(link);
             } else {

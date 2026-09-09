@@ -410,6 +410,95 @@ class RecommendationsStreamAnalyticsTests(TestCase):
             Event.objects.filter(event_type="recommendation_generated").exists()
         )
 
+    @patch("ai.views.stream_travel_recommendation")
+    def test_recommendation_generated_metadata_carries_slugs_and_constraints(self, mock_stream):
+        # 2026-09-09: enough to answer "which destinations get recommended"
+        # and "under what constraints" without a separate persisted table.
+        destination = Destination.objects.create(
+            slug="lisbon-pt",
+            name="Lisbon",
+            country="Portugal",
+            latitude="38.72000",
+            longitude="-9.14000",
+            trip_type="city",
+            cost_of_living=3,
+            best_season="Mar-Oct",
+            worst_season="Dec-Feb",
+            short_description="A hilly coastal capital.",
+            points_of_interest=[],
+        )
+        scored = ScoredDestination(
+            destination=destination,
+            avg_high_c=24.0,
+            avg_low_c=16.0,
+            preference_fit=0.0,
+            budget_fit=0.0,
+            temperature_fit=0.0,
+            repetition_penalty=0.0,
+            score=0.0,
+        )
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[scored],
+            reply_chunks=iter(["Try Lisbon!"]),
+            recommendation_constraints={
+                "month": 10,
+                "trip_type": "city",
+                "continent": None,
+                "country": None,
+            },
+        )
+
+        self.client.post(reverse("ai:recommendations-api"), {"message": "a city break"})
+
+        event = Event.objects.get(event_type="recommendation_generated")
+        self.assertEqual(event.metadata["destination_slugs"], ["lisbon-pt"])
+        self.assertEqual(event.metadata["constraints"]["trip_type"], "city")
+        self.assertTrue(event.conversation_key)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_destination_detail_result_records_destination_selected_not_generated(
+        self, mock_stream
+    ):
+        # "Choose this trip" (2026-09-08) is a distinct, deliberate action -
+        # must not also count as a fresh recommendation_generated.
+        destination = Destination.objects.create(
+            slug="bali-id",
+            name="Bali",
+            country="Indonesia",
+            latitude="-8.34000",
+            longitude="115.09000",
+            trip_type="beach",
+            cost_of_living=1,
+            best_season="Apr-Oct",
+            worst_season="Dec-Mar",
+            short_description="A tropical island.",
+            points_of_interest=[],
+        )
+        scored = ScoredDestination(
+            destination=destination,
+            avg_high_c=None,
+            avg_low_c=None,
+            preference_fit=0,
+            budget_fit=0,
+            temperature_fit=0,
+            repetition_penalty=0,
+            score=0,
+        )
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[scored],
+            reply_chunks=iter(["Here's more about Bali."]),
+            is_destination_detail=True,
+        )
+
+        self.client.post(
+            reverse("ai:recommendations-api"),
+            {"message": "tell me more", "focus_destination_slug": "bali-id"},
+        )
+
+        self.assertFalse(Event.objects.filter(event_type="recommendation_generated").exists())
+        selected = Event.objects.get(event_type="destination_selected")
+        self.assertEqual(selected.metadata["destination_slug"], "bali-id")
+
 
 class SavedConversationStreamTests(TestCase):
     def setUp(self):

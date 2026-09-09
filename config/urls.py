@@ -15,6 +15,9 @@ urlpatterns = [
     # Staff-only country editing tools (2026-09-07) - not linked from the
     # public nav, same as /admin/ itself isn't.
     path("travel/", include("travel.urls")),
+    # Staff-only internal analytics dashboard (2026-09-09) - same
+    # not-linked-from-nav pattern as travel.urls above.
+    path("analytics/", include("analytics.urls")),
     # django-allauth (2026-09-03, Google OAuth login) - additive to
     # users.urls's existing email/password login/register, never a
     # replacement. Only the Google provider is actually configured (see
