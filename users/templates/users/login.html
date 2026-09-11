@@ -34,10 +34,12 @@
         {% endif %}
         <p class="auth-footer">
             {% trans "New to Wanderes?" %}
-            {# Preserves ?next= across the login<->register hop (2026-09-09)
-               so a visitor redirected here to save a trip doesn't lose that
-               destination just by choosing "create an account" instead of
-               logging in. #}
+            {% comment %}
+            Preserves ?next= across the login<->register hop (2026-09-09)
+            so a visitor redirected here to save a trip doesn't lose that
+            destination just by choosing "create an account" instead of
+            logging in.
+            {% endcomment %}
             <a href="{% url 'users:register' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">{% trans "Create an account" %}</a>
         </p>
     </div>

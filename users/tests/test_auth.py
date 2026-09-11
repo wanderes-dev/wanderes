@@ -210,6 +210,20 @@ class NextParamCrossLinkTests(TestCase):
 
         self.assertContains(response, f'href="{reverse("users:register")}"')
 
+    def test_login_and_register_pages_never_leak_the_next_param_comment(self):
+        # 2026-09-11, live-reported: a {# ... #} comment explaining the
+        # ?next= forwarding above rendered as literal visible text in
+        # production on both pages - Django's {# #} tag cannot span
+        # multiple lines (undocumented outside a doc note easy to miss),
+        # so the multi-line version silently fell through as plain text
+        # instead of being parsed as a comment. Fixed with {% comment %}
+        # instead, which does support multiple lines correctly.
+        login_response = self.client.get(reverse("users:login"))
+        register_response = self.client.get(reverse("users:register"))
+
+        self.assertNotContains(login_response, "{#")
+        self.assertNotContains(register_response, "{#")
+
 
 class AccountAccessTests(TestCase):
     def test_account_requires_login(self):
