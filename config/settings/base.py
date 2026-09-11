@@ -286,16 +286,18 @@ OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 # this before it's set.
 FLIGHT_PROVIDER = env("FLIGHT_PROVIDER", default="")
 
-# Same idea for integrations.hotels.get_hotel_provider() -
-# integrations/hotels/booking_com.py is a skeleton too (Booking.com's
-# affiliate program is application-reviewed, real feed format isn't
-# public until approved).
+# Same idea for integrations.hotels.get_hotel_provider() - no adapter is
+# registered right now. Booking.com was ruled out (no property-level data
+# feed available to Wanderes's publisher category - DECISIONS_PENDING.md
+# §4); nothing else has been chosen yet.
 HOTEL_PROVIDER = env("HOTEL_PROVIDER", default="")
 
 # CJ Affiliate personal access token - authenticates against CJ's own
 # developer API (link/product search, commission reporting). This is NOT
-# Booking.com's Demand API; CJ approval doesn't grant that. Nothing reads
-# this yet - booking_com.py stays the NotImplementedError skeleton.
+# Booking.com's Demand API; CJ approval doesn't grant that, and CJ
+# confirmed no property-level feed exists for our publisher category
+# either way. Powers integrations/affiliates/CJAffiliateProvider's
+# deep-link generation.
 CJ_API_TOKEN = env("CJ_API_TOKEN", default="")
 
 # CJ Website ID / Property ID - a separate credential from the token

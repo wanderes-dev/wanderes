@@ -81,9 +81,7 @@ class HotelProvider(ABC):
     @abstractmethod
     def build_affiliate_link(self, option: HotelOption) -> str:
         """Return the URL the traveler should be sent to in order to book
-        this option - an affiliate/deep link for a pure-referral provider
-        (the expected shape for Booking.com's Affiliate Partner Program,
-        per DECISIONS_PENDING.md §4). Kept as its own method (rather than
-        assuming HotelOption.booking_url is always final) since some
-        providers need a fresh link generated per click for attribution
-        tracking."""
+        this option - an affiliate/deep link for a pure-referral provider.
+        Kept as its own method (rather than assuming
+        HotelOption.booking_url is always final) since some providers need
+        a fresh link generated per click for attribution tracking."""
