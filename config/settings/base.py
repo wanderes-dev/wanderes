@@ -375,27 +375,28 @@ CJ_WEBSITE_ID = env("CJ_WEBSITE_ID", default="")
 # §13.8) - do not assume this setting unlocks live hotel search.
 AFFILIATE_PROVIDER = env("AFFILIATE_PROVIDER", default="")
 
-# Email (2026-09-04, password reset via emailed token) - deliberately
-# provider-agnostic, the same pattern as every other external service in
-# this project: settings/env vars, never a specific vendor hardcoded, so
-# picking an actual SMTP provider (SendGrid, Mailgun, AWS SES, Postmark, a
-# plain Gmail account, etc.) stays the user's own choice, not one made
-# here. EMAIL_HOST unset (the default) means no real credentials exist
-# yet - falls back to Django's console backend, which never raises and
-# never actually delivers anything, so a password-reset request always
-# succeeds from the visitor's point of view (matching Django's own
+# Email (2026-09-04, password reset via emailed token; provider decided
+# 2026-09-11: Purelymail - EMAIL_HOST/PORT/USE_TLS below default to its
+# real, documented, non-secret settings, see .env.example). EMAIL_HOST_USER
+# is the actual mailbox address and the real signal that credentials exist
+# - EMAIL_HOST alone is no longer enough now that it has a real default,
+# unlike EMAIL_HOST_USER/PASSWORD, which stay blank until genuinely set.
+# Without a real user, falls back to Django's console backend, which never
+# raises and never actually delivers anything, so a password-reset request
+# always succeeds from the visitor's point of view (matching Django's own
 # security convention of never revealing whether an email exists) without
-# ever 500ing from an unreachable SMTP host. users.views'
-# email_configured flag (mirroring google_oauth_configured) keeps the
-# "Forgot your password?" link itself hidden until this is genuinely
-# wired up, for the same reason the Google button stays hidden until real
-# OAuth credentials exist - showing a recovery flow that silently can't
-# deliver anything would be its own kind of broken-in-production surprise.
+# ever failing SMTP auth against a host with no real mailbox behind it.
+# users.views' email_configured flag (mirroring google_oauth_configured)
+# keeps the "Forgot your password?" link itself hidden until this is
+# genuinely wired up, for the same reason the Google button stays hidden
+# until real OAuth credentials exist - showing a recovery flow that
+# silently can't deliver anything would be its own kind of
+# broken-in-production surprise.
 EMAIL_HOST = env("EMAIL_HOST", default="")
-if EMAIL_HOST:
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+if EMAIL_HOST and EMAIL_HOST_USER:
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_PORT = env.int("EMAIL_PORT", default=587)
-    EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
     EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
     EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 else:

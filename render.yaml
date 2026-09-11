@@ -91,12 +91,15 @@ services:
         sync: false
       # Email (2026-09-04, password reset via emailed token) - web service
       # only, never the worker, since no Celery task sends email today.
-      # Blank until entered manually here (see .env.example for what's
-      # needed and how it's provider-agnostic) - the "Forgot your
-      # password?" link stays hidden until these are set
-      # (core.context_processors.site_meta's email_configured flag).
+      # Provider chosen 2026-09-11: Purelymail (smtp.purelymail.com, port
+      # 587 with STARTTLS - both hardcoded below since they're the same
+      # for every Purelymail account, not a secret). EMAIL_HOST_USER/
+      # PASSWORD are the real account credentials and stay sync: false -
+      # entered manually in the Render dashboard, never in source control.
+      # The "Forgot your password?" link stays hidden until those two are
+      # set (core.context_processors.site_meta's email_configured flag).
       - key: EMAIL_HOST
-        sync: false
+        value: "smtp.purelymail.com"
       - key: EMAIL_PORT
         value: "587"
       - key: EMAIL_HOST_USER

@@ -9,7 +9,16 @@ from django.utils.http import urlsafe_base64_encode
 
 from users.models import User
 
-_SMTP_SETTINGS = {"EMAIL_HOST": "smtp.example.com"}
+# EMAIL_BACKEND is the actual signal core.context_processors reads (see
+# its 2026-09-11 update) - EMAIL_HOST alone is no longer enough now that
+# it has a real non-secret Purelymail default; EMAIL_HOST_USER/BACKEND
+# included here too so the override reads as a genuinely configured state,
+# not just the one field the assertion technically depends on.
+_SMTP_SETTINGS = {
+    "EMAIL_HOST": "smtp.example.com",
+    "EMAIL_HOST_USER": "noreply@example.com",
+    "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+}
 
 
 class ForgotPasswordLinkVisibilityTests(TestCase):
