@@ -40,9 +40,9 @@ class TravelHistoryViewsTests(TestCase):
         self.assertEqual(entry.visited_year, 2019)
 
     def test_trip_list_shows_history_entries_for_current_user_only(self):
-        # 2026-09-05, direct request: travel history is no longer its own
-        # top-level page (trips:history-list removed) - it's a second
-        # section on trips:trip-list instead.
+        # Travel history isn't its own top-level page anymore
+        # (trips:history-list removed) - it's a second section on
+        # trips:trip-list instead.
         TravelHistoryEntry.objects.create(user=self.other_user, destination=self.destination)
         entry = TravelHistoryEntry.objects.create(
             user=self.user, destination=self.destination, visited_year=2019

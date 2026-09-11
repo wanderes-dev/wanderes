@@ -5,18 +5,16 @@ from datetime import date, datetime, timedelta
 
 @dataclass(frozen=True)
 class FlightOption:
-    """Normalized flight search result, regardless of the external
-    provider's own response shape (10_EXTERNAL_INTEGRATIONS.md §13.2 -
-    "Normalized internal representations"). Every flight provider adapter
-    must return these, never a raw provider response, so the rest of the
-    application (scoring, the chat UI) never needs to know which provider
-    produced a given option.
+    """Normalized flight search result, independent of the provider's own
+    response shape (§13.2). Every flight adapter returns these, never a
+    raw provider response, so scoring/the chat UI never need to know
+    which provider produced a given option.
 
-    Deliberately does not carry a raw commission/payout figure - per
-    10_EXTERNAL_INTEGRATIONS.md §13.3, flight options must be scored on
-    genuine fit (price, convenience, stops, timing), never on which
-    provider pays Wanderes more; keeping that data out of this dataclass
-    entirely is a structural guard against it ever leaking into scoring.
+    No raw commission/payout figure on purpose - per §13.3, flight
+    options get scored on genuine fit (price, convenience, stops,
+    timing), never on which provider pays Wanderes more. Keeping that
+    data out of the dataclass entirely is a structural guard against it
+    leaking into scoring.
     """
 
     provider: str
@@ -45,18 +43,16 @@ class FlightProviderError(Exception):
 
 
 class FlightProvider(ABC):
-    """Internal Travel Data Interface for flight search (2026-09-02,
-    scaffolded ahead of a concrete adapter - see DECISIONS_PENDING.md §4
-    and 10_EXTERNAL_INTEGRATIONS.md §13 for the full research/decision
-    record this shape comes from).
+    """Internal Travel Data Interface for flight search - scaffolded
+    ahead of a concrete adapter (DECISIONS_PENDING.md §4,
+    10_EXTERNAL_INTEGRATIONS.md §13 has the full research behind this
+    shape).
 
-    The rest of the application depends on this interface, never on a
-    specific provider's API client directly (10_EXTERNAL_INTEGRATIONS.md
-    §3) - so a concrete provider is added by implementing this interface
-    once and pointing settings.FLIGHT_PROVIDER at it, per
-    integrations.flights.get_flight_provider()'s factory pattern (same
-    shape as integrations.climate.get_climate_provider() and
-    ai.provider.get_ai_provider()).
+    The rest of the app depends on this interface, never on a specific
+    provider's client directly (§3) - a concrete provider gets added by
+    implementing this interface and pointing settings.FLIGHT_PROVIDER at
+    it, via get_flight_provider()'s factory (same shape as
+    get_climate_provider() and ai.provider.get_ai_provider()).
     """
 
     @abstractmethod

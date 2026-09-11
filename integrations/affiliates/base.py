@@ -4,16 +4,14 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class AffiliateLinkResult:
-    """Normalized affiliate-link search result, regardless of the
-    network's own response shape (10_EXTERNAL_INTEGRATIONS.md §13.2 -
-    "Normalized internal representations" - same pattern already applied
-    to FlightOption/HotelOption).
+    """Normalized affiliate-link search result, independent of the
+    network's own response shape (10_EXTERNAL_INTEGRATIONS.md §13.2,
+    same pattern as FlightOption/HotelOption).
 
-    Deliberately carries no commission/payout figure - the same
-    structural guard already applied to FlightOption/HotelOption
-    (10_EXTERNAL_INTEGRATIONS.md §13.3: never let commission influence
-    ranking). This dataclass represents "a real link we can send a
-    traveler to," not "how much Wanderes would earn from it."
+    No commission/payout figure on purpose - same structural guard as
+    FlightOption/HotelOption (§13.3: commission never influences
+    ranking). This represents "a real link we can send a traveler to,"
+    not "how much Wanderes would earn from it."
     """
 
     network: str
@@ -34,23 +32,23 @@ class AffiliateNetworkError(Exception):
 
 
 class AffiliateNetworkProvider(ABC):
-    """Internal interface for affiliate-link discovery (2026-09-09).
+    """Internal interface for affiliate-link discovery.
 
-    Deliberately its own interface, not folded into HotelProvider -
+    Kept separate from HotelProvider rather than folded in -
     HotelProvider.build_affiliate_link() (integrations/hotels/base.py)
-    still requires a real HotelOption as input, which requires
-    search_hotels() to work, which still needs Booking.com Demand API
-    access that isn't confirmed (10_EXTERNAL_INTEGRATIONS.md §13.8). This
-    interface covers what CJ's OWN API can actually do today - discover
-    real, trackable links by keyword/country/advertiser, independent of
-    property-level search - and is the natural building block for
+    still needs a real HotelOption, which needs search_hotels() to work,
+    which still needs Booking.com Demand API access we don't have
+    (10_EXTERNAL_INTEGRATIONS.md §13.8). This interface covers what CJ's
+    API can do today - discover real, trackable links by
+    keyword/country/advertiser, independent of property-level search -
+    and is a natural building block for
     BookingComHotelProvider.build_affiliate_link() once search_hotels()
-    also becomes real, not a replacement for it.
+    is real too, not a replacement for it.
 
     A concrete network is added by implementing this interface and
     pointing settings.AFFILIATE_PROVIDER at it, per
     get_affiliate_network_provider()'s factory (same pattern as every
-    other provider interface in this app)."""
+    other provider interface here)."""
 
     @abstractmethod
     def search_links(

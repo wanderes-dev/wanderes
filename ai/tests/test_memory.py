@@ -63,9 +63,9 @@ class HistoryStorageTests(TestCase):
         self.assertEqual(history[-1], {"role": "assistant", "content": "reply 9"})
 
     def test_append_turn_strips_temperature_and_cost_tier_from_assistant_reply(self):
-        # 2026-09-06 bug: these exact figures, stated only by the AI itself
-        # (never the traveler), were being read back by a later turn's
-        # intent extraction and misattributed as the traveler's own stated
+        # These exact figures, stated only by the AI (never the
+        # traveler), were getting read back by a later turn's intent
+        # extraction and misattributed as the traveler's own stated
         # climate/budget preference.
         key = "chat-history:session:test4"
 
@@ -118,10 +118,10 @@ class SanitizeReplyForContextTests(TestCase):
 
 
 class ClimateBudgetTests(TestCase):
-    """2026-09-06 structural fix, round 2: an explicit accumulator replaces
-    letting ai.orchestration's intent extraction re-derive min_temp_c/
-    max_temp_c/max_cost_of_living from full conversation history every
-    turn (see ai.orchestration._extract_climate_budget_signal)."""
+    """An explicit accumulator replaces letting ai.orchestration's intent
+    extraction re-derive min_temp_c/max_temp_c/max_cost_of_living from
+    full conversation history every turn (see
+    ai.orchestration._extract_climate_budget_signal)."""
 
     def test_get_climate_budget_defaults_to_all_null(self):
         result = memory.get_climate_budget("chat-history:session:nonexistent")

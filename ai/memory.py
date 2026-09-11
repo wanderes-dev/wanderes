@@ -2,32 +2,23 @@ import re
 
 from django.core.cache import cache
 
-# Conversation Memory (09_AI_ORCHESTRATION.md §7): short-term "conversation
-# context" needed to understand the current interaction, deliberately kept
-# separate from persistent "traveler memory" (TravelerProfile, Feedback,
-# TravelHistoryEntry - already real Postgres models). Backed by Redis via
-# Django's cache framework - the same mechanism integrations.climate already
-# uses for its own caching - rather than a new relational model, because
-# this is explicitly ephemeral, per-conversation state that should expire on
-# its own, not something ever queried or reported on.
+# Short-term chat memory - just enough context to follow the current
+# conversation, separate from the persistent traveler stuff (profile,
+# feedback, history) that lives in Postgres. Redis-backed via Django's
+# cache framework, same as integrations.climate's cache - this is
+# throwaway state, nothing worth putting in a real table.
 #
-# A TTL and a hard cap on stored turns both exist for the same reason
-# (09_AI_ORCHESTRATION.md §13 - "avoid unnecessarily large conversation
-# histories"): an abandoned conversation shouldn't grow forever in Redis,
-# and every remembered turn is resent to the AI provider on every
-# subsequent message, so unbounded history directly costs real money.
-CONVERSATION_TTL_SECONDS = 60 * 30  # 30 minutes of inactivity resets the conversation
+# The TTL and message cap keep this bounded: an abandoned chat shouldn't
+# sit around forever, and every stored turn gets resent to the AI on each
+# new message, so a long history is a real cost, not just clutter.
+CONVERSATION_TTL_SECONDS = 60 * 30  # resets after 30 min of inactivity
 MAX_HISTORY_MESSAGES = 12  # 6 user/assistant turns
 
 
 def conversation_key(*, user, session_key: str | None) -> str:
-    """Identify which conversation a message belongs to.
-
-    Authenticated users are keyed by their account, so the same
-    conversation continues even across devices/sessions - anonymous users
-    have no such stable identity, so the Django session (already used for
-    auth cookies) is the next best thing.
-    """
+    """Which conversation a message belongs to. Logged-in users are keyed
+    by account (so it follows them across devices); anonymous visitors
+    get keyed by session, since that's all we've got for them."""
     if user is not None and getattr(user, "is_authenticated", False):
         return f"chat-history:user:{user.pk}"
     return f"chat-history:session:{session_key}"
@@ -37,18 +28,12 @@ def get_history(key: str) -> list[dict]:
     return cache.get(key) or []
 
 
-# 2026-09-06 bug: a later turn's intent extraction (ai.orchestration) was
-# reading these exact figures back out of conversation history and
-# misattributing them to the traveler - e.g. a one-word follow-up like
-# "comer" after a reply suggesting destinations with illustrative
-# temperatures/cost tiers would set min_temp_c/max_cost_of_living from
-# numbers the AI itself had stated, not anything the traveler said. Two
-# attempts to fix this by strengthening the extraction prompt were tried
-# and reverted - both broke a different, previously-correct case without
-# fixing this one (see DEVELOPMENT_LOG.md). This is a structural fix
-# instead: strip these figures from what's actually persisted for future
-# context, so a later extraction call can never see them at all, whatever
-# the model would otherwise do with them.
+# Intent extraction used to read these numbers back out of history and
+# blame them on the traveler - a bare "comer" after we'd mentioned a
+# temperature/cost tier could set min_temp_c/max_cost_of_living from
+# something WE said. Prompt tweaks didn't hold up, so instead we just
+# strip these figures before they're ever saved - can't misread what
+# isn't there.
 _TEMPERATURE_PATTERN = re.compile(
     r"-?\d{1,3}(?:[.,]\d+)?\s*(?:-\s*-?\d{1,3}(?:[.,]\d+)?)?\s*°\s*C", re.IGNORECASE
 )
@@ -56,23 +41,19 @@ _COST_TIER_PATTERN = re.compile(r"\b[1-5]\s*/\s*5\b")
 
 
 def sanitize_reply_for_context(assistant_reply: str) -> str:
-    """Strip temperature (e.g. "31°C", "18-20°C") and cost-tier (e.g.
-    "4/5") figures from an assistant reply before it's persisted as
-    conversation context. Only affects what gets remembered for later
-    extraction - never the reply actually streamed to the traveler, and
-    never what's used to generate a saved conversation's title (see
-    ai.conversations._generate_subject, which intentionally keeps using
-    the raw text). Not exhaustive - only the specific patterns confirmed
-    to cause real contamination; see the note above."""
+    """Strip temperature/cost-tier figures (e.g. "31°C", "4/5") before an
+    assistant reply gets saved as context - doesn't touch what's actually
+    streamed to the traveler, or the raw text used for a saved
+    conversation's title. Only covers the patterns known to cause
+    contamination, not a general-purpose scrubber."""
     sanitized = _TEMPERATURE_PATTERN.sub("[temp]", assistant_reply)
     return _COST_TIER_PATTERN.sub("[cost]", sanitized)
 
 
 def append_turn(key: str, *, user_message: str, assistant_reply: str) -> None:
-    """Record one exchange, trimming to the most recent MAX_HISTORY_MESSAGES
-    and refreshing the TTL - called once per handled message, regardless of
-    which branch (recommendation, feedback, future_intent, off_topic,
-    clarification, fallback) produced the reply."""
+    """Save one exchange, trim to MAX_HISTORY_MESSAGES, refresh the TTL.
+    Called for every handled message no matter which branch produced the
+    reply."""
     history = get_history(key)
     history.append({"role": "user", "content": user_message})
     history.append(
@@ -83,10 +64,9 @@ def append_turn(key: str, *, user_message: str, assistant_reply: str) -> None:
 
 
 def clear_history(key: str) -> None:
-    """Drop whatever short-term context exists for this key - called when
-    the traveler explicitly starts a new conversation (2026-09-02, saved-
-    conversations feature), so a fresh thread doesn't silently inherit
-    context from whatever was last discussed under the same key."""
+    """Wipe whatever context exists for this key - used when a traveler
+    starts a fresh conversation, so it doesn't quietly inherit whatever
+    was discussed last time under the same key."""
     cache.delete(key)
     cache.delete(_climate_budget_key(key))
 
@@ -99,9 +79,9 @@ _NO_CLIMATE_BUDGET = {"min_temp_c": None, "max_temp_c": None, "max_cost_of_livin
 
 
 def get_climate_budget(key: str) -> dict:
-    """The conversation's accumulated climate/budget constraints - built up
-    across turns by update_climate_budget(), never re-derived from raw
-    history (see that function's docstring for why)."""
+    """Accumulated climate/budget constraints for this conversation - built
+    up turn by turn by update_climate_budget() below, not re-derived from
+    raw history."""
     return cache.get(_climate_budget_key(key)) or dict(_NO_CLIMATE_BUDGET)
 
 
@@ -112,22 +92,17 @@ def update_climate_budget(
     max_temp_c: float | None = None,
     max_cost_of_living: int | None = None,
 ) -> dict:
-    """Merge this turn's own (history-free) climate/budget signal into the
-    conversation's accumulated constraints - a field only overwrites the
-    previous value when THIS call passes something non-null for it;
-    otherwise the earlier turn's value carries forward unchanged.
+    """Merge this turn's (history-free) climate/budget signal into what's
+    already accumulated - a field only gets overwritten when this call
+    actually passes something for it, otherwise the older value sticks.
 
-    2026-09-06: this replaces letting ai.orchestration's intent extraction
-    re-derive min_temp_c/max_temp_c/max_cost_of_living from full
-    conversation history every turn - even with sanitize_reply_for_context()
-    stripping literal numbers, the model could still reconstruct a similar
-    assumption from destination names/descriptions alone (e.g. "Phuket"
-    implying warmth). Extracting these three fields from a single message
-    in isolation (no history at all - see
-    ai.orchestration._extract_climate_budget_signal) makes that
-    structurally impossible; this accumulator is what still lets a real
-    multi-turn preference ("praia" -> "orçamento baixo") combine across
-    turns despite each extraction only ever seeing one message."""
+    This exists because letting intent extraction re-derive these three
+    fields from full history every turn wasn't safe - even with numbers
+    stripped from old replies, the model could still infer warmth from a
+    destination name alone (Phuket, say). Extracting from a single
+    isolated message closes that off entirely; this accumulator is what
+    lets "praia" then "orçamento baixo" still combine across turns even
+    though each extraction only ever sees one message at a time."""
     current = get_climate_budget(key)
     merged = {
         "min_temp_c": min_temp_c if min_temp_c is not None else current["min_temp_c"],
@@ -145,19 +120,15 @@ def _profile_confirmed_key(key: str) -> str:
 
 
 def is_profile_confirmed(key: str) -> bool:
-    """Whether ai.orchestration has already asked this conversation to
-    confirm its TravelerProfile-derived context at least once (2026-09-02,
-    "IA must always confirm this information... before suggest any
-    destination"). A separate cache key from the turn history above - it
-    needs to survive independently of history_override (a saved
-    conversation reads its messages from Postgres, not this cache, but
-    still needs this same once-per-conversation gate)."""
+    """Has this conversation already been asked once to confirm its saved
+    profile context? Kept as its own cache key, separate from the turn
+    history, since it needs to work even for saved conversations that read
+    their messages from Postgres instead of here."""
     return bool(cache.get(_profile_confirmed_key(key)))
 
 
 def mark_profile_confirmed(key: str) -> None:
-    """Record that this conversation's one-time profile confirmation ask
-    has happened, so it isn't repeated on every later message. Same TTL as
-    the turn history - an abandoned conversation's gate resets along with
-    everything else about it once it goes stale."""
+    """Mark the one-time profile confirmation as done, so we don't ask
+    again on every message. Same TTL as the turn history - once the
+    conversation goes stale, this resets with everything else."""
     cache.set(_profile_confirmed_key(key), True, CONVERSATION_TTL_SECONDS)

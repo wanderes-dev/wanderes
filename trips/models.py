@@ -3,7 +3,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-# How a price compares to what's typical for this route/stay — distinct
+# How a price compares to what's typical for this route/stay - distinct
 # from the traveler-facing 1-10 `rating` scale below.
 PRICE_RATE_CHOICES = [
     (1, _("Much cheaper than usual")),
@@ -19,11 +19,9 @@ TRIP_STATUS_CHOICES = [
     ("cancelled", _("Cancelled")),
 ]
 
-# Initial feedback taxonomy, decided with the user 2026-08-29 (Phase 14,
-# 15_IMPLEMENTATION_GUIDE.md: "Define the initial feedback taxonomy. Keep
-# it small."). Deliberately not enforced as a DB choices= constraint since
-# `Feedback.tags` is a JSONField list - FeedbackForm restricts the UI to
-# these values instead.
+# Kept deliberately small - see 15_IMPLEMENTATION_GUIDE.md. Not enforced as
+# a DB choices= constraint since `Feedback.tags` is a JSONField list;
+# FeedbackForm restricts the UI to these values instead.
 FEEDBACK_TAG_CHOICES = [
     ("excellent_food", _("Excellent food")),
     ("great_value", _("Great value")),
@@ -43,9 +41,8 @@ def rating_validators():
 class Trip(models.Model):
     """A planned or completed travel experience belonging to a user.
 
-    Trip Items beyond flights/accommodations (activities, reservations,
-    etc.) are explicitly deferred to the dedicated Trip Management
-    milestone — not needed for the first recommendation vertical slice.
+    Items beyond flights/accommodations (activities, reservations, etc.)
+    are deferred to a later Trip Management milestone.
     """
 
     user = models.ForeignKey(
@@ -78,9 +75,8 @@ class Trip(models.Model):
 class TripFlight(models.Model):
     """One flight leg belonging to a trip.
 
-    A trip with connecting flights or a round trip is represented as
-    multiple TripFlight rows (ordered by leg_order), rather than nesting
-    connection details inside a single record.
+    A connecting flight or round trip is just multiple TripFlight rows
+    ordered by leg_order, not nested connection details on one record.
     """
 
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="flights")
@@ -131,12 +127,10 @@ class TripAccommodation(models.Model):
 class TravelHistoryEntry(models.Model):
     """A record that the user has actually visited a destination.
 
-    Distinct from Trip (04_DATABASE_DESIGN.md §2 lists them as separate
-    entities): a Trip is a planned/completed travel experience with its
-    own items (flights, accommodations); this is a much simpler standalone
-    record - "I've been to X, roughly around year Y" - usable even without
-    ever creating a full Trip. Both feed the same repetition-penalty
-    scoring in recommendations.scoring.
+    Simpler and separate from Trip (see 04_DATABASE_DESIGN.md §2) - just
+    "I've been to X, roughly year Y," no items, usable without ever
+    creating a full Trip. Both feed the repetition-penalty scoring in
+    recommendations.scoring.
     """
 
     user = models.ForeignKey(
@@ -169,8 +163,8 @@ class Feedback(models.Model):
     """A user's evaluation of a destination or trip.
 
     Community-facing aggregation (CommunityReview, AggregatedInsight,
-    TravelerSimilarityData) is explicitly out of scope here — deferred to
-    the later Community Intelligence phases.
+    TravelerSimilarityData) is out of scope here - that's a later
+    Community Intelligence phase.
     """
 
     user = models.ForeignKey(

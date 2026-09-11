@@ -1,16 +1,15 @@
-"""Core Product Analytics metrics (Phase 17, 15_IMPLEMENTATION_GUIDE.md §21).
+"""Core product analytics metrics (15_IMPLEMENTATION_GUIDE.md §21).
 
 premium_conversion and affiliate_clicks from the guide's "Core Metrics" list
-are deliberately NOT implemented here, matching the Phase 17 decision to
-defer premium_started/affiliate_link_clicked entirely - there is no
-monetization or affiliate feature yet to measure.
+aren't implemented here - there's no monetization or affiliate feature yet
+to measure.
 
-"Active user" (per the guide's own warning - "should mean a user performing
-a meaningful action, not simply opening the website" - and the Phase 17
-decision): an authenticated user who submitted at least one message to the
-chat (a `travel_question_submitted` event) within the window. Anonymous chat
-use is tracked (see analytics.services) but never counts toward these
-user-based metrics, since there is no stable identity to count against.
+"Active user": an authenticated user who submitted at least one message to
+the chat (a `travel_question_submitted` event) within the window - per the
+guide's own warning that this "should mean a user performing a meaningful
+action, not simply opening the website." Anonymous chat use is tracked (see
+analytics.services) but never counts toward these metrics since there's no
+stable identity to count against.
 """
 
 from datetime import datetime, time, timedelta

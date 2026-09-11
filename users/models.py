@@ -4,17 +4,12 @@ from django.contrib.auth.models import UserManager as DjangoUserManager
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-# Same 1-5 scale used by travel.Destination.cost_of_living, so a traveler's
-# preferred cost of living and a destination's cost of living are directly
-# comparable - imported from travel.models (the canonical source, since it
-# owns the destination catalog these choices describe) rather than
-# duplicated here. A 2026-09-02 review found this file had its own
-# byte-for-byte copy of both lists, independent of travel.models' and of
-# ai.orchestration's INTENT_SCHEMA enum - nothing kept the three in sync,
-# so changing a trip type in one place risked silently desyncing the
-# others. Re-exported under these same names so existing imports
-# (users/forms.py's `from .models import TRIP_TYPE_CHOICES`) don't need to
-# change.
+# Pulled from travel.models rather than duplicated here, so this file's
+# cost-of-living scale always matches travel.Destination.cost_of_living
+# (used to be its own copy, which drifted out of sync with both
+# travel.models and ai.orchestration's intent schema). Re-exported under
+# the same names so users/forms.py's `from .models import TRIP_TYPE_CHOICES`
+# doesn't need to change.
 from travel.models import COST_OF_LIVING_CHOICES, TRIP_TYPE_CHOICES  # noqa: F401
 
 from .currency import CURRENCY_CHOICES
@@ -50,22 +45,20 @@ class UserManager(DjangoUserManager):
 class User(AbstractUser):
     """Wanderes account and authentication identity.
 
-    Login is by email (not username) per the 2026-08-29 product decision.
-    Google OAuth is a planned future login method (not yet implemented) —
-    this model doesn't need extra fields for that; it would be handled by
-    a social-auth library (e.g. django-allauth) linking to this model.
+    Login is by email, not username. Google OAuth is a planned login
+    method - this model doesn't need extra fields for it, a social-auth
+    library (e.g. django-allauth) would just link to this model.
     """
 
     username = None
     email = models.EmailField("email address", unique=True)
 
-    # 2026-09-04, automatic language detection: an explicit language choice
-    # made while logged in, so it follows the account across devices/
-    # browsers rather than living only in the anonymous per-browser
-    # django_language cookie LocaleMiddleware already reads. Blank means
-    # "no explicit choice yet" - cookie/Accept-Language detection applies
-    # as normal (see core.middleware.UserLanguagePreferenceMiddleware,
-    # which activates this over the cookie/header whenever it's set).
+    # An explicit choice made while logged in, so it follows the account
+    # across devices instead of living only in the anonymous per-browser
+    # django_language cookie LocaleMiddleware reads. Blank = no explicit
+    # choice yet, cookie/Accept-Language detection applies as normal (see
+    # core.middleware.UserLanguagePreferenceMiddleware, which prefers this
+    # over the cookie/header once it's set).
     preferred_language = models.CharField(
         max_length=10,
         choices=settings.LANGUAGES,
@@ -92,20 +85,16 @@ BUDGET_PERIOD_CHOICES = [
 class TravelerProfile(models.Model):
     """Traveler preferences used to personalize recommendations.
 
-    Originally deliberately thin per 14_MVP_IMPLEMENTATION_PLAN.md
-    Milestone 2 ("do not build the complete traveler profile yet").
-    Extended 2026-09-02 (direct user request) with home_country,
-    travelers_count, and a budget amount/period/currency triple - concrete
-    trip-context fields, distinct from preferred_cost_of_living's abstract
-    1-5 tier. budget_amount/budget_period/budget_currency are validated
-    (TravelerProfileForm.clean()) to always be filled in together or not
-    at all - a bare number with no currency or time unit is meaningless.
-    budget_currency exists specifically so ai.orchestration can convert a
-    self-reported budget to an approximate USD figure (users.currency,
-    same-day follow-up request: "budget must be always on dolar") instead
-    of comparing raw numbers in incomparable currencies. Preference
-    history, inferred preferences, and feedback-driven learning belong to
-    later milestones.
+    Kept deliberately thin - no preference history, inferred preferences,
+    or feedback-driven learning yet, that's for later. home_country,
+    travelers_count and the budget amount/period/currency triple are
+    concrete trip-context fields, distinct from preferred_cost_of_living's
+    abstract 1-5 tier. budget_amount/budget_period/budget_currency are
+    validated together in TravelerProfileForm.clean() - a bare number with
+    no currency or time unit isn't meaningful on its own. budget_currency
+    is also what lets ai.orchestration convert a self-reported budget to an
+    approximate USD figure (see users.currency) instead of comparing raw
+    numbers across incomparable currencies.
     """
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="traveler_profile")

@@ -7,22 +7,18 @@ app_name = "users"
 
 urlpatterns = [
     path("register/", views.register, name="register"),
-    # views.LoginView (2026-09-09), not auth_views.LoginView directly - see
-    # its own docstring for why (captures the pre-login session key before
-    # Django's login() rotates it, for the anonymous_user_authenticated
-    # analytics event).
+    # views.LoginView, not auth_views.LoginView directly - see its
+    # docstring, it captures the pre-login session key before login()
+    # rotates it, needed for the anonymous_user_authenticated event.
     path("login/", views.LoginView.as_view(template_name="users/login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("account/", views.account, name="account"),
     path("profile/", views.profile, name="profile"),
-    # Password reset via emailed token (2026-09-04) - Django's own
-    # built-in views/forms/token generator, matching the project's
-    # existing "session-based auth is Django's own, no custom
-    # reimplementation" convention (07_API_DESIGN.md §3). success_url is
-    # explicitly overridden on every view below - these views' own
-    # defaults reverse an *unnamespaced* URL name ("password_reset_done"/
-    # "password_reset_complete"), which doesn't exist under this app's
-    # "users:" namespace and would 404 without the override.
+    # Password reset via emailed token - Django's own built-in views/
+    # forms/token generator (07_API_DESIGN.md §3: no custom auth
+    # reimplementation). success_url is overridden on every view below
+    # because their defaults reverse an unnamespaced URL name
+    # ("password_reset_done" etc), which 404s under our "users:" namespace.
     path(
         "password-reset/",
         auth_views.PasswordResetView.as_view(

@@ -23,10 +23,10 @@ LOG_IN_LABEL_BY_LANGUAGE = {
 
 
 class BrowserPreferredLanguageHelperTests(TestCase):
-    """Unit-level tests for core.context_processors._browser_preferred_language
-    (2026-09-04, automatic language detection) - the pure Accept-Language
-    parsing/matching step, isolated from the full request/response cycle
-    below."""
+    """Unit-level tests for
+    core.context_processors._browser_preferred_language - the pure
+    Accept-Language parsing/matching step, isolated from the full
+    request/response cycle below."""
 
     def setUp(self):
         self.factory = RequestFactory()
@@ -108,10 +108,9 @@ class BrowserLanguageAutoAppliesOnFirstVisitTests(TestCase):
 
 
 class SavedPreferencePriorityTests(TestCase):
-    """Priorities 1 and 2 ("previously saved user/anonymous preference")
-    must always win over priority 3 (browser language) - 2026-09-04,
-    automatic language detection: "Do not override an explicit user
-    choice." """
+    """Priorities 1 and 2 (previously saved user/anonymous preference)
+    must always win over priority 3 (browser language) - an explicit user
+    choice is never overridden."""
 
     def setUp(self):
         self.user = User.objects.create_user(
@@ -162,10 +161,10 @@ class SavedPreferencePriorityTests(TestCase):
 
 
 class LanguageSuggestionTests(TestCase):
-    """The subtle "prefer Wanderes in X?" suggestion (2026-09-04) - only
-    ever a suggestion, never an automatic switch, and only ever shown
-    when there's a genuine mismatch between the browser's own signal and
-    the language actually being shown."""
+    """The subtle "prefer Wanderes in X?" suggestion - only ever a
+    suggestion, never an automatic switch, and only shown when there's a
+    genuine mismatch between the browser's own signal and the language
+    actually being shown."""
 
     def setUp(self):
         self.user = User.objects.create_user(email="suggest@example.com", password="testpass123")
@@ -207,8 +206,7 @@ class LanguageSuggestionTests(TestCase):
         self.assertIsNone(response.context["language_suggestion"])
 
     def test_no_suggestion_after_explicitly_switching_to_the_suggested_language(self):
-        """"If the user selects a language: ... do not ask again
-        unnecessarily." Once the visitor accepts the suggestion (POSTs to
+        """Once the visitor accepts the suggestion (POSTs to
         set_language), the same browser Accept-Language header that
         originally caused the mismatch no longer produces one, since the
         active language now matches it."""
@@ -228,7 +226,7 @@ class LanguageSuggestionTests(TestCase):
 
 
 class SetLanguagePersistsAuthenticatedPreferenceTests(TestCase):
-    """core.views.set_language (2026-09-04) - wraps Django's own
+    """core.views.set_language wraps Django's own
     django.views.i18n.set_language to also persist an authenticated
     visitor's explicit choice to their account, so it's respected on any
     device from then on (priority 1)."""

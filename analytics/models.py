@@ -1,29 +1,18 @@
 from django.conf import settings
 from django.db import models
 
-# Phase 17 (Product Analytics) event taxonomy, decided with the user
-# 2026-08-30: only events for features that already exist. premium_started
-# and affiliate_link_clicked from the guide's candidate list are deliberately
-# NOT included yet - those features (monetization, affiliate provider) don't
-# exist in the app, so there is nothing real to instrument. Add them when
-# those features are actually built, not speculatively now.
+# Only events for features that actually exist in the app - premium_started
+# and affiliate_link_clicked aren't here since there's no monetization or
+# affiliate provider yet to instrument. Add them when those features ship,
+# not speculatively.
 #
-# Extended 2026-09-09 (analytics/data-engineering pass) with 5 more event
-# types, same "only for features that already exist" discipline:
-# destination_selected ("Choose this trip", shipped 2026-09-08, previously
-# uninstrumented), signup_started (pairs with user_registered for a real
-# signup funnel), anonymous_user_authenticated (an anonymous chat visitor
-# logging into an existing account - distinct from user_registered, which
-# only fires on registration), and two AI/provider operational events -
-# llm_request_completed / provider_request_completed - deliberately ONE
-# event per completed attempt rather than the started/completed/failed
-# triple a naive taxonomy might use: a synchronous call always either
-# completes or fails 1:1 with its start, so a "started" event carries no
-# independent analytical value. recommendation_viewed and
-# recommendation_rejected were considered and deliberately NOT added -
-# see documentation/16_ANALYTICS_ARCHITECTURE.md for why (no separate
-# results page for the former; no reject/dismiss UI action exists for the
-# latter, so "rejection" is a derived metric, not a raw event).
+# llm_request_completed/provider_request_completed are one event per
+# completed attempt, not a started/completed/failed triple - a synchronous
+# call always finishes 1:1 with its start, so "started" carries no signal.
+# recommendation_viewed/recommendation_rejected were considered and left
+# out too: no separate results page for the former, no reject/dismiss UI
+# action for the latter, so "rejection" would be a derived metric, not a
+# raw event (see documentation/16_ANALYTICS_ARCHITECTURE.md).
 EVENT_TYPE_CHOICES = [
     ("user_registered", "User registered"),
     ("profile_completed", "Traveler profile completed"),
@@ -38,43 +27,36 @@ EVENT_TYPE_CHOICES = [
     ("provider_request_completed", "External provider request completed"),
 ]
 
-# Operational/system telemetry about the AI and provider layers, not user
-# behavior - these deliberately have no actor (no user, no IP). Exempted in
-# record_event() from the "must resolve user or IP" requirement that every
-# other event type still enforces unchanged (see record_event's docstring).
+# System telemetry about the AI/provider layers, not user behavior - no
+# actor (no user, no IP) by design. record_event() exempts these from the
+# "must resolve user or IP" rule every other event type still enforces.
 OPERATIONAL_EVENT_TYPES = {"llm_request_completed", "provider_request_completed"}
 
 
 class Event(models.Model):
     """A single product-analytics event.
 
-    Self-hosted, first-party analytics (Phase 17 decision) - no third-party
-    analytics vendor, no data leaves this database. Deliberately minimal:
-    only structured metadata is ever stored, never free-text message or
-    comment content (that already lives on the relevant domain model, e.g.
-    trips.Feedback.comment, for its own product reason - analytics has no
-    need to duplicate it and duplicating it would only add privacy exposure
-    for no product benefit).
+    Self-hosted and first-party - nothing goes to a third-party vendor.
+    Deliberately minimal: only structured metadata is stored, never
+    free-text message/comment content (that already lives on the relevant
+    domain model, e.g. trips.Feedback.comment - duplicating it here would
+    just be extra privacy exposure for no benefit).
 
-    Every event is attributed to exactly one of `user` (an authenticated
-    user) or `anonymized_ip` (an anonymous visitor, e.g. an unauthenticated
-    chat message) - never both, per the Phase 17 decision that anonymous
-    events are tracked by IP rather than a session identifier. The IP is
-    always anonymized before being stored (see analytics.services), never
-    the raw address. The two OPERATIONAL_EVENT_TYPES are the one exception -
-    they have neither `user` nor `anonymized_ip` by design (see their own
-    definition above).
+    Every event belongs to exactly one of `user` (authenticated) or
+    `anonymized_ip` (anonymous, e.g. an unauthenticated chat message) -
+    never both. The IP is always anonymized before storage (see
+    analytics.services), never the raw address. The two
+    OPERATIONAL_EVENT_TYPES are the exception - neither field is set for
+    those, by design.
 
-    This is enforced by analytics.services.record_event() at creation time,
-    deliberately NOT by a DB CheckConstraint: `user` uses on_delete=SET_NULL
-    so an authenticated event survives its user's account being deleted
-    (preserving aggregate historical metrics rather than deleting the
-    account holder's data twice over) - a "user or IP" constraint would make
-    that exact, legitimate SET_NULL transition raise an IntegrityError,
-    effectively blocking account deletion for any user with analytics
-    history. A row with both fields null after a user deletion is an
-    accepted, harmless outcome (it just drops out of user-scoped metrics),
-    not a data integrity problem worth blocking deletion over.
+    Enforced by analytics.services.record_event() at creation time, not by a
+    DB CheckConstraint: `user` uses on_delete=SET_NULL so an authenticated
+    event survives its user being deleted (keeps aggregate historical
+    metrics instead of deleting the account holder's data twice over) - a
+    "user or IP" constraint would turn that legitimate SET_NULL transition
+    into an IntegrityError, blocking account deletion for anyone with
+    analytics history. A row with both fields null after a user deletion is
+    fine - it just drops out of user-scoped metrics.
     """
 
     event_type = models.CharField(max_length=40, choices=EVENT_TYPE_CHOICES)
@@ -135,22 +117,21 @@ class Event(models.Model):
 
 class DailyProductMetrics(models.Model):
     """One row per calendar date, refreshed nightly by
-    analytics.tasks.refresh_daily_metrics (2026-09-09) - the one genuinely
-    MATERIALIZED table in the warehouse (everything in
-    analytics/warehouse/ is a plain view, recomputed live). A real table
-    here, not a view, because the dashboard queries this repeatedly and
-    its computation (scanning the full event history grouped by day) gets
-    slower as that history grows - materializing at daily granularity
-    keeps dashboard queries fast regardless of raw event volume.
+    analytics.tasks.refresh_daily_metrics - the one real MATERIALIZED table
+    in the warehouse (everything else in analytics/warehouse/ is a plain
+    view, computed live). It's a table instead of a view because the
+    dashboard hits this repeatedly and the underlying computation (scanning
+    the full event history grouped by day) only gets slower as history
+    grows - materializing at daily granularity keeps dashboard queries fast
+    regardless of event volume.
 
-    Full recompute-and-upsert each run, not incremental counters - same
-    "recompute from scratch = idempotent and retry-safe" pattern already
-    proven by trips.tasks.update_traveler_preferences_from_feedback, so a
-    retried or re-run refresh for the same date can never double-count.
+    Full recompute-and-upsert each run rather than incremental counters,
+    same idempotent/retry-safe pattern as
+    trips.tasks.update_traveler_preferences_from_feedback - a retried
+    refresh for the same date can't double-count.
 
-    `computed_at` is the freshness signal: if MAX(computed_at) is more
-    than ~26 hours old, the nightly job has stalled - a realistic,
-    checkable definition, not a fabricated SLA.
+    `computed_at` is the freshness signal: if MAX(computed_at) is more than
+    ~26 hours old, the nightly job has stalled.
     """
 
     date = models.DateField(primary_key=True)
@@ -179,11 +160,10 @@ class DailyProductMetrics(models.Model):
         verbose_name_plural = "daily product metrics"
 
 
-# Warehouse (dimension/fact) models live in analytics/warehouse/models.py,
-# not here (2026-09-09) - imported at the bottom of this file, not the
-# top, since it's what Django's app loading actually auto-imports
-# (<app>/models.py only, never an arbitrary submodule on its own) and
-# nothing above depends on them.
+# Warehouse (dimension/fact) models live in analytics/warehouse/models.py.
+# Imported at the bottom, not the top - Django's app loading only
+# auto-imports <app>/models.py, never an arbitrary submodule, and nothing
+# above this line depends on them anyway.
 from .warehouse.models import (  # noqa: E402, F401
     DimDestination,
     DimUser,

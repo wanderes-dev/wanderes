@@ -1,28 +1,22 @@
 """Static, approximate USD conversion for TravelerProfile.budget_amount.
 
-2026-09-02, direct user request: "budget must be always on dolar... the
-agent must also check for this currency in dolar and convert to estimate".
-These are NOT live exchange rates - deliberately a small, static table
-rather than a new external provider integration (the user's own framing,
-"convert to estimate," matches the same approximate-and-honestly-labeled
-approach already used for curated_destinations.json and
-country_entry_requirements.json). Real-world rates drift over time, so
-treat any conversion this module produces as a rough ballpark, never a
-precise or transactional figure - Wanderes performs no currency-based
-commerce with this data. It only lets ai.orchestration compare a
-traveler's self-reported budget on a common (USD) footing instead of
-handing the AI raw numbers in incomparable currencies. Update the rates
-below periodically if they visibly drift - this file is the one place to
-do it.
+Not live exchange rates - a small static table, same approximate/honestly-
+labeled approach as curated_destinations.json and
+country_entry_requirements.json. Treat any conversion here as a rough
+ballpark, never a precise or transactional figure; Wanderes doesn't do
+currency-based commerce with this data, it just lets ai.orchestration
+compare a traveler's budget on a common USD footing instead of handing the
+AI raw numbers in incomparable currencies. Update the rates below if they
+drift too far - this is the one place to do it.
 """
 
 from decimal import Decimal
 
 from django.utils.translation import gettext_lazy as _
 
-# Units of each currency per 1 USD (e.g. 1 USD ~= 5.40 BRL) - captured
-# 2026-09-02. To convert an amount FROM a currency TO USD, divide by its
-# rate here (see convert_to_usd below).
+# Units of each currency per 1 USD (e.g. 1 USD ~= 5.40 BRL). To convert an
+# amount FROM a currency TO USD, divide by its rate here (see
+# convert_to_usd below).
 USD_CONVERSION_RATES: dict[str, Decimal] = {
     "USD": Decimal("1"),
     "EUR": Decimal("0.92"),

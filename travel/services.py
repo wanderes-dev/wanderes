@@ -2,12 +2,11 @@ from django.db.models import Q
 
 from .models import CountryEntryRequirement, Destination
 
-# Must accompany CountryEntryRequirement data wherever it's ever shown or
-# referenced (see that model's docstring) - visa/vaccine/insurance
-# requirements are compiled from general knowledge, not verified against
-# each country's official source, change over time, and getting them
-# wrong carries real consequences (denied boarding/entry, a real
-# health/legal problem) unlike a merely inaccurate destination fact.
+# Must accompany CountryEntryRequirement data wherever it's shown or
+# referenced (see that model's docstring) - visa/vaccine/insurance info
+# is compiled from general knowledge, not verified against an official
+# source, and getting it wrong has real consequences (denied boarding or
+# entry) unlike a merely inaccurate destination fact.
 ENTRY_REQUIREMENT_DISCLAIMER = (
     "This is general guidance only, not verified against official sources, "
     "and does not cover every country. Requirements change and can depend "
@@ -19,24 +18,23 @@ ENTRY_REQUIREMENT_DISCLAIMER = (
 
 
 def get_entry_requirements(country_name: str) -> CountryEntryRequirement | None:
-    """Look up entry-requirement guidance for a destination country by
-    name (case-insensitive). Returns None if nothing is on file for it -
-    callers must not treat that as "no requirements exist", only as "we
-    don't have data for this one" (see ENTRY_REQUIREMENT_DISCLAIMER)."""
+    """Look up entry-requirement guidance for a country by name
+    (case-insensitive). Returns None if nothing's on file - callers
+    shouldn't read that as "no requirements exist", just "we don't have
+    data for this one" (see ENTRY_REQUIREMENT_DISCLAIMER)."""
     if not country_name:
         return None
     return CountryEntryRequirement.objects.filter(country__iexact=country_name.strip()).first()
 
 
 def resolve_country_name(place_name: str) -> str | None:
-    """Best-effort resolution of a free-text place name to a country name,
-    for looking up CountryEntryRequirement.videos (2026-09-07). A traveler
-    might name a city/destination ("Lisboa") or already a country
-    ("Portugal") - try matching a Destination by name or country first and
-    return its real .country; fall back to the raw input if nothing
-    matches, so callers can still try get_entry_requirements's own
-    case-insensitive country lookup (which returns None gracefully if
-    nothing is on file, rather than this function guessing)."""
+    """Best-effort resolution of a free-text place name to a country
+    name, for looking up CountryEntryRequirement.videos. A traveler
+    might name a city ("Lisbon") or already a country ("Portugal") - try
+    matching a Destination by name or country first and return its real
+    .country, falling back to the raw input if nothing matches. Callers
+    can still run that through get_entry_requirements's own lookup,
+    which returns None gracefully instead of guessing."""
     if not place_name:
         return None
     place_name = place_name.strip()
@@ -45,19 +43,17 @@ def resolve_country_name(place_name: str) -> str | None:
     destination = Destination.objects.filter(
         Q(name__icontains=place_name) | Q(country__icontains=place_name)
     ).first()
-    if destination is not None:
-        return destination.country
-    return place_name
+    return destination.country if destination else place_name
 
 
 def find_destination_slugs_by_name(place_names: list[str]) -> frozenset:
     """Resolve free-text place/country names to matching Destination slugs.
 
-    Used to translate a traveler's exclusion request ("not Marrakech or
-    Morocco") into slugs recommendations.scoring can filter on. Matching is
-    case-insensitive substring matching against name/country - simple and
-    good enough for the curated dataset's size; a much larger catalog would
-    need a more precise search strategy.
+    Used to turn a traveler's exclusion request ("not Marrakech or
+    Morocco") into slugs recommendations.scoring can filter on.
+    Case-insensitive substring match against name/country - good enough
+    for the current dataset size; a much bigger catalog would need
+    something more precise.
     """
     if not place_names:
         return frozenset()

@@ -11,15 +11,14 @@ __all__ = [
     "get_hotel_provider",
 ]
 
-# Maps a short settings.HOTEL_PROVIDER key to the adapter that implements
-# it, so switching (or eventually adding) a provider is a settings change,
-# not an application-code change (10_EXTERNAL_INTEGRATIONS.md §13.1 - same
-# pattern as integrations.flights.get_flight_provider(),
-# integrations.climate.get_climate_provider(), and
-# ai.provider.get_ai_provider()). "booking_com" is registered against a
-# deliberate skeleton (see integrations/hotels/booking_com.py) rather than
-# a working adapter - there is no real Booking.com Affiliate Partner
-# Program access to implement against yet (DECISIONS_PENDING.md §4).
+# Maps a settings.HOTEL_PROVIDER key to the adapter that implements it,
+# so switching (or adding) a provider is a settings change, not an
+# application-code change (§13.1 - same pattern as get_flight_provider(),
+# get_climate_provider(), and ai.provider.get_ai_provider()).
+# "booking_com" points at a deliberate skeleton
+# (integrations/hotels/booking_com.py), not a working adapter - there's
+# no real Booking.com Affiliate Partner Program access to build against
+# yet (DECISIONS_PENDING.md §4).
 _PROVIDER_REGISTRY = {
     "booking_com": "integrations.hotels.booking_com.BookingComHotelProvider",
 }

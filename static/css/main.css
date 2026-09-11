@@ -1,9 +1,7 @@
-/* Fraunces (warm editorial serif for headings/brand moments - 2026-09-01
-   visual refresh, chosen to read as "premium travel" rather than "generic
-   SaaS dashboard") + Inter (UI text/body copy) are loaded via <link> tags
-   in templates/base.html's <head>, not @import here - a <link> lets the
-   browser discover and fetch the font in parallel with this stylesheet
-   instead of blocking on it. */
+/* Fraunces (headings/brand moments - reads as "premium travel", not
+   generic SaaS) and Inter (UI/body text) load via <link> tags in
+   base.html's <head>, not @import here, so the browser can fetch the
+   fonts and this stylesheet in parallel instead of blocking on one. */
 
 :root {
     --color-primary: #1d6f6a;
@@ -50,14 +48,13 @@ body {
     background: var(--color-bg);
     display: flex;
     flex-direction: column;
-    /* A fixed height (not min-height) is required so flex children with
-       min-height:0 (like .content-flush / .chat-messages) get a bounded
-       box to shrink into and scroll internally - min-height alone lets
-       body grow past one viewport instead, which is what let the chat
-       page's input bar drift off-screen below a long conversation.
-       100dvh accounts for mobile browser chrome; a min-height:100vh
-       fallback keeps very short/legacy content pages filling the screen
-       even in browsers without dvh support. */
+    /* Fixed height, not min-height: flex children with min-height:0 (like
+       .content-flush / .chat-messages) need a bounded box to shrink into
+       and scroll inside - min-height alone lets body grow past one
+       viewport instead, which used to let the chat input drift
+       off-screen below a long conversation. 100dvh handles mobile browser
+       chrome; the min-height:100vh fallback keeps short/legacy pages
+       filling the screen where dvh isn't supported. */
     min-height: 100vh;
     height: 100dvh;
 }
@@ -209,12 +206,10 @@ a:hover {
         display: flex;
     }
 
-    /* Slides in from the left and overlays the page instead of pushing
-       its content down (2026-09-02, direct request - the previous
-       behavior pushed .site-content below the open menu). Stays in
-       normal `display: flex` at all times so the transform transition
-       can actually animate; position: fixed takes it out of the header's
-       flow entirely, so it never affects .site-header-inner's layout. */
+    /* Overlays the page instead of pushing content down like it used to.
+       Stays display: flex at all times so the transform can actually
+       animate; position: fixed pulls it out of the header's flow
+       entirely, so it never affects .site-header-inner's layout. */
     .site-nav {
         position: fixed;
         top: 0;
@@ -305,12 +300,9 @@ a:hover {
     opacity: 1;
 }
 
-/* Beta notice (2026-09-11) - a permanent, non-dismissible informational
-   strip on every page, same reasoning as the "we collect anonymized
-   usage data" footer note: an honest, always-visible disclosure rather
-   than a one-time dismissible banner, since "this product is in beta"
-   stays true for as long as it's shown - dismissing it would just mean
-   most visitors never see it again on their next visit. */
+/* Permanent, non-dismissible - same reasoning as the usage-data footer
+   note. "In beta" stays true the whole time it's shown, so letting
+   people dismiss it would just mean most never see it again. */
 
 .beta-banner {
     background: var(--color-info-bg);
@@ -320,12 +312,11 @@ a:hover {
     padding: 0.45rem 1rem;
 }
 
-/* Language suggestion banner (2026-09-04, automatic language detection) -
-   deliberately styled like an info-level .message rather than a modal or
-   anything blocking, since it's a soft "want to switch?" nudge, never a
-   forced interruption. Starts [hidden] in the HTML (see base.html) and is
-   only revealed by JS once sessionStorage confirms it wasn't already
-   dismissed this session - see static/js/main.js. */
+/* Styled like an info-level .message rather than a modal - it's a soft
+   "want to switch?" nudge, never a forced interruption. Starts [hidden]
+   in the markup (base.html); JS only reveals it once sessionStorage
+   confirms it wasn't already dismissed this session - see
+   static/js/main.js. */
 
 .language-suggestion {
     max-width: 760px;
@@ -342,12 +333,9 @@ a:hover {
     font-size: 0.95rem;
 }
 
-/* The [hidden] attribute is how base.html/main.js control this banner's
-   visibility (server-rendered hidden by default, JS reveals it once
-   sessionStorage confirms it wasn't already dismissed) - without this
-   override, the display: flex rule above beats the browser's own default
-   [hidden] { display: none } (equal specificity, this stylesheet loads
-   later), leaving the banner visibly showing even while "hidden". */
+/* [hidden] alone loses to our display: flex above (same specificity,
+   loads later) - this override keeps it actually hidden until JS
+   reveals it. */
 .language-suggestion[hidden] {
     display: none;
 }
@@ -398,19 +386,15 @@ a:hover {
     padding: 1.5rem 1rem 2.5rem;
 }
 
-/* Used by pages that manage their own full-height layout with an
-   internally-scrolling region (e.g. /chat/'s .chat-messages) - grows to
-   fill the space left by the header/footer like .site-content, but
-   without imposing padding/max-width of its own. min-height:0 is
-   required here so the flex child can be squeezed to exactly one
-   viewport's worth of space, letting its own internal overflow:auto
-   region absorb anything taller - never use this class for a page
-   without such a region (see .content-wide below for why: found live,
-   2026-09-01, on production - the landing page reused this class before
-   it had any internal scroll area, which silently capped <main> at a
-   flex-computed height shorter than its actual content and caused the
-   footer to render on top of the overflowing destinations section
-   instead of below it). */
+/* For pages with their own internally-scrolling region (e.g. /chat/'s
+   .chat-messages) - fills the space left by the header/footer like
+   .site-content, but skips its padding/max-width. min-height:0 lets the
+   flex child get squeezed down to one viewport's worth of space, so its
+   own overflow:auto can absorb the rest. Don't reach for this on a page
+   without that scroll region: the landing page tried it once before it
+   had one, and <main> got silently capped shorter than its actual
+   content, pushing the footer up over the destinations section instead
+   of below it - see .content-wide instead. */
 .content-flush {
     flex: 1 1 auto;
     display: flex;
@@ -418,11 +402,11 @@ a:hover {
     min-height: 0;
 }
 
-/* Used by full-width pages that are simply taller than one viewport and
-   should scroll normally (e.g. the landing page) - same flush styling as
-   .content-flush (no padding/max-width imposed) but without min-height:0,
-   so <main> is free to grow to its full content height instead of being
-   capped to the flex-computed space left by the header/footer. */
+/* For full-width pages that are just taller than one viewport and should
+   scroll normally (the landing page) - same flush styling as
+   .content-flush but without min-height:0, so <main> is free to grow to
+   its full content height instead of getting capped to the space left by
+   the header/footer. */
 .content-wide {
     flex: 1 1 auto;
     display: flex;
@@ -463,9 +447,8 @@ textarea {
     min-height: 4.5rem;
 }
 
-/* Checkbox/radio option lists (e.g. CheckboxSelectMultiple) render as a
-   plain <ul> inside the wrapping <p> - style them as a clean option list
-   instead of a bulleted list. */
+/* CheckboxSelectMultiple etc. render as a plain <ul> inside the wrapping
+   <p> - style it as a clean option list rather than bullet points. */
 form ul {
     list-style: none;
     margin: 0;
@@ -675,12 +658,11 @@ button:focus-visible, .btn:focus-visible {
 
 /* Chat bubbles and recommendation cards - shared between the real chat
    page (ai/templates/ai/chat.html) and the landing page's product
-   preview (core/templates/core/landing.html), so a visitor's first
-   look at "what happens after the CTA" is the *actual* UI, not a
-   disconnected marketing mockup (2026-09-01 second UX pass, §4: "show
-   the product, not just describe it"). Previously lived only in
-   chat.html's own <style> block - moved here once a second page needed
-   the exact same components, rather than duplicating the rules. */
+   preview (core/templates/core/landing.html), so a visitor's first look
+   at "what happens after the CTA" is the actual UI, not a disconnected
+   mockup. Used to live only in chat.html's own <style> block; moved here
+   once the landing page needed the same components instead of
+   duplicating the rules. */
 
 .chat-bubble {
     max-width: 85%;
@@ -699,10 +681,10 @@ button:focus-visible, .btn:focus-visible {
     border-bottom-right-radius: 0.3rem;
 }
 
-/* Assistant replies are rendered from Markdown (see chat.html's
-   renderMarkdown()) into real <p>/<table>/<ul> elements, so they don't
-   need white-space: pre-wrap - these reset the browser's default block
-   margins so spacing stays tight and consistent between chunks. */
+/* Assistant replies get rendered from Markdown (chat.html's
+   renderMarkdown()) into real <p>/<table>/<ul> elements, so no
+   white-space: pre-wrap needed here - just resetting the browser's
+   default block margins to keep spacing tight between chunks. */
 .chat-bubble.assistant p {
     margin: 0 0 0.6rem;
 }
@@ -804,14 +786,12 @@ button:focus-visible, .btn:focus-visible {
     margin-top: -0.35rem;
 }
 
-/* Short overall verdict (e.g. "Strong match for your trip"), sitting
-   between the destination's own facts and the "why this fits you"
-   breakdown - deliberately not .fit-reasons-label (that's a section
-   header for the list/paragraph beneath it; this is a one-line verdict
-   with nothing beneath it directly), so the two don't read as duplicate
-   captions when both appear back to back (2026-09-09, landing preview
-   card). Reuses --color-primary, same token as the fit-reasons
-   checkmarks below, rather than introducing a new color. */
+/* One-line verdict ("Strong match for your trip") between the
+   destination's own facts and the "why this fits you" breakdown. Kept
+   separate from .fit-reasons-label - that's a section header for the
+   content below it, this has nothing beneath it directly - so the two
+   don't read as duplicate captions back to back. Reuses --color-primary
+   rather than a new token, matching the fit-reasons checkmarks below. */
 .recommendation-card .fit-match-strength {
     margin: 0.1rem 0 0.15rem;
     font-size: 0.9rem;
@@ -820,8 +800,8 @@ button:focus-visible, .btn:focus-visible {
 }
 
 /* "Why this fits you" - visually separated from the destination's own
-   facts (name/country/tags above) per direct request: the personalized
-   rationale should read as clearly distinct from generic description. */
+   facts (name/country/tags above) so the personalized rationale reads as
+   clearly distinct from generic description. */
 .recommendation-card .fit-reasons-label {
     font-size: 0.78rem;
     font-weight: 700;
@@ -1039,10 +1019,9 @@ button:focus-visible, .btn:focus-visible {
 
 /* Traveler profile page */
 
-/* 2026-09-05, direct request: 10% wider than the site-wide .site-content
-   default (760px), giving the 3-column budget row (.field-row-3) more
-   breathing room - this page's own <main> class instead of the shared
-   one, so no other page is affected. */
+/* 10% wider than the site-wide .site-content default (760px), giving the
+   3-column budget row (.field-row-3) more breathing room - its own
+   <main> class instead of the shared one, so no other page is affected. */
 .profile-content {
     flex: 1 1 auto;
     width: 100%;
@@ -1085,13 +1064,13 @@ button:focus-visible, .btn:focus-visible {
     gap: 0.3rem;
     margin-bottom: 1rem;
     /* min-width: 0 overrides the browser default of min-width: auto on a
-       grid/flex item (2026-09-05 fix) - without it, a .field-row-3 cell
-       refuses to shrink narrower than its <select>'s intrinsic content
-       width (budget_currency's option text in particular), which is what
-       pushed the row past .card's/.profile-content's right edge instead
-       of wrapping the input inside its column. Harmless outside a grid -
-       .field-block is also used standalone (home_country, travelers_count
-       above), where this has no visible effect. */
+       grid/flex item - without it, a .field-row-3 cell won't shrink
+       narrower than its <select>'s intrinsic content width
+       (budget_currency's option text especially), pushing the row past
+       .card's/.profile-content's right edge instead of wrapping the
+       input inside its column. Harmless outside a grid - .field-block is
+       also used standalone (home_country, travelers_count above), where
+       this has no visible effect. */
     min-width: 0;
 }
 
@@ -1197,8 +1176,8 @@ button:focus-visible, .btn:focus-visible {
     margin-top: 0;
 }
 
-/* Product preview - a real .chat-bubble + .recommendation-card, not an
-   illustration, per direct request (2026-09-01 second UX pass, §4). */
+/* Product preview - a real .chat-bubble + .recommendation-card, not a
+   drawn illustration. */
 .landing-preview-caption {
     text-align: center;
     color: var(--color-text-muted);
@@ -1313,14 +1292,13 @@ button:focus-visible, .btn:focus-visible {
     }
 }
 
-/* Analytics dashboard (2026-09-09). .profile-section alone (a thin
-   divider between stacked form sections) reads as an unstructured wall
-   of text for a data-dense page like this - live-reported as "layout is
-   quite bad." .dashboard-section reuses the exact same panel treatment
-   already established for recommendation cards (surface/border/radius/
-   shadow) instead of introducing a new visual language, and adds real
-   table styling, which nothing in this stylesheet had before (no page
-   used a plain <table> until this one). */
+/* .profile-section alone (a thin divider between stacked form sections)
+   read as an unstructured wall of text for a data-dense page like this -
+   flagged in review as rough-looking. .dashboard-section reuses the same
+   panel treatment already established for recommendation cards
+   (surface/border/radius/shadow) instead of a new visual language, plus
+   real table styling - nothing here used a plain <table> before this
+   page. */
 .dashboard-section {
     background: var(--color-surface);
     border: 1px solid var(--color-border);

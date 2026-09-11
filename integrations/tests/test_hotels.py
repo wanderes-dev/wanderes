@@ -10,8 +10,8 @@ from integrations.hotels.booking_com import BookingComHotelProvider
 class HotelProviderFactoryTests(TestCase):
     def test_unset_provider_raises_a_friendly_error(self):
         # HOTEL_PROVIDER defaults to blank (config/settings/base.py) -
-        # nothing should silently no-op if something tries to use this
-        # before a real provider is configured.
+        # using this before a provider is configured shouldn't silently
+        # no-op.
         with self.assertRaises(ImproperlyConfigured):
             get_hotel_provider()
 
@@ -29,10 +29,10 @@ class HotelProviderFactoryTests(TestCase):
 
 class BookingComHotelProviderSkeletonTests(TestCase):
     """Booking.com's Affiliate Partner Program is application-reviewed and
-    Wanderes doesn't have access yet (DECISIONS_PENDING.md §4) - this
-    adapter is a deliberate skeleton, not a working implementation. These
-    tests lock in that it fails loudly and clearly (NotImplementedError)
-    rather than silently returning something that looks like real data."""
+    we don't have access yet (DECISIONS_PENDING.md §4) - this adapter is
+    a deliberate skeleton. These tests just lock in that it fails loudly
+    (NotImplementedError) instead of silently returning something that
+    looks like real data."""
 
     def setUp(self):
         self.provider = BookingComHotelProvider()

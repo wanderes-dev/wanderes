@@ -1,38 +1,33 @@
-"""Continent classification for Destination.country values (2026-09-04,
-real production bug: a "Eurotrip" request's recommendation cards
-included Bali, Marrakech, Chiang Mai, Hoi An, and Ayutthaya alongside the
-genuinely European options - the deterministic scoring pipeline had no
-way to filter by continent at all, only country/trip_type/budget/
-temperature, so "Europe" as a hard constraint had nowhere to go).
+"""Continent classification for Destination.country values.
 
-Destination.country stores a specific country name (in English, matching
-the curated dataset's canonical language since the 2026-09-08 dataset
-translation - see DEVELOPMENT_LOG.md for why the dataset moved from
-Portuguese to English) - there is no continent field on the model, and
-none is added here either; a schema change/migration isn't needed for a
-lookup this small and static.
-COUNTRIES_BY_CONTINENT below is a plain, hand-maintained mapping,
-classified using the UN M49 macro-region standard
-(https://unstats.un.org/unsd/methodology/m49/) for consistency, rather
-than ad hoc personal judgment calls - consolidated from the UN's finer
-sub-regions (e.g. "Eastern Europe", "Western Asia") down to the 6
-continents travelers actually name in conversation.
+Added after a real bug: a "Eurotrip" request's recommendation cards
+included Bali, Marrakech, Chiang Mai, Hoi An, and Ayutthaya right next
+to the actual European options, because the scoring pipeline could
+filter by country/trip_type/budget/temperature but had nowhere to put
+"Europe" as a hard constraint.
 
-A handful of transcontinental countries are worth calling out
-explicitly rather than leaving as a silent judgment call: Russia is
-classified as Europe (UN M49 groups it under Eastern Europe); Turkey,
-Georgia, Armenia, Azerbaijan, and Cyprus are classified as Asia (UN M49
-groups all five under Western Asia) - despite Cyprus's and Turkey's
-partial cultural/political European ties (EU membership for Cyprus, EU
-candidate status for Turkey), this keeps one single, consistent, citable
-standard rather than picking and choosing per country.
+Destination.country stores a specific country name; there's no
+continent field on the model and none is added here - a schema change
+isn't worth it for a lookup this small and static.
+COUNTRIES_BY_CONTINENT is a plain, hand-maintained mapping, classified
+against the UN M49 macro-region standard
+(https://unstats.un.org/unsd/methodology/m49/) rather than ad hoc
+judgment calls, consolidated from the UN's finer sub-regions (e.g.
+"Eastern Europe", "Western Asia") down to the 6 continents people
+actually name in conversation.
 
-`travel/tests/test_geography.py`'s test_every_curated_country_is_classified
-guards against a future catalog addition silently falling outside every
-continent (an unclassified country simply never matches any continent
-filter, degrading silently to "no results" instead of erroring) - expect
-to need an update here whenever travel/data/curated_destinations.json
-introduces a country not seen before.
+A few transcontinental countries are worth calling out rather than
+leaving as a silent choice: Russia is Europe (UN M49 puts it under
+Eastern Europe); Turkey, Georgia, Armenia, Azerbaijan, and Cyprus are
+Asia (UN M49: Western Asia) - despite Cyprus's and Turkey's EU ties,
+this keeps one consistent, citable standard instead of picking and
+choosing per country.
+
+The test in test_geography.py guarding coverage of every curated
+country will fail if a new catalog country doesn't fit anywhere -
+otherwise an unclassified country just quietly never matches any
+continent filter. Expect to update this file whenever
+curated_destinations.json adds a country not seen before.
 """
 
 EUROPE = frozenset(
@@ -197,8 +192,8 @@ OCEANIA = frozenset(
     }
 )
 
-# Matches travel.models.TRIP_TYPE_CHOICES's shape (code, label) - used the
-# same way in ai.orchestration's INTENT_SCHEMA/prompt.
+# Same (code, label) shape as travel.models.TRIP_TYPE_CHOICES - used the
+# same way by ai.orchestration's INTENT_SCHEMA/prompt.
 CONTINENT_CHOICES = [
     ("europe", "Europe"),
     ("asia", "Asia"),
@@ -219,8 +214,8 @@ COUNTRIES_BY_CONTINENT = {
 
 
 def countries_in_continent(continent: str) -> frozenset:
-    """Countries (as stored in Destination.country) belonging to the given
-    continent code. Returns an empty frozenset for an unrecognized code
-    rather than raising - callers treat "no matching countries" the same
-    way as "continent not set" (no filtering applied)."""
+    """Countries (as stored in Destination.country) in the given
+    continent code. An unrecognized code returns an empty frozenset
+    instead of raising - callers treat that the same as "no continent
+    filter set"."""
     return COUNTRIES_BY_CONTINENT.get(continent, frozenset())

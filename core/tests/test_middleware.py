@@ -17,11 +17,11 @@ _TEST_ALLOWED_HOSTS = [
 @override_settings(ALLOWED_HOSTS=_TEST_ALLOWED_HOSTS, SITE_DOMAIN="www.wanderes.com")
 class CanonicalDomainRedirectMiddlewareTests(TestCase):
     def test_www_is_never_redirected(self):
-        # 2026-09-03 production incident: something outside this app
-        # (confirmed live) already redirects the bare apex wanderes.com to
-        # www.wanderes.com. This app must never redirect www anywhere -
-        # doing so once created an infinite loop with that external
-        # redirect and took the entire public site down.
+        # Something outside this app (confirmed live) already redirects
+        # the bare apex wanderes.com to www.wanderes.com. This app must
+        # never redirect www anywhere - doing so once created an infinite
+        # loop with that external redirect and took the entire public
+        # site down.
         response = self.client.get("/chat/", HTTP_HOST="www.wanderes.com")
 
         self.assertEqual(response.status_code, 200)
@@ -55,7 +55,7 @@ class CanonicalDomainRedirectMiddlewareTests(TestCase):
     def test_bare_apex_is_not_in_the_redirect_allowlist(self):
         # This app deliberately does not redirect wanderes.com itself -
         # something outside this codebase already does, and duplicating
-        # that here is exactly what caused the 2026-09-03 outage.
+        # that here is exactly what caused the outage above.
         response = self.client.get("/", HTTP_HOST="wanderes.com")
 
         self.assertEqual(response.status_code, 200)

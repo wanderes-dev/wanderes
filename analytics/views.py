@@ -5,14 +5,11 @@ from django.utils import timezone
 
 from .models import DailyProductMetrics
 
-# Staff-only internal analytics dashboard (2026-09-09, analytics/data-
-# engineering pass). Same staff_member_required + not-linked-from-nav
-# pattern already established for travel.views's country admin tools -
-# no new access-control concept introduced. Deliberately server-rendered
-# plain tables, no JS charting library - "correct data, correct
-# transformations, tests, metric definitions" come first per the task
-# this was built for; the dashboard itself is the smallest useful way to
-# actually look at the result, not a project of its own.
+# Staff-only internal dashboard - same staff_member_required +
+# not-linked-from-nav pattern as travel.views's country admin tools, no
+# new access-control concept here. Plain server-rendered tables on
+# purpose, no JS charting library: correct data and metric definitions
+# matter more than the dashboard being a project of its own.
 LOOKBACK_DAYS = 30
 
 

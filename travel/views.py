@@ -6,12 +6,10 @@ from django.utils.translation import gettext as _
 from .forms import AddCountryVideoForm, CountryEntryRequirementForm
 from .models import CountryEntryRequirement
 
-# Staff-only country editing tools (2026-09-07, direct request: "crie uma
-# pagina pra admin poder editar as informacoes dos paises e tambem inserir
-# videos"). Gated with Django's own staff_member_required (matches
-# User.is_staff, already on the custom user model via AbstractUser) rather
-# than a new permission concept - not linked from the public nav, same as
-# /admin/ itself isn't.
+# Staff-only country editing tools. Gated with Django's own
+# staff_member_required (matches User.is_staff on the custom user model)
+# rather than a new permission concept - not linked from the public nav,
+# same as /admin/ itself.
 
 
 @staff_member_required

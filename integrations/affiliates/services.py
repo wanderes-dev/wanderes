@@ -3,27 +3,23 @@ from .base import AffiliateNetworkError
 
 
 def fetch_and_save_link_for_destination(destination, *, provider=None):
-    """Search for a real affiliate link for one Destination and persist
-    it as an AffiliateLink (2026-09-09) - the "generates" step connecting
-    integrations.affiliates' provider interface to integrations.models
-    .AffiliateLink.
+    """Search for a real affiliate link for one Destination and persist it
+    as an AffiliateLink - connects the provider interface in
+    integrations.affiliates to integrations.models.AffiliateLink.
 
-    Searches by the destination's country (the same field every other
-    part of this app already treats as the reliable, English-canonical
-    join key - travel.services.get_entry_requirements() does the same).
-    Takes the first real result CJ's own relevance ranking returns -
-    never fabricates a link, and returns None (not a placeholder row) if
-    the network genuinely has nothing for this destination.
+    Searches by the destination's country (the same reliable,
+    English-canonical join key travel.services.get_entry_requirements()
+    uses). Takes the first result CJ's own relevance ranking returns -
+    never fabricates one, and returns None (not a placeholder row) if the
+    network has nothing for this destination.
 
-    Upserts by (network, destination, link_id) so re-running this for the
-    same destination refreshes fetched_at and any changed fields rather
-    than accumulating duplicate rows for the same real link.
+    Upserts by (network, destination, link_id), so re-running this for
+    the same destination refreshes fetched_at and any changed fields
+    instead of piling up duplicate rows for the same link.
 
-    Propagates AffiliateNetworkError on a network failure rather than
-    swallowing it - unlike analytics.services.record_event, this isn't a
-    fire-and-forget side channel; a caller (a future management command
-    or admin action) needs to know a fetch genuinely failed rather than
-    silently doing nothing.
+    Lets AffiliateNetworkError propagate rather than swallowing it -
+    unlike analytics.services.record_event this isn't fire-and-forget; a
+    caller needs to know a fetch actually failed.
     """
     from .. import models
 

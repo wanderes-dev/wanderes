@@ -1,26 +1,26 @@
 """Production settings.
 
-Per 11_SECURITY_&_PRIVACY.md and 12_DEVELOPMENT_&_DEPLOYMENT.md: production
-must use secure configuration, HTTPS, and environment-provided secrets.
-This module intentionally fails fast if ALLOWED_HOSTS is not configured.
+Secure configuration, HTTPS, environment-provided secrets - see
+11_SECURITY_&_PRIVACY.md and 12_DEVELOPMENT_&_DEPLOYMENT.md. Fails fast
+if ALLOWED_HOSTS isn't configured.
 """
 
 from .base import *  # noqa: F401,F403
 
 DEBUG = False
 
-# Overrides base.py's plain storage - safe here specifically because the
-# production Docker stage always runs collectstatic before the app ever
-# serves a request, so the hashed manifest this storage needs always exists.
+# Overrides base.py's plain storage - safe here because the production
+# Docker stage always runs collectstatic before the app ever serves a
+# request, so the hashed manifest this storage needs always exists.
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 
-# Render sets this automatically for any service with a public URL - added
-# to ALLOWED_HOSTS so the very first deploy works before a custom domain
-# (or an explicit DJANGO_ALLOWED_HOSTS override) exists. A no-op on any
-# other host, since the env var simply won't be set there.
+# Render sets this automatically for any service with a public URL -
+# added to ALLOWED_HOSTS so the first deploy works before a custom domain
+# (or an explicit DJANGO_ALLOWED_HOSTS override) exists. A no-op anywhere
+# else, since the env var just won't be set.
 render_hostname = env("RENDER_EXTERNAL_HOSTNAME", default="")
 if render_hostname and render_hostname not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(render_hostname)

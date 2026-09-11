@@ -26,9 +26,9 @@ class StubClimateProvider:
 
 class CountingClimateProvider(StubClimateProvider):
     """Wraps StubClimateProvider, recording every (lat, lon) actually
-    queried - lets a test assert the climate provider was never called for
-    a destination that a cheap DB-level filter should have ruled out
-    beforehand (2026-09-02 fix)."""
+    queried - lets a test assert the climate provider was never called
+    for a destination a cheap DB-level filter should have ruled out
+    beforehand."""
 
     def __init__(self, climate_by_coords):
         super().__init__(climate_by_coords)
@@ -102,13 +102,12 @@ class GenerateRecommendationsTests(TestCase):
         self.assertEqual(slugs, {"warm-expensive"})
 
     def test_trip_type_filter_skips_climate_lookups_for_non_matching_destinations(self):
-        # 2026-09-02 fix: trip_type/max_cost_of_living are applied as real
-        # DB-level filters BEFORE any climate provider call, not just as a
+        # trip_type/max_cost_of_living are applied as real DB-level
+        # filters before any climate provider call, not just as a
         # post-hoc Python check after fetching climate for everything. A
-        # real production timeout (reported live, 2026-09-02: "quero neve
-        # fim do ano" got a generic error) traced to the old order making
-        # an unnecessary real HTTP climate lookup for every non-matching
-        # destination first, at the current 384-destination catalog scale.
+        # real production timeout traced back to the old order making an
+        # unnecessary HTTP climate lookup for every non-matching
+        # destination first, at catalog scale.
         counting_climate = CountingClimateProvider(
             {
                 (10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0),
@@ -143,10 +142,10 @@ class GenerateRecommendationsTests(TestCase):
         )
 
     def test_continent_excludes_non_matching_destinations(self):
-        # 2026-09-04, real production bug: a "Eurotrip" request's
-        # recommendation cards included Bali, Marrakech, and Chiang Mai
-        # alongside the genuinely European options - nothing filtered by
-        # continent at all before this field existed.
+        # A real production bug: a "Eurotrip" request's recommendation
+        # cards included Bali, Marrakech, and Chiang Mai alongside the
+        # genuinely European options - nothing filtered by continent at
+        # all before this field existed.
         request = RecommendationRequest(month=10, continent="europe")
 
         results = generate_recommendations(request, climate_provider=self.climate)
@@ -199,8 +198,8 @@ class GenerateRecommendationsTests(TestCase):
         self.assertIn("warm-cheap", slugs)
 
     def test_country_excludes_non_matching_destinations(self):
-        # 2026-09-07, real production bug: asking for Thailand returned
-        # cards from Japan, Vietnam, Indonesia, and the Maldives too -
+        # A real production bug: asking for Thailand returned cards from
+        # Japan, Vietnam, Indonesia, and the Maldives too -
         # continent="asia" alone can't express "just this one country",
         # the same gap the continent field closed for "Eurotrip" above.
         _make_destination(
@@ -329,8 +328,8 @@ class GenerateRecommendationsTests(TestCase):
 
 class SlowClimateProvider:
     """Simulates a real per-call network delay - lets a test exercise the
-    request's climate-lookup time budget (2026-09-04 fix) without actually
-    waiting anywhere close to a real HTTP timeout."""
+    request's climate-lookup time budget without actually waiting
+    anywhere close to a real HTTP timeout."""
 
     def __init__(self, climate, delay_seconds):
         self._climate = climate
@@ -342,13 +341,12 @@ class SlowClimateProvider:
 
 
 class ClimateLookupTimeBudgetTests(TestCase):
-    """2026-09-04, real production timeout: a request naming no
-    trip_type/max_cost_of_living (e.g. "montar um eurotrip de 5 dias")
-    leaves the DB-level candidate set unfiltered, so a run of cold climate
-    lookups across the full catalog could exceed gunicorn's worker
-    timeout and kill the entire worker process. generate_recommendations
-    now caps the climate-lookup loop's own wall-clock budget and returns
-    whatever's already been scored instead."""
+    """A request naming no trip_type/max_cost_of_living leaves the
+    DB-level candidate set unfiltered, so a run of cold climate lookups
+    across the full catalog could exceed gunicorn's worker timeout and
+    kill the entire worker process. generate_recommendations caps the
+    climate-lookup loop's own wall-clock budget and returns whatever's
+    already been scored instead."""
 
     def setUp(self):
         for i in range(5):

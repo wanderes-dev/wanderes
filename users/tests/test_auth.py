@@ -27,7 +27,7 @@ class RegistrationTests(TestCase):
         )
 
     def test_register_page_records_signup_started(self):
-        # 2026-09-09: pairs with user_registered for a real signup funnel.
+        # Pairs with user_registered for a real signup funnel.
         self.client.get(reverse("users:register"))
 
         self.assertTrue(Event.objects.filter(event_type="signup_started").exists())
@@ -46,15 +46,13 @@ class RegistrationTests(TestCase):
         self.assertFalse(User.objects.filter(email="newtraveler@example.com").exists())
 
     def test_register_redirects_to_next_when_present_and_safe(self):
-        # 2026-09-09: an anonymous "Save this trip" click hits
-        # trip_create's @login_required redirect to
-        # /users/login/?next=/trips/create/?destination=<slug> - if the
-        # visitor then chooses "Create an account" instead of logging in,
-        # that same ?next= must survive registration too, or the
-        # destination they were trying to save silently gets lost and
-        # they land on a generic account page instead. Previously
-        # register() always redirected to users:account regardless of
-        # ?next=.
+        # An anonymous "Save this trip" click hits trip_create's
+        # @login_required redirect to
+        # /users/login/?next=/trips/create/?destination=<slug>. If the
+        # visitor picks "Create an account" instead of logging in, that
+        # ?next= has to survive registration too, or the destination they
+        # wanted gets lost and they land on a generic account page.
+        # register() used to always redirect to users:account regardless.
         next_url = "/trips/create/?destination=lisbon-pt"
         response = self.client.post(
             f"{reverse('users:register')}?next={next_url}",
@@ -69,8 +67,8 @@ class RegistrationTests(TestCase):
 
     def test_register_ignores_unsafe_next(self):
         # An attacker-controlled ?next= pointing at an external host must
-        # never be honored - same open-redirect guard Django's own
-        # LoginView already applies (url_has_allowed_host_and_scheme).
+        # never be honored - same guard LoginView already applies via
+        # url_has_allowed_host_and_scheme.
         response = self.client.post(
             f"{reverse('users:register')}?next=https://evil.example.com/steal",
             {
@@ -112,12 +110,11 @@ class LoginLogoutTests(TestCase):
 
 
 class AnonymousConversionTests(TestCase):
-    """2026-09-09: anonymous_user_authenticated must check the visitor's
-    PRE-login session key, not the post-login one Django's login() rotates
-    it to via cycle_key() - the whole point of users.views.LoginView's
-    override. These tests exercise the real login view end-to-end (not
-    just the signal in isolation) so a regression in that wiring would
-    actually fail here."""
+    """anonymous_user_authenticated has to check the visitor's PRE-login
+    session key, not the post-login one login() rotates it to via
+    cycle_key() - the whole point of users.views.LoginView's override.
+    These exercise the real login view end-to-end, not just the signal in
+    isolation, so a regression in that wiring actually fails here."""
 
     def setUp(self):
         self.user = User.objects.create_user(email="traveler@example.com", password="testpass123")
@@ -150,9 +147,9 @@ class AnonymousConversionTests(TestCase):
         self.assertFalse(event.metadata["had_anonymous_conversation"])
 
     def test_registration_does_not_also_record_anonymous_authenticated(self):
-        # django.contrib.auth.login() sends user_logged_in unconditionally,
-        # including from register()'s own call to it - must not double-fire
-        # since user_registered already covers this moment.
+        # login() sends user_logged_in unconditionally, including from
+        # register()'s own call - shouldn't double-fire here since
+        # user_registered already covers this moment.
         self.client.post(
             reverse("users:register"),
             {
@@ -177,18 +174,16 @@ class AnonymousConversionTests(TestCase):
 
 
 class NextParamCrossLinkTests(TestCase):
-    """2026-09-09: the login<->register cross-links ("New to Wanderes?
-    Create an account" / "Already have an account? Log in") must forward
-    ?next= too, or a visitor who arrives via trip_create's login-required
-    redirect loses their destination the moment they switch from one
-    form to the other - the same gap register()'s own redirect just had,
-    one hop earlier."""
+    """The login<->register cross-links ("New to Wanderes? Create an
+    account" / "Already have an account? Log in") need to forward ?next=
+    too, or a visitor arriving via trip_create's login-required redirect
+    loses their destination the moment they switch forms - same gap
+    register()'s own redirect had, one hop earlier."""
 
     def test_login_page_forwards_next_to_register_link(self):
         next_url = "/trips/create/?destination=lisbon-pt"
-        # Matches the {{ request.GET.next|urlencode }} template filter's
-        # default safe="/" behavior exactly - "/" stays literal, "?"/"="
-        # get percent-encoded.
+        # Matches {{ request.GET.next|urlencode }}'s default safe="/"
+        # behavior: "/" stays literal, "?"/"=" get percent-encoded.
         encoded_next = quote(next_url, safe="/")
 
         response = self.client.get(f"{reverse('users:login')}?next={next_url}")
@@ -211,13 +206,12 @@ class NextParamCrossLinkTests(TestCase):
         self.assertContains(response, f'href="{reverse("users:register")}"')
 
     def test_login_and_register_pages_never_leak_the_next_param_comment(self):
-        # 2026-09-11, live-reported: a {# ... #} comment explaining the
-        # ?next= forwarding above rendered as literal visible text in
-        # production on both pages - Django's {# #} tag cannot span
-        # multiple lines (undocumented outside a doc note easy to miss),
-        # so the multi-line version silently fell through as plain text
-        # instead of being parsed as a comment. Fixed with {% comment %}
-        # instead, which does support multiple lines correctly.
+        # Live-reported bug: a {# ... #} comment explaining the ?next=
+        # forwarding rendered as literal visible text on both pages.
+        # Django's {# #} tag can't span multiple lines - easy to miss,
+        # barely documented - so the multi-line version fell through as
+        # plain text instead of getting parsed as a comment. Fixed by
+        # switching to {% comment %}, which does support multiple lines.
         login_response = self.client.get(reverse("users:login"))
         register_response = self.client.get(reverse("users:register"))
 

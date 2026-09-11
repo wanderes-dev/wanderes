@@ -4,10 +4,8 @@ Base Django settings for Wanderes.
 Shared by every environment. Environment-specific overrides live in
 development.py, production.py, and test.py.
 
-Per 03_SYSTEM_ARCHITETURE.md and 11_SECURITY_&_PRIVACY.md: configuration
-that differs between environments (secrets, hosts, debug flags) must come
-from environment variables, never be hardcoded, and must never be committed
-to source control.
+Anything that differs between environments - secrets, hosts, debug flags -
+comes from env vars. Never hardcode it, never commit it.
 """
 
 from datetime import timedelta
@@ -27,27 +25,17 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", default="unsafe-development-key-change-me"
 DEBUG = env.bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
-# The one canonical hostname search engines and social previews should ever
-# see (2026-09-03, SEO prep) - used to build absolute canonical/Open Graph/
-# sitemap/robots.txt URLs from a fixed value, deliberately never from
-# request.get_host(). The live service is reachable under at least three
-# hostnames (wanderes.com, www.wanderes.com, and the legacy
-# travelagent-web.onrender.com - see PROJECT_STATE.md's Phase 18 entries) -
-# echoing back whatever host a crawler happened to use would hand Google
-# duplicate-content URLs for the same page instead of one consolidated
-# signal. See core.middleware.CanonicalDomainRedirectMiddleware for the
-# matching 301 redirect that keeps this true at the HTTP level too, not
-# just in generated links.
+# The one hostname we build canonical/OG/sitemap/robots URLs from - never
+# from request.get_host(). The site answers on a few different hostnames
+# (apex, www, an old legacy one), and echoing back whatever a crawler
+# happened to hit would just hand Google duplicate-content URLs instead
+# of one clean signal. CanonicalDomainRedirectMiddleware does the matching
+# 301 at the HTTP level too.
 #
-# www.wanderes.com, not the bare apex (2026-09-03 production incident,
-# same day this setting was introduced): something outside this app -
-# confirmed live, not something in this codebase - already redirects
-# wanderes.com to www.wanderes.com. The first version of this setting
-# used the apex, and the matching middleware redirected www back to the
-# apex - an infinite loop between that external redirect and this app's
-# own, which took the entire public site down for several minutes. Do not
-# change this back to the apex without first confirming, live, that
-# nothing upstream still redirects apex to www.
+# Has to be www, not the bare apex - something outside this app already
+# redirects the apex to www, and pointing this the other way caused a
+# real infinite-redirect outage once. Don't flip this back without
+# confirming live that nothing upstream still redirects apex -> www.
 SITE_DOMAIN = env("SITE_DOMAIN", default="www.wanderes.com")
 
 INSTALLED_APPS = [
@@ -57,8 +45,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # Required by django-allauth (SITE_ID below) - not otherwise used by
-    # this app, which has never needed multi-site support.
+    # django-allauth needs this (see SITE_ID below) - we don't otherwise
+    # use multi-site support.
     "django.contrib.sites",
     "core",
     "users",
@@ -68,113 +56,94 @@ INSTALLED_APPS = [
     "ai",
     "recommendations",
     "analytics",
-    # Google OAuth login (2026-09-03, direct user request). allauth is
-    # additive to the existing email/password login (users.forms.
-    # UserRegistrationForm, users.views.register/login) - it does not
-    # replace it. See the ACCOUNT_*/SOCIALACCOUNT_* settings below for how
-    # it's wired to the custom email-only User model.
+    # allauth adds Google login on top of the existing email/password flow
+    # (users.forms.UserRegistrationForm etc.) - doesn't replace it. See the
+    # ACCOUNT_*/SOCIALACCOUNT_* settings below for the wiring.
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
 ]
 
-# Custom user model (email login, no username field) — see users/models.py.
-# Must be set before the first migration; do not change once real user
-# data exists without a data migration plan.
+# Custom user model, email login, no username - see users/models.py.
+# Changing this once real users exist means a real migration plan, so
+# don't touch it casually.
 AUTH_USER_MODEL = "users.User"
 
-# django.contrib.sites requires this; only one site ever exists here. The
-# Site row's own `domain` field is kept in sync with SITE_DOMAIN by a data
-# migration (users/migrations - see its own comment for why it lives
-# there rather than in a new app just for this).
+# django.contrib.sites wants this; we only ever have one site. Its
+# `domain` field gets kept in sync with SITE_DOMAIN by a data migration
+# over in users/migrations.
 SITE_ID = 1
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    # Consolidates duplicate hostnames onto SITE_DOMAIN before anything else
-    # runs (2026-09-03, SEO prep) - deliberately placed first, right after
-    # SecurityMiddleware, so a redirect never does wasted work (session
-    # lookup, locale detection) for a request that's about to be redirected
-    # anyway. Only ever touches a small explicit allowlist of known legacy
-    # hostnames - never Render's own current healthcheck hostname - see the
-    # middleware's own docstring for why that distinction matters.
+    # Right after SecurityMiddleware on purpose - redirects legacy
+    # hostnames onto SITE_DOMAIN before session lookup/locale detection do
+    # any wasted work on a request that's about to bounce anyway. Only
+    # touches a small allowlist, never Render's healthcheck hostname (see
+    # the middleware's own docstring).
     "core.middleware.CanonicalDomainRedirectMiddleware",
-    # Serves collected static files directly from the app process (Phase 18
-    # deploy prep, 2026-08-30) - simplest option for a small app on a
-    # managed PaaS, no separate CDN/nginx needed (12_DEVELOPMENT_&_DEPLOYMENT.md
-    # §15). Must stay directly after SecurityMiddleware per whitenoise's docs.
+    # Serves collected static files straight from the app process - the
+    # simplest option for a small app on a managed PaaS, no CDN/nginx
+    # needed. Has to sit right after SecurityMiddleware per whitenoise's
+    # own docs.
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    # 2026-09-04, automatic language detection: overrides LocaleMiddleware's
-    # cookie/Accept-Language result for an authenticated visitor who has an
-    # explicit saved preference (users.User.preferred_language) - must come
-    # after AuthenticationMiddleware (needs request.user resolved) and
-    # after LocaleMiddleware (deliberately overrides its result). See the
-    # middleware's own docstring for the full reasoning.
+    # Overrides LocaleMiddleware's cookie/Accept-Language guess when a
+    # logged-in visitor has an explicit saved preference. Has to come
+    # after both AuthenticationMiddleware (needs request.user) and
+    # LocaleMiddleware (we're overriding its result).
     "core.middleware.UserLanguagePreferenceMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    # Required by django-allauth as of its 0.65 series (2026-09-03).
+    # allauth wants this as of its 0.65 series.
     "allauth.account.middleware.AccountMiddleware",
 ]
 
-# django.contrib.auth's default ModelBackend still handles the existing
-# email/password login (users.forms.UserRegistrationForm) unchanged;
-# allauth's backend is additive, only ever consulted for social logins.
+# ModelBackend still handles regular email/password login unchanged;
+# allauth's backend only gets consulted for social logins.
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 
-# django-allauth configuration (2026-09-03, Google OAuth login).
+# django-allauth config (Google OAuth login).
 #
-# The User model (users.models.User) has no username field at all - login
-# is email-only, matching how users:login/users:register already work.
-# LOGIN_URL/LOGIN_REDIRECT_URL (defined once, further below) already point
-# at users:login/users:account - allauth reads and honors both of those
-# same settings, no separate ACCOUNT_LOGIN_REDIRECT_URL needed.
+# users.models.User has no username field - login is email-only, matching
+# the existing users:login/users:register flow. LOGIN_URL/
+# LOGIN_REDIRECT_URL further below already point where we want; allauth
+# honors those same settings, no need for its own ACCOUNT_LOGIN_REDIRECT_URL.
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*"]
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 ACCOUNT_EMAIL_VERIFICATION = "none"
-# Skips allauth's own intermediate "confirm your email/finish signup" page
-# entirely for a first-time Google sign-in - the account is created
-# straight from the verified email Google already provided, matching the
-# low-friction "never make the traveler do more than necessary" pattern
-# already used elsewhere in this app (e.g. the chat's conversational
-# feedback/future-intent capture). Safe specifically because Google
-# itself only ever hands back a verified email for the "email" scope.
+# Skips allauth's own "confirm your email" interstitial for a first
+# Google sign-in - Google already handed us a verified email, no need to
+# make the traveler click through another step.
 SOCIALACCOUNT_AUTO_SIGNUP = True
-# Skips allauth's own intermediate "you are about to sign in with Google"
-# landing page - the Google button goes straight to Google's consent
-# screen, the only screen with real content the traveler needs to see.
+# Skips allauth's "you're about to sign in with Google" landing page too -
+# straight to Google's own consent screen instead.
 SOCIALACCOUNT_LOGIN_ON_GET = True
-# A traveler who already registered with email/password and later clicks
-# "Sign in with Google" using the same address should land in their
-# existing account, not hit a "this email is already in use" dead end or
-# silently create a second, disconnected account - safe to trust here
-# specifically because Google only ever returns a verified email for this
-# scope (the same reasoning as SOCIALACCOUNT_AUTO_SIGNUP above).
+# Someone who registered with email/password and later hits "Sign in with
+# Google" using the same address should land in their existing account,
+# not a "this email is already in use" dead end or a silent duplicate
+# account. Safe to trust because Google only ever returns a verified
+# email for this scope.
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
 SOCIALACCOUNT_PROVIDERS = {
     "google": {
         "SCOPE": ["profile", "email"],
         "AUTH_PARAMS": {"access_type": "online"},
-        # Configured entirely from settings/env vars, never a DB-stored
-        # SocialApp row via the admin - matches this project's existing
-        # pattern for every other external provider (OPENAI_API_KEY,
-        # CLIMATE_PROVIDER, etc.). Both real values are a manual step tied
-        # to the user's own Google Cloud Console project - see
-        # DECISIONS_PENDING.md and .env.example for what's needed and
-        # where to get it. Left blank, Google login simply isn't offered
-        # as a working option yet; nothing else about the app depends on
-        # these being set.
+        # Configured from env vars, not a DB-stored SocialApp row - same
+        # pattern as every other provider setting here. Real values are a
+        # manual step on the user's own Google Cloud project (see
+        # DECISIONS_PENDING.md); left blank, the Google button just
+        # doesn't show up.
         "APP": {
             "client_id": env("GOOGLE_OAUTH_CLIENT_ID", default=""),
             "secret": env("GOOGLE_OAUTH_CLIENT_SECRET", default=""),
@@ -206,8 +175,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-# PostgreSQL is the source of truth for persistent business data.
-# See 04_DATABASE_DESIGN.md.
+# Postgres is where the real data lives.
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
@@ -215,8 +183,8 @@ DATABASES = {
     )
 }
 
-# Redis supports caching, rate limiting, and background job queues.
-# It is never used as the source of truth for persistent business data.
+# Redis handles caching, rate limiting, and the job queue - never a source
+# of truth for anything we'd be sad to lose.
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 
 CACHES = {
@@ -233,30 +201,23 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 
-# Climate cache pre-warming (2026-09-02, direct user request following a
-# real reported timeout - see integrations.tasks.warm_climate_cache for
-# the full reasoning). A plain timedelta schedule rather than a crontab -
-# "every 3 days" regardless of calendar day, comfortably inside the
-# climate provider's own 7-day cache TTL so a real user request should
-# never hit a cold cache in normal operation. Uses Celery's built-in
-# beat_schedule (no django-celery-beat dependency) since a single fixed
-# schedule needs no runtime-editable UI. Run via the worker process
-# itself (`celery worker -B`, see docker-compose.yml/render.yaml) rather
-# than a separate beat service - correct only as long as exactly one
-# worker instance is running; a second instance would double-schedule
-# this task. Revisit if the worker is ever scaled beyond one instance.
+# Climate cache pre-warming - see integrations.tasks.warm_climate_cache
+# for why. Plain timedelta, not a crontab: "every 3 days" regardless of
+# calendar day, comfortably inside the 7-day cache TTL so a real request
+# shouldn't hit a cold cache. No django-celery-beat needed for one fixed
+# schedule. Runs inside the worker process itself (`celery worker -B`) -
+# fine with exactly one worker instance, but a second one would
+# double-schedule this. Revisit if we ever scale the worker out.
 CELERY_BEAT_SCHEDULE = {
     "warm-climate-cache": {
         "task": "integrations.tasks.warm_climate_cache",
         "schedule": timedelta(days=3),
     },
-    # 2026-09-09: recomputes analytics.models.DailyProductMetrics for
-    # yesterday (UTC) - a fixed daily time (crontab), unlike the interval
-    # schedule above, since "once a day" genuinely means a specific time
-    # here, not "every N days from whenever the worker last restarted."
-    # May occasionally queue behind warm-climate-cache's up-to-90-minute
-    # runtime on the free-tier worker's 2-concurrency limit - accepted,
-    # not a guaranteed-exact-time job (Celery queues, doesn't drop).
+    # Recomputes yesterday's DailyProductMetrics. Crontab, not an interval
+    # - "once a day" here means a specific time, not just N days since the
+    # worker last restarted. Can queue behind warm-climate-cache on the
+    # free tier's 2-concurrency limit; fine, Celery queues rather than
+    # drops, this was never meant to be exact-time.
     "refresh-daily-product-metrics": {
         "task": "analytics.tasks.refresh_daily_metrics",
         "schedule": crontab(hour=2, minute=0),
@@ -270,18 +231,13 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# 2026-09-04, direct user request: "quero que vc coloque traduçao na
-# pagina para EN / PT / ES / DE / IT / FR" - the product was built
-# translation-ready from day one (2026-08-29 decision) specifically so
-# this would be a translation/config task, not a refactor. English stays
-# the default (LANGUAGE_CODE, and what an unrecognized Accept-Language
-# falls back to) - LocaleMiddleware then picks a language per request
-# from the switcher's cookie or the browser's Accept-Language header.
+# English stays the default (LANGUAGE_CODE, and the fallback for an
+# unrecognized Accept-Language) - LocaleMiddleware picks a language per
+# request from the switcher's cookie or the browser header.
 #
-# Names are each language's own native name, not translated into
-# whichever language happens to be active - a Portuguese speaker landing
-# on an English page needs to recognize "Português" in the switcher
-# without first being able to read English.
+# Names below are each language's own native name, not translated into
+# whatever's currently active - someone landing on an English page still
+# needs to spot "Português" in the switcher.
 LANGUAGE_CODE = "en-us"
 LANGUAGES = [
     ("en", "English"),
@@ -299,10 +255,9 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
-# The compressed/hashed manifest storage (config/settings/production.py)
-# requires collectstatic to have already run, which only happens in the
-# production Docker stage - plain storage here so {% static %} works in
-# local dev/test without needing a manifest.
+# production.py's hashed-manifest storage needs collectstatic to have
+# already run, which only happens in the prod Docker stage - plain
+# storage here so {% static %} still works locally without one.
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
@@ -314,84 +269,58 @@ LOGIN_URL = "users:login"
 LOGIN_REDIRECT_URL = "users:account"
 LOGOUT_REDIRECT_URL = "users:login"
 
-# Which climate provider adapter backs integrations.climate.get_climate_provider().
-# Phase 3 decision: Open-Meteo, kept swappable per 10_EXTERNAL_INTEGRATIONS.md §3.
+# Picks the adapter behind integrations.climate.get_climate_provider().
+# Open-Meteo for now, kept swappable.
 CLIMATE_PROVIDER = env("CLIMATE_PROVIDER", default="open_meteo")
 
-# Which AI provider adapter backs ai.provider.get_ai_provider().
-# Phase 2 decision: OpenAI, kept swappable per 05_AI_DESIGN.md §10.
+# Picks the adapter behind ai.provider.get_ai_provider(). OpenAI for now,
+# kept swappable.
 AI_PROVIDER = env("AI_PROVIDER", default="openai")
 AI_MODEL = env("AI_MODEL", default="gpt-4o-mini")
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 
-# Which flight provider adapter backs integrations.flights.get_flight_provider().
-# 2026-09-02: interface scaffolded ahead of a concrete adapter (see
-# DECISIONS_PENDING.md §4) - default blank on purpose, since
-# integrations/flights/kayak.py is a deliberate skeleton, not a working
-# adapter yet (KAYAK's API needs manual business approval Wanderes doesn't
-# have). get_flight_provider() raises a clear, friendly error if something
-# tries to use this before it's set.
+# Picks the adapter behind integrations.flights.get_flight_provider().
+# Blank on purpose - integrations/flights/kayak.py is still a skeleton
+# (KAYAK's API needs manual business approval we don't have yet).
+# get_flight_provider() raises a friendly error if something tries to use
+# this before it's set.
 FLIGHT_PROVIDER = env("FLIGHT_PROVIDER", default="")
 
-# Which hotel provider adapter backs integrations.hotels.get_hotel_provider().
-# 2026-09-04: interface scaffolded ahead of a concrete adapter (see
-# DECISIONS_PENDING.md §4) - default blank on purpose, since
-# integrations/hotels/booking_com.py is a deliberate skeleton, not a
-# working adapter yet (Booking.com's Affiliate Partner Program is
-# application-reviewed and its real feed format isn't public until
-# approved). get_hotel_provider() raises a clear, friendly error if
-# something tries to use this before it's set.
+# Same idea for integrations.hotels.get_hotel_provider() -
+# integrations/hotels/booking_com.py is a skeleton too (Booking.com's
+# affiliate program is application-reviewed, real feed format isn't
+# public until approved).
 HOTEL_PROVIDER = env("HOTEL_PROVIDER", default="")
 
-# CJ Affiliate personal access token (2026-09-09) - authenticates against
-# CJ's own developer API (link/product search, commission reporting),
-# NOT Booking.com's Demand API - see documentation/10_EXTERNAL_INTEGRATIONS.md
-# §13.8: CJ program approval does not grant Booking.com Demand API
-# access, and that access was NOT confirmed as of the last check.
-# Nothing reads this setting yet - integrations/hotels/booking_com.py
-# stays the deliberate NotImplementedError skeleton it already was.
-# Default blank on purpose, same "unset means not configured, not
-# silently faked" convention as every other provider setting here.
+# CJ Affiliate personal access token - authenticates against CJ's own
+# developer API (link/product search, commission reporting). This is NOT
+# Booking.com's Demand API; CJ approval doesn't grant that. Nothing reads
+# this yet - booking_com.py stays the NotImplementedError skeleton.
 CJ_API_TOKEN = env("CJ_API_TOKEN", default="")
 
-# Your CJ Website ID / Property ID (PID) - a SEPARATE credential from
-# CJ_API_TOKEN above, tied to which registered CJ "website" a generated
-# link should be attributed to. Required by CJ's Link Search API (see
-# integrations/affiliates/cj.py) alongside the token; get it from the CJ
-# Account Manager (Account > Websites). Default blank on purpose -
-# CJAffiliateProvider raises a clear ImproperlyConfigured error rather
-# than making a call that's missing a required parameter.
+# CJ Website ID / Property ID - a separate credential from the token
+# above, tied to which registered CJ "website" a generated link gets
+# attributed to. Get it from Account > Websites in the CJ dashboard.
+# CJAffiliateProvider raises a clear config error if this is missing.
 CJ_WEBSITE_ID = env("CJ_WEBSITE_ID", default="")
 
-# Which affiliate-network adapter backs
-# integrations.affiliates.get_affiliate_network_provider() - same
-# settings-driven provider-selection pattern as AI_PROVIDER/
-# CLIMATE_PROVIDER/FLIGHT_PROVIDER/HOTEL_PROVIDER above. "cj" (CJ
-# Affiliate, 2026-09-09) is the one real, working adapter registered so
-# far - see integrations/affiliates/cj.py. This is CJ's OWN Link Search
-# API (link/product discovery + tracked deep links), NOT Booking.com's
-# Demand API (real property/price/availability search, still not
-# confirmed as granted - documentation/10_EXTERNAL_INTEGRATIONS.md
-# §13.8) - do not assume this setting unlocks live hotel search.
+# Picks the adapter behind
+# integrations.affiliates.get_affiliate_network_provider() - same pattern
+# as the other provider settings above. "cj" is the one real adapter so
+# far, using CJ's own Link Search API - still not Booking.com's Demand
+# API, don't assume this unlocks live hotel search.
 AFFILIATE_PROVIDER = env("AFFILIATE_PROVIDER", default="")
 
-# Email (2026-09-04, password reset via emailed token; provider decided
-# 2026-09-11: Purelymail - EMAIL_HOST/PORT/USE_TLS below default to its
-# real, documented, non-secret settings, see .env.example). EMAIL_HOST_USER
-# is the actual mailbox address and the real signal that credentials exist
-# - EMAIL_HOST alone is no longer enough now that it has a real default,
-# unlike EMAIL_HOST_USER/PASSWORD, which stay blank until genuinely set.
-# Without a real user, falls back to Django's console backend, which never
-# raises and never actually delivers anything, so a password-reset request
-# always succeeds from the visitor's point of view (matching Django's own
-# security convention of never revealing whether an email exists) without
-# ever failing SMTP auth against a host with no real mailbox behind it.
-# users.views' email_configured flag (mirroring google_oauth_configured)
-# keeps the "Forgot your password?" link itself hidden until this is
-# genuinely wired up, for the same reason the Google button stays hidden
-# until real OAuth credentials exist - showing a recovery flow that
-# silently can't deliver anything would be its own kind of
-# broken-in-production surprise.
+# Password-reset email, via Purelymail - EMAIL_HOST/PORT/USE_TLS below
+# default to its real settings (see .env.example). EMAIL_HOST_USER is the
+# actual signal real credentials exist, since EMAIL_HOST alone has a real
+# default now. Without a real user we fall back to Django's console
+# backend, which never raises and never delivers anything - so a
+# password-reset request still "succeeds" from the visitor's side (same
+# as Django's own never-reveal-account-existence convention) instead of
+# failing SMTP auth against a host with no mailbox behind it. The
+# "Forgot your password?" link itself stays hidden until this is
+# genuinely wired up - see email_configured in core.context_processors.
 EMAIL_HOST = env("EMAIL_HOST", default="")
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 if EMAIL_HOST and EMAIL_HOST_USER:
@@ -403,9 +332,8 @@ else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Wanderes <noreply@wanderes.com>")
 
-# django.contrib.auth's PasswordResetTokenGenerator invalidates a token
-# after this many days - 1 is deliberately short for a security-sensitive,
-# single-use link (Django's own default is 3).
+# How long a password-reset token stays valid - kept short (Django's
+# default is 3 days) since it's a single-use, security-sensitive link.
 PASSWORD_RESET_TIMEOUT = 60 * 60 * 24
 
 LOGGING = {

@@ -18,10 +18,10 @@ _CONFIGURED_PROVIDERS = {
 
 
 class GoogleButtonVisibilityTests(TestCase):
-    """The Google button must never render without real credentials
-    configured (2026-09-03) - verified live that clicking it with an
-    empty client_id redirects to Google's own "invalid_client" error
-    page, which would be a broken feature shown to real visitors."""
+    """The Google button must never render without real credentials.
+
+    Verified live: an empty client_id sends visitors to Google's own
+    "invalid_client" error page - a broken feature shown to real users."""
 
     def test_button_hidden_on_login_page_without_real_credentials(self):
         response = self.client.get(reverse("users:login"))
@@ -51,19 +51,17 @@ class AllauthUrlsTests(TestCase):
     def test_google_login_url_resolves(self):
         response = self.client.get("/accounts/google/login/")
 
-        # Not a 404 - allauth's own view handles it (redirects toward
-        # Google, or errors on the empty client_id - either way, routing
-        # itself works).
+        # Not a 404 - allauth's view handles it, whether it redirects
+        # toward Google or errors on the empty client_id. Routing works.
         self.assertNotEqual(response.status_code, 404)
 
 
 class ExistingLoginStillWorksTests(TestCase):
-    """Regression coverage for the real bug this change introduced and
-    fixed in the same pass: adding allauth.account.auth_backends.
-    AuthenticationBackend alongside ModelBackend meant login() could no
-    longer infer which backend authenticated a user created directly by
-    UserRegistrationForm.save() (no authenticate() call in that path) -
-    users/views.py's register() now passes backend= explicitly."""
+    """Regression coverage: adding allauth's AuthenticationBackend
+    alongside ModelBackend meant login() could no longer infer which
+    backend authenticated a user created directly by
+    UserRegistrationForm.save() (it never calls authenticate()) - fixed by
+    having users/views.py's register() pass backend= explicitly."""
 
     def test_register_still_logs_the_new_user_in(self):
         response = self.client.post(
@@ -90,11 +88,10 @@ class ExistingLoginStillWorksTests(TestCase):
 
 
 class SiteDomainTests(TestCase):
-    """The users.0004_configure_site_domain data migration must keep
+    """The users.0004_configure_site_domain migration must keep
     django.contrib.sites's Site row in sync with settings.SITE_DOMAIN -
-    allauth uses this Site for parts of its own URL construction, and it
-    must never silently drift back to the framework's own "example.com"
-    placeholder."""
+    allauth uses this Site for some of its own URL construction, and it
+    should never drift back to the framework's "example.com" placeholder."""
 
     def test_site_domain_matches_settings(self):
         from django.conf import settings
@@ -106,10 +103,9 @@ class SiteDomainTests(TestCase):
 
 
 class SocialSignupAnalyticsTests(TestCase):
-    """users.signals.track_social_signup mirrors users.views.register's
-    own record_event("user_registered", ...) call for the Google path -
-    allauth never touches that manual view, so there's no risk of a
-    single signup being counted twice."""
+    """track_social_signup mirrors register()'s own record_event() call
+    for the Google path - allauth never touches that manual view, so
+    there's no risk of one signup getting counted twice."""
 
     def test_records_user_registered_event_with_the_provider_as_source(self):
         user = User.objects.create_user(email="social-signup@example.com")

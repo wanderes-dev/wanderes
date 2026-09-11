@@ -47,9 +47,9 @@ class SitemapXmlTests(TestCase):
 
 
 class CanonicalUrlTests(TestCase):
-    """The canonical/OG/sitemap domain must always be settings.SITE_DOMAIN,
-    never whatever host actually served the request - the live service is
-    reachable under more than one hostname (2026-09-03, SEO prep)."""
+    """The canonical/OG/sitemap domain must always be
+    settings.SITE_DOMAIN, never whatever host actually served the request
+    - the live service is reachable under more than one hostname."""
 
     def test_canonical_link_matches_site_domain_setting(self):
         response = self.client.get("/")
@@ -65,10 +65,9 @@ class CanonicalUrlTests(TestCase):
 
 
 class RobotsMetaTagTests(TestCase):
-    """The 2026-09-03 SEO pass added an explicit noindex to every
-    login-gated, user-specific page - real SEO value there is zero, and a
-    crawler hitting one unauthenticated would only ever see a login
-    redirect anyway."""
+    """Every login-gated, user-specific page gets an explicit noindex -
+    real SEO value there is zero, and a crawler hitting one
+    unauthenticated would only ever see a login redirect anyway."""
 
     def setUp(self):
         self.user = User.objects.create_user(email="seo-tester@example.com", password="testpass123")

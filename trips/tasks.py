@@ -4,9 +4,8 @@ from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
-# Phase 15 ("Learning From Feedback") thresholds, decided with the user
-# 2026-08-29: not every piece of feedback should permanently change a
-# preference - require a consistent pattern, not a single data point.
+# Not every piece of feedback should permanently change a preference -
+# require a consistent pattern, not a single data point.
 POSITIVE_RATING_THRESHOLD = 8
 MIN_SIGNAL_COUNT = 2
 
@@ -15,22 +14,18 @@ MIN_SIGNAL_COUNT = 2
 def update_traveler_preferences_from_feedback(user_id: int) -> None:
     """Recompute a user's learned traveler preferences from all their feedback.
 
-    Triggered by trips.signals on every Feedback save. Recomputes from
-    scratch each run (rather than incrementing stored counters), which is
-    what makes this retry-safe and duplicate-processing-safe per Phase
-    15's review criteria - running it twice for the same feedback (or out
-    of order) produces the same result, not a double-counted one.
+    Triggered by trips.signals on every Feedback save. Recomputes from scratch
+    each run instead of incrementing stored counters - that's what makes it
+    retry-safe: running it twice for the same feedback (or out of order)
+    gives the same result, never a double-counted one.
 
-    Controls against the AI "silently rewriting important user
-    preferences" (also a Phase 15 review criterion):
-    - preferred_trip_types is additive only - never removes a type the
-      user set manually or that a previous run added. (Accepted edge case,
-      confirmed with the user: if they manually remove a trip type but
-      keep rating that type of destination highly, a later run can add it
-      back - not tracked as a deliberate removal.)
-    - preferred_cost_of_living is only ever set automatically if the user
-      has not already set it themselves - an explicit choice always wins
-      over an inferred one.
+    Guards against silently rewriting a user's preferences:
+    - preferred_trip_types is additive only, never removes a type the user
+      set manually or a previous run added. (If they manually remove a type
+      but keep rating that kind of destination highly, a later run can add
+      it back - a known edge case, not a bug.)
+    - preferred_cost_of_living only gets set automatically if the user
+      hasn't already set it themselves - an explicit choice always wins.
     """
     from trips.models import Feedback
     from users.models import TravelerProfile

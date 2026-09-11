@@ -1,18 +1,18 @@
 """Django models mapped onto the read-only Postgres views defined in
-analytics/warehouse/sql/ (2026-09-09, analytics/data-engineering pass).
+analytics/warehouse/sql/.
 
 Every model here is `managed = False` - Django never creates, alters, or
-drops these tables via migrate; the one migration in this app
+drops these tables via migrate. The one migration in this app
 (0003_create_warehouse_views.py) creates the underlying VIEWs directly via
-RunSQL, reading the same .sql files these models document. Mapping them
-as real Django models (rather than only raw SQL) gives a typed,
-discoverable, testable Python interface on top of the same views a `psql`
-session or a future BI tool could query directly - both paths see exactly
-the same data, since a view has no state of its own beyond its query.
+RunSQL, reading the same .sql files these models document. Mapping them as
+real Django models rather than only raw SQL gives a typed, discoverable,
+testable interface on top of the same views a `psql` session or a future
+BI tool could query directly - both see exactly the same data, since a
+view has no state beyond its query.
 
 See each .sql file's own header comment for that model's grain, primary
-key, source, business meaning, and update frequency - not repeated here to
-avoid the two documentation sources drifting apart.
+key, source, business meaning, and update frequency - not repeated here so
+the two documentation sources don't drift apart.
 """
 
 from django.db import models

@@ -34,22 +34,17 @@ from .provider import AIMessage, AIProvider, AIProviderError, get_ai_provider
 
 logger = logging.getLogger(__name__)
 
-# Renamed from MAX_EXPLAINED_CANDIDATES and bumped 5 -> 10 (2026-09-02,
-# direct user request: cap recommendations at 10 "no maximo" so token
-# spend and the number of options a traveler has to sift through both
-# stay bounded, even against the 384-destination catalog now capable of
-# returning dozens of matches on a single broad trip_type). One constant
-# governs both how many candidates the AI ever sees/explains and how many
-# recommendation cards ever reach the UI, kept in sync deliberately - see
-# stream_travel_recommendation, which slices `results` to this exactly
-# once before either consumer sees them.
+# Caps how many destinations the AI ever explains and how many cards
+# reach the UI - keeps token spend and traveler cognitive load bounded
+# even against a 384-destination catalog that can return dozens of
+# matches on a broad trip_type. One constant governs both, kept in sync
+# on purpose - stream_travel_recommendation slices `results` down to this
+# exactly once.
 MAX_RECOMMENDATIONS = 10
 FEEDBACK_TAG_KEYS = {key for key, _label in FEEDBACK_TAG_CHOICES}
-# Derived from travel.models rather than hardcoded here a second time -
-# these used to be an independent copy of the choices list, which could
-# silently desync from the actual Destination.trip_type/cost_of_living
-# choices (found in a 2026-09-02 review). travel.models is the canonical
-# source since it owns the destination catalog these fields describe.
+# Pulled from travel.models rather than duplicated here - a standalone
+# copy of these choices drifted out of sync with the real model once
+# already, so travel.models stays the one source of truth.
 TRIP_TYPE_CODES = [code for code, _label in TRIP_TYPE_CHOICES]
 CONTINENT_CODES = [code for code, _label in CONTINENT_CHOICES]
 MAX_COST_OF_LIVING_TIER = len(COST_OF_LIVING_CHOICES)
@@ -449,24 +444,16 @@ INTENT_SCHEMA = {
     },
 }
 
-# 2026-09-06 structural fix, round 2: min_temp_c/max_temp_c/max_cost_of_living
-# are extracted a SECOND time here, from the current message ALONE - no
-# conversation history at all - and that result overwrites whatever
-# INTENT_SCHEMA's own combined call produced for these same three fields
-# (see the call site in stream_travel_recommendation). The regex-based
-# sanitize_reply_for_context() (ai/memory.py) closes the exact "AI repeats
-# its own literal numbers" vector, but live testing found the model can
-# still reconstruct a similar climate/budget assumption from destination
-# names/descriptions alone once history is involved at all (e.g. "Phuket"
-# implies warmth via general knowledge, no digits needed). Giving this
-# extraction no history whatsoever makes that structurally impossible,
-# not just discouraged by instruction - two separate attempts to fix this
-# by strengthening INTENT_EXTRACTION_SYSTEM_PROMPT's own history-handling
-# instructions were tried and reverted (see DEVELOPMENT_LOG.md) after each
-# one broke a different, previously-correct case. Multi-turn combining
-# ("praia" -> "orçamento baixo" across turns) is preserved via
-# ai.memory.update_climate_budget()'s accumulator, not by this call
-# remembering anything itself.
+# min_temp_c/max_temp_c/max_cost_of_living get extracted a second time
+# here, from the current message alone, no history - overwrites whatever
+# INTENT_SCHEMA's combined call produced for the same three fields (see
+# the call site below). sanitize_reply_for_context() in ai/memory.py
+# stops the model from repeating its own literal numbers back, but it
+# could still infer warmth from a destination name alone once history was
+# in play at all ("Phuket" implies warm, no digits needed) - prompt
+# tweaks to fix that kept breaking other cases, so this call just gets no
+# history to work with, full stop. Multi-turn combining still works
+# through ai.memory.update_climate_budget()'s accumulator instead.
 CLIMATE_BUDGET_SCHEMA = {
     "name": "climate_budget_signal",
     "strict": True,
@@ -532,18 +519,13 @@ class OrchestrationResult:
 class StreamingOrchestrationResult:
     recommendations: list[ScoredDestination]
     reply_chunks: Iterator[str]
-    # True only for _handle_focus_destination's single-destination "choose
-    # this trip" detail reply (2026-09-08) - lets ai/views.py tell that
-    # card apart from a normal browse-stage recommendation card without
-    # re-deriving it from context, so it can show "Save this trip" instead
-    # of "Choose this trip" for exactly this one response.
+    # True only for the single-destination "choose this trip" detail
+    # reply - lets ai/views.py show "Save this trip" instead of "Choose
+    # this trip" for that one response without re-deriving it from context.
     is_destination_detail: bool = False
-    # The deterministic constraints behind `recommendations` (2026-09-09,
-    # analytics pass) - populated only on the successful recommendation
-    # path below, so ai/views.py can enrich the recommendation_generated
-    # analytics event with more than a bare count without ai/views.py
-    # needing to know anything about intent extraction itself. None
-    # everywhere else (every other branch has no such constraints).
+    # The deterministic filters behind `recommendations`, so ai/views.py
+    # can enrich its analytics event without knowing anything about intent
+    # extraction. None on every other branch (nothing to report).
     recommendation_constraints: dict | None = None
 
 
@@ -560,57 +542,39 @@ def stream_travel_recommendation(
     """Handle one chat message: a recommendation request, feedback about a
     past visit, a stated future travel intention, or an off-topic message.
 
-    Pipeline (09_AI_ORCHESTRATION.md §3): Intent Understanding -> (per type)
-    Travel Data + Rules & Constraints -> Recommendation Scoring -> AI
-    Reasoning (streamed), OR direct persistence + a templated acknowledgment
-    for feedback/future_intent - those don't need a second AI call. This is
-    the core orchestration logic; get_travel_recommendation() is a
-    non-streaming convenience wrapper around it.
+    Pipeline: intent extraction -> (per type) travel data + constraints ->
+    scoring -> a streamed AI explanation, OR for feedback/future_intent, a
+    direct save plus a templated reply (no second AI call needed).
+    get_travel_recommendation() is just a non-streaming wrapper around
+    this.
 
-    Conversation memory (09_AI_ORCHESTRATION.md §7, added 2026-08-30): prior
-    turns for this conversation (see ai.memory) are loaded and passed to
-    intent extraction, so a short follow-up reply - "someday between
-    september and october" answering an earlier "what month?" - can be
-    understood in context instead of being (mis)classified in isolation.
-    `session_key` identifies an anonymous visitor's conversation (there is
-    no other stable identity for them); authenticated users are identified
-    by their account instead, regardless of session. Every branch below
-    appends its own (message, reply) turn before returning, including
-    failure/fallback paths, so the next message still has full context.
-    This is deliberately conversation *context* only (what's needed to
-    understand the current exchange) - not persistent traveler memory,
-    which continues to mean TravelerProfile/Feedback/TravelHistoryEntry.
+    Loads prior turns for this conversation (ai.memory) and feeds them to
+    intent extraction, so a short reply like "sometime in fall" answering
+    an earlier "what month?" gets understood in context instead of judged
+    alone. `session_key` identifies an anonymous visitor; logged-in users
+    go by account instead. Every branch appends its own turn before
+    returning, failures included, so the next message still has context.
+    This is short-term conversation context only, not the persistent
+    profile/feedback/history data.
 
-    Recommendation philosophy (decided 2026-08-29, Phase 11 review): a real
-    user will ask for things this system has no deterministic model for
-    (e.g. "romantic", "family-friendly"). Rather than trying to predict
-    every such category in advance, unmatched dimensions are deliberately
-    left for the AI to reason about using its own general knowledge - see
-    the "do not force-fit" instruction in INTENT_EXTRACTION_SYSTEM_PROMPT.
-    What this function does do is *log* those cases (and genuine failures),
-    so real usage can inform which dimensions are worth formalizing later
-    - "the profile should grow organically as the product learns" applies
-    here too, not just to TravelerProfile.
+    Recommendation philosophy: people ask for things we have no
+    deterministic model for ("romantic", "family-friendly"). Rather than
+    trying to enumerate every such category, those dimensions get left for
+    the AI to reason about with its own general knowledge - see the "do
+    not force-fit" instruction below. We just log those cases so real
+    usage can tell us what's actually worth formalizing later.
 
-    `history_override` (2026-09-02, saved-conversations feature): when the
-    caller is continuing a conversation already persisted in
-    ai.models.SavedConversation, it passes that conversation's own stored
-    messages here instead of relying on ai.memory's Redis-backed short-term
-    context - the persisted conversation is a strictly more complete and
-    durable source of truth for it than Redis's 30-minute TTL bucket, so
-    this function skips reading *and writing* ai.memory entirely for that
-    call, leaving Redis memory exclusively for conversations that are not
-    (or not yet) saved.
+    `history_override`: when the caller is continuing an already-saved
+    conversation, it passes that conversation's own stored messages here
+    instead of pulling from ai.memory's Redis-backed short-term cache -
+    the saved copy is the more complete source of truth, so this skips
+    reading and writing Redis for that call entirely.
 
-    `focus_destination_slug` (2026-09-08, "choose this trip" flow): set
-    only by the chat page's "Choose this trip" button, which already knows
-    the exact destination (it built the card), so this bypasses intent
-    extraction entirely rather than asking the AI to re-guess which
-    destination "tell me more" refers to from free text - deterministic
-    where the answer is already known, the same principle behind every
-    hard constraint in recommendations.scoring. A bogus/stale slug (e.g. a
-    card from an expired conversation) falls straight through to normal
-    message handling below, exactly as if this had never been sent.
+    `focus_destination_slug`: set only by the "Choose this trip" button,
+    which already knows the destination, so this skips intent extraction
+    and goes straight there instead of asking the AI to re-guess what
+    "tell me more" refers to. A stale/bogus slug just falls through to
+    normal message handling, as if it were never sent.
     """
     ai_provider = ai_provider or get_ai_provider()
     profile = _traveler_profile(user)
@@ -649,14 +613,11 @@ def stream_travel_recommendation(
         _remember(FALLBACK_REPLY)
         return StreamingOrchestrationResult([], iter([FALLBACK_REPLY]))
 
-    # Checked before message_type branching - a request to recall what was
-    # already said (2026-09-03, QA finding: "voltando, quais praias você
-    # tinha sugerido?" got a freshly re-run search sharing only 1 of 3
-    # destinations with what was actually suggested earlier, instead of
-    # actually recalling it) is orthogonal to message_type and takes
-    # priority over it, since re-running generate_recommendations() here
-    # would defeat the point - the traveler is asking about what's already
-    # in the conversation, not asking for anything new.
+    # Checked before message_type branching - a request to recall what we
+    # already said is orthogonal to message_type, and re-running
+    # generate_recommendations() here would defeat the point: the
+    # traveler's asking about the conversation, not asking for anything
+    # new.
     if intent["is_recall_request"]:
         recall_messages = _build_recall_messages(message, history)
         recall_reply = _stream_ai_reply(
@@ -668,22 +629,16 @@ def stream_travel_recommendation(
         )
         return StreamingOrchestrationResult([], recall_reply)
 
-    # Checked next, also before message_type branching (2026-09-03 QA
-    # finding: a bare informational visa question got a self-contradicting
-    # answer from pure general knowledge - the real CountryEntryRequirement
-    # data was never consulted outside the recommendation-explanation
-    # path). Takes priority over message_type the same way is_recall_request
-    # does, since the question IS the point of the message regardless of
-    # how the classifier's message_type field happened to land.
+    # Same idea, checked next - a visa/entry question is the point of the
+    # message no matter what message_type came back as, and needs the
+    # real CountryEntryRequirement data, not pure general knowledge.
     if intent["is_visa_or_entry_question"]:
         visa_messages = _build_visa_question_messages(message, intent, profile, history)
-        # temperature=0 (2026-09-03 QA re-test finding): with the provider's
-        # default temperature, this call sometimes contradicted its own
-        # verified CountryEntryRequirement data handed to it in the prompt
-        # (e.g. stating a visa was required for a nationality the dataset
-        # explicitly excludes) - a faithful-transcription task, not a
-        # creative one, so unlike every other _stream_ai_reply call here,
-        # variety is actively undesirable.
+        # temperature=0 - default temperature let this contradict the
+        # verified data we handed it in the prompt now and then (e.g.
+        # claiming a visa's required for a nationality the data excludes).
+        # This is transcription, not creative writing - no reason to let
+        # it vary.
         visa_reply = _stream_ai_reply(
             visa_messages,
             message,
@@ -694,12 +649,9 @@ def stream_travel_recommendation(
         )
         return StreamingOrchestrationResult([], visa_reply)
 
-    # Checked next (2026-09-03 QA finding: 9 of 10 flight/hotel booking
-    # tests never mentioned that booking isn't an actual feature, only 1
-    # did - inconsistent rather than reliably honest). Forces the
-    # disclosure to always happen for an explicit booking request, instead
-    # of leaving it to whichever path the message would otherwise fall
-    # into (which had no instruction to mention it at all).
+    # Forces the "we can't actually book anything" disclosure for an
+    # explicit booking request - leaving it to whatever path the message
+    # would otherwise land in meant it got mentioned inconsistently.
     if intent["is_booking_request"]:
         booking_messages = _build_booking_request_messages(message, history)
         booking_reply = _stream_ai_reply(
@@ -711,14 +663,9 @@ def stream_travel_recommendation(
         )
         return StreamingOrchestrationResult([], booking_reply)
 
-    # Checked next (2026-09-07, direct request: the AI should proactively
-    # offer to show a video of a recommended place, and honor it when the
-    # traveler asks or agrees) - same "independent of message_type, handled
-    # with real verified data, never invented" pattern as the three checks
-    # above. Deliberately no live search fallback when nothing is on file
-    # for the resolved country (direct user decision, 2026-09-07) - a
-    # fabricated/guessed video link would be worse than admitting we don't
-    # have one yet, same principle already applied to entry requirements.
+    # Same pattern again for video requests/offers - real data only, no
+    # live search fallback when nothing's on file. A guessed video link
+    # would be worse than just admitting we don't have one.
     if intent["is_video_request"]:
         video_messages = _build_video_reply_messages(message, intent, history)
         video_reply = _stream_ai_reply(
@@ -730,17 +677,11 @@ def stream_travel_recommendation(
         )
         return StreamingOrchestrationResult([], video_reply)
 
-    # Checked next (2026-09-07, direct user report: "ELE NAO me responde so
-    # fica indicando cidade" - asking "mas o que tem de bom pra fazer la?"
-    # about an already-established destination kept getting forced into
-    # _build_explanation_messages's destination-comparison-table format
-    # instead of an actual answer). This bypasses generate_recommendations()
-    # and the table-building machinery entirely - per the already-approved
-    # recommendation philosophy (2026-08-29: for anything the deterministic
-    # scoring model doesn't cover, the AI answers from its own general
-    # knowledge rather than the app trying to model every category),
-    # activities/things-to-do at a place is exactly this kind of question,
-    # not a "where should I go" request.
+    # "What's good to do there?" about a place already in the
+    # conversation kept getting forced into the destination-comparison
+    # table instead of a real answer. This skips generate_recommendations()
+    # entirely and lets the AI just answer from general knowledge - it's
+    # not a "where should I go" question.
     if intent["is_activity_question"]:
         activity_messages = _build_activity_question_messages(message, intent, history)
         activity_reply = _stream_ai_reply(
@@ -755,11 +696,8 @@ def stream_travel_recommendation(
     message_type = intent["message_type"]
 
     if message_type == "off_topic":
-        # Real AI reply (2026-08-30, direct user feedback: this returning
-        # the exact same fixed sentence for every unrelated message - even
-        # "are you an AI?" - was the clearest sign the assistant "doesn't
-        # feel like an AI, just an if/else". SYSTEM_PROMPT already tells it
-        # how to handle this naturally; just hand it the message.
+        # A real AI reply, not a canned one - SYSTEM_PROMPT already knows
+        # how to handle this naturally, just hand it the message.
         off_topic_messages = _build_off_topic_messages(message, history)
         off_topic_reply = _stream_ai_reply(
             off_topic_messages,
@@ -772,11 +710,8 @@ def stream_travel_recommendation(
 
     if message_type == "feedback":
         # Same pattern as future_intent below - _handle_feedback returns
-        # None specifically for a real destination our curated catalog
-        # doesn't have (2026-09-02 review: this used to be the one
-        # remaining canned "I don't have it, but I've noted it" dead end,
-        # inconsistent with the fix already applied to future_intent for
-        # the identical underlying situation).
+        # None for a real destination our catalog doesn't have, and gets
+        # the same real-reply treatment instead of a dead-end note.
         quick_feedback_reply = _handle_feedback(
             intent, user=user, message=message, history=history, ai_provider=ai_provider
         )
@@ -797,16 +732,11 @@ def stream_travel_recommendation(
         return StreamingOrchestrationResult([], unrecognized_feedback_reply)
 
     if message_type == "future_intent":
-        # _handle_future_intent returns None specifically when the named
-        # destination is real but not in our curated catalog - there's no
-        # Destination row to attach a Trip to (never invent catalog data,
-        # 05_AI_DESIGN.md §7), but per direct user feedback 2026-09-02 ("se
-        # nao estiver no catalogo ele deve usar o conhecimento da IA" - a
-        # bare "I don't have it in my catalog, but I've noted it" reply
-        # was unhelpful and contradicted the Phase 11 recommendation
-        # philosophy) that case now gets a real AI reply from general
-        # knowledge instead of a canned acknowledgment, same as an
-        # unmatched recommendation request already does.
+        # _handle_future_intent returns None when the destination is real
+        # but not in our catalog - no row to attach a Trip to. That case
+        # gets a real AI reply from general knowledge instead of a flat
+        # "I don't have it, but noted" - same treatment as an unmatched
+        # recommendation request gets.
         quick_reply = _handle_future_intent(
             intent, user=user, message=message, history=history, ai_provider=ai_provider
         )
@@ -826,43 +756,27 @@ def stream_travel_recommendation(
         )
         return StreamingOrchestrationResult([], unrecognized_reply)
 
-    # message_type == "recommendation" (also the safe default/fallback).
-    # No clarification gate here on purpose (removed 2026-08-30, per direct
-    # user feedback): a real user will rarely state every dimension in one
-    # message, and should never be blocked from a real answer for it -
-    # month is defaulted below if missing, and every other field already
-    # treats "unspecified" as "not relevant" rather than "missing".
+    # message_type == "recommendation", also the safe fallback. No
+    # clarification gate here on purpose - people rarely state every
+    # dimension in one message and shouldn't be blocked from an answer for
+    # it; month gets defaulted below, and every other field treats
+    # "unspecified" as "not relevant," not "missing."
     #
-    # min_temp_c/max_cost_of_living are strong signals on their own - a
-    # traveler rarely states an explicit temperature or budget without
-    # real intent, so either one alone is enough to search immediately.
-    # trip_type alone now also counts on its own (2026-09-02, direct user
-    # feedback on a real transcript: asking for beach destinations with no
-    # other detail kept getting an endless gathering quiz instead of any
-    # answer - "a prioridade da IA deve ser sempre responder a pergunta do
-    # usuario quando for cabivel" / the AI's priority should always be to
-    # answer the user's question when feasible). This deliberately
-    # reopens a narrower 2026-08-31 decision (trip_type required a
-    # co-stated month too, reacting to "gosto de praias" jumping to
-    # suggestions when the 18-destination catalog gave almost nothing to
-    # differentiate by) - the catalog is 384 destinations now (2026-09-02
-    # expansion), so trip_type alone is real, meaningful signal again, not
-    # a near-unfiltered dump. A bare month (stated or defaulted) or an
-    # exclusion alone still isn't enough on its own - the 2026-08-31 fix
-    # for "throwing destinations in the user's face" off a bare "help me
-    # plan a year-end trip" still applies, since neither of those actually
-    # differentiates anything by itself the way a trip_type does. Route
-    # through the same AI-judgment "ask a genuine follow-up, or suggest if
-    # they've explicitly invited a guess" path used for a fully blank
-    # opener, unless there's actually enough to differentiate on.
+    # min_temp_c/max_cost_of_living are strong enough signals alone to
+    # search immediately - nobody states a temperature or budget without
+    # meaning it. trip_type alone counts too now that the catalog's big
+    # enough (384 destinations) for it to actually differentiate results,
+    # rather than dumping most of the catalog back. A bare month or an
+    # exclusion alone still isn't enough by itself - neither one narrows
+    # things down the way a trip_type does, so those still route through
+    # the same "ask a real follow-up, or suggest if invited to guess" path
+    # as a blank opener.
     #
-    # min_temp_c/max_temp_c/max_cost_of_living are re-derived here from
-    # THIS message alone (2026-09-06 structural fix, round 2 - see
-    # CLIMATE_BUDGET_SYSTEM_PROMPT), overwriting whatever the combined
-    # extraction above produced for these three fields, and merged with
-    # whatever this conversation already had accumulated so a real
-    # multi-turn preference still combines across turns even though this
-    # extraction itself never sees history.
+    # min_temp_c/max_temp_c/max_cost_of_living get re-derived here from
+    # this message alone (see CLIMATE_BUDGET_SYSTEM_PROMPT), overwriting
+    # whatever the combined extraction above produced, then merged with
+    # whatever the conversation already had - so a real multi-turn
+    # preference still combines even though this call never sees history.
     climate_budget = _extract_climate_budget_signal(
         message, ai_provider=ai_provider, conversation_key=conv_key
     )
@@ -899,18 +813,14 @@ def stream_travel_recommendation(
         )
         return StreamingOrchestrationResult([], open_ended_reply)
 
-    # Confirm profile-derived context before suggesting anything (2026-09-02,
-    # direct user request: "IA must always confirm this information with the
-    # user before suggest any destination") - stored TravelerProfile details
-    # could be stale for THIS trip (a solo traveler last time, a group now;
-    # an old budget), so they're never used to shape a suggestion silently.
-    # Gated to once per conversation via a small Redis flag (separate from
-    # ai.memory's own turn history, and computed the same way regardless of
-    # history_override, so saved conversations get this exactly once too) -
-    # asking every single message would reintroduce the friction this
-    # module has deliberately removed everywhere else; the next message
-    # proceeds straight to real suggestions regardless of how the traveler
-    # answered, matching that same low-friction philosophy.
+    # Confirm profile-derived context before suggesting anything - a
+    # saved TravelerProfile could be stale for this particular trip (solo
+    # last time, a group now; an old budget), so we never use it to shape
+    # a suggestion silently. Gated to once per conversation via a small
+    # Redis flag, separate from the turn history - asking every message
+    # would bring back the friction this module has otherwise removed.
+    # The next message goes straight to real suggestions no matter how
+    # the traveler answered.
     confirmation_key = memory.conversation_key(user=user, session_key=session_key)
     if _has_confirmable_profile_data(profile) and not memory.is_profile_confirmed(confirmation_key):
         memory.mark_profile_confirmed(confirmation_key)
@@ -950,13 +860,10 @@ def stream_travel_recommendation(
             intent["continent"],
             intent["country"],
         )
-        # Rather than a dead-end canned reply, let the AI try to actually
-        # help - reason from its own general knowledge (same recommendation
-        # philosophy already approved for vibes our deterministic model
-        # doesn't cover, Phase 11), treating whichever constraint made
-        # everything unmatchable as relaxable rather than blocking (direct
-        # user feedback, 2026-08-30: never just ask for more when the app
-        # can attempt a real answer instead).
+        # Rather than a dead end, let the AI actually try to help - reason
+        # from general knowledge, same as it does for vibes the
+        # deterministic model doesn't cover, treating whatever constraint
+        # made everything unmatchable as relaxable rather than a wall.
         no_match_messages = _build_no_matches_messages(message, intent, history, profile)
         no_match_reply = _stream_ai_reply(
             no_match_messages,
@@ -967,14 +874,11 @@ def stream_travel_recommendation(
         )
         return StreamingOrchestrationResult([], no_match_reply)
 
-    # Capped once, here, before either consumer (the AI's own prompt and
-    # ai/views.py's recommendation cards) ever sees `results` - 2026-09-02,
-    # direct user request, since a broad trip_type-only match (the same-day
-    # fix a few entries above) can now return dozens of real candidates
-    # against the 384-destination catalog. total_matches (the real,
-    # uncapped count) is kept so the explanation can honestly tell the
-    # traveler there's more available if they narrow the request further,
-    # rather than silently presenting 10 as if that were the whole story.
+    # Capped once, here, before either the AI's prompt or the UI cards see
+    # `results` - a broad trip_type-only match can return dozens of real
+    # candidates. total_matches keeps the real, uncapped count so the
+    # explanation can honestly say there's more available, rather than
+    # presenting 10 as the whole story.
     total_matches = len(results)
     results = results[:MAX_RECOMMENDATIONS]
 
@@ -1016,17 +920,13 @@ def _handle_focus_destination(
     remember,
     conversation_key: str | None = None,
 ) -> StreamingOrchestrationResult:
-    """The "choose this trip" detail path (2026-09-08): the traveler
-    already picked one specific destination from a browse-stage
-    recommendation card, so there's nothing left to search for or rank -
-    just a real, grounded conversation about this one place, using fields
-    (best_season/worst_season/short_description/points_of_interest) the
-    generic explanation path never surfaces (see _build_explanation_messages
-    above, which only ever sends name/country/avg_high_c/cost_of_living/
-    trip_type). "Save this trip" only becomes available in the UI once this
-    reply comes back (ai/views.py keys off StreamingOrchestrationResult.
-    is_destination_detail) - deterministic, not an AI judgment call about
-    whether the traveler "seems ready."""
+    """The "choose this trip" detail path: the traveler already picked one
+    destination from a browse-stage card, so there's nothing left to
+    search or rank - just a real, grounded conversation about this one
+    place, using fields (best_season/short_description/points_of_interest)
+    the generic explanation path never sends. "Save this trip" only shows
+    up once this reply comes back (ai/views.py checks
+    is_destination_detail) - deterministic, not an AI judgment call."""
     climate_provider = climate_provider or get_climate_provider()
     try:
         summary = climate_provider.get_monthly_climate(
@@ -1123,27 +1023,22 @@ def _stream_ai_reply(
     temperature: float | None = None,
     conversation_key: str | None = None,
 ) -> Iterator[str]:
-    """Stream one AI reply, saving the full text to conversation memory once
-    fully produced (or on a mid-stream failure) - shared by both the normal
-    recommendation-explanation path and the no-matches path above, since
-    both need the same streaming/fallback/memory behavior.
+    """Stream one AI reply, saving the full text to memory once it's done
+    (or fails partway) - shared by every branch above, they all need the
+    same streaming/fallback/memory behavior.
 
-    temperature defaults to None (the provider's own default) for every
-    existing caller - variety is fine, sometimes preferred, in a normal
-    explanation or open-ended suggestion. Pass 0 only for a call whose job
-    is to faithfully relay already-verified facts rather than write
+    temperature stays None (provider default) for most callers - some
+    variety is fine or even good in a normal explanation. Pass 0 only when
+    the job is faithfully relaying already-verified facts, not writing
     creatively (see the visa-question caller).
 
-    2026-09-09: the sole call site of AIProvider.stream_reply in this
-    codebase - wrapping it here with track_llm_call covers every branch
-    (recall/visa/booking/video/activity/off-topic/feedback/future-intent/
-    explanation/focus-destination/etc.) for free. If the caller abandons
-    the stream early (e.g. a client disconnect), Python raises
-    GeneratorExit at the yield point below - that's not an Exception
-    subclass, so track_llm_call's own except clause doesn't catch it and
-    no event gets recorded for that turn, same as if this instrumentation
-    didn't exist; the pre-existing `finally: remember(...)` below still
-    always runs regardless."""
+    This is the only place in the codebase that calls
+    AIProvider.stream_reply, so wrapping it here with track_llm_call
+    covers every branch for free. A client disconnecting mid-stream raises
+    GeneratorExit, which isn't an Exception subclass, so it skips
+    track_llm_call's except clause and no event gets recorded for that
+    turn - same as if this instrumentation didn't exist. The `finally`
+    below still always runs regardless."""
     collected = []
     try:
         with track_llm_call(operation="stream_reply", conversation_key=conversation_key):
@@ -1151,18 +1046,16 @@ def _stream_ai_reply(
                 collected.append(chunk)
                 yield chunk
     except AIProviderError:
-        # A partial reply may already have been yielded before a mid-stream
-        # failure (09_AI_ORCHESTRATION.md §12: "Interrupted streams" must be
-        # handled) - appending the fallback message is an acceptable degrade
-        # rather than losing the request entirely.
+        # A partial reply may already be out there before a mid-stream
+        # failure - falling back to the generic message beats losing the
+        # request entirely.
         logger.warning("AI provider failed mid-stream. message=%r", message)
         collected.append(FALLBACK_REPLY)
         yield FALLBACK_REPLY
     finally:
-        # Runs even if the caller never fully consumes the stream (e.g. the
-        # client disconnects) - the conversation still gets whatever was
-        # produced, partial or complete, rather than silently losing this
-        # turn from memory.
+        # Runs even if the caller never finishes consuming the stream (a
+        # disconnected client, say) - the conversation still gets whatever
+        # was produced instead of silently losing the turn.
         remember("".join(collected))
 
 
@@ -1279,12 +1172,8 @@ def _handle_feedback(
 
     destination = _resolve_destination(destination_name)
     if destination is None:
-        # 2026-09-02 review: previously a canned "I don't have it in my
-        # catalog, but thanks for sharing" reply here - the same dead-end
-        # pattern already fixed for future_intent, for the identical
-        # reason (no valid Destination row exists to register the visit
-        # against - TravelHistoryEntry.destination is a real FK, and
-        # inventing one would violate 05_AI_DESIGN.md §7).
+        # Same reasoning as future_intent above - no Destination row means
+        # no real TravelHistoryEntry to register against.
         logger.info(
             "Feedback mentioned an unrecognized destination - answering from general "
             "knowledge instead of a canned note. name=%r",
@@ -1360,14 +1249,9 @@ def _handle_future_intent(
 
     destination = _resolve_destination(destination_name)
     if destination is None:
-        # 2026-09-02, direct user feedback: a canned "I don't have it in
-        # my catalog, but I've noted it" reply here was unhelpful and
-        # contradicted the Phase 11 recommendation philosophy (reason from
-        # general knowledge when the curated data doesn't cover
-        # something) - the caller now handles this with a real AI reply
-        # instead. No Trip can be persisted either way (Trip.destination
-        # is a real FK; there's no valid Destination row for it - never
-        # invent catalog data, 05_AI_DESIGN.md §7).
+        # No Destination row means no Trip can be persisted either - the
+        # caller handles this with a real AI reply from general knowledge
+        # instead of a flat "not in my catalog" note.
         logger.info(
             "Future travel intent mentioned an unrecognized destination - answering from "
             "general knowledge instead of a canned note. name=%r",
@@ -1409,38 +1293,32 @@ def _resolve_destination(name: str):
 def _history_messages(history: list[dict] | None) -> list[AIMessage]:
     """Turn stored conversation-memory turns (ai.memory) into AIMessages.
 
-    Shared by every AI call in this module, not just intent extraction
-    (2026-08-31, found live: a reply-generation call given only the
-    current message - no history - had no way to tell what language the
-    conversation had been in when that message was itself ambiguous, e.g.
-    a bare destination name like "Bahia"; it silently answered in English
-    mid a Portuguese conversation). Every call the traveler can perceive
-    as part of one conversation should actually see that conversation.
+    Shared by every AI call in this module, not just intent extraction -
+    a reply-generation call given only the current message had no way to
+    tell what language the conversation was in when that message was
+    itself ambiguous (a bare "Bahia," say), and silently answered in
+    English mid-Portuguese conversation. Every call the traveler
+    experiences as part of one conversation should actually see it.
     """
     return [AIMessage(role=turn["role"], content=turn["content"]) for turn in history or []]
 
 
 def _traveler_profile(user) -> TravelerProfile | None:
-    """The signed-in traveler's profile, or None (anonymous, no profile
-    row yet, or no relevant fields set) - a cheap lookup shared by every
-    prompt builder that wants to factor in home_country/travelers_count/
-    budget (2026-09-02, direct user request to actually use this data,
-    not just collect it). Does not raise on a missing profile - the same
-    "not filled in yet" treatment every other optional field here gets."""
+    """The signed-in traveler's profile, or None for anonymous/no-profile-
+    yet - a cheap lookup shared by every prompt builder that wants
+    home_country/travelers_count/budget. Never raises on a missing
+    profile, same "not filled in yet" treatment as any other optional
+    field."""
     if user is None or not user.is_authenticated:
         return None
     return TravelerProfile.objects.filter(user=user).first()
 
 
 def _has_confirmable_profile_data(profile: TravelerProfile | None) -> bool:
-    """Whether there's anything on the traveler's profile worth confirming
-    before suggesting a destination (2026-09-02, extended 2026-09-05 to
-    also count preferred_trip_types/preferred_cost_of_living - see
-    _traveler_context_note's matching extension for why) - mirrors
-    exactly which fields _traveler_context_note below would actually
-    mention, so the confirmation gate in stream_travel_recommendation
-    never fires for a profile that has nothing to confirm in the first
-    place."""
+    """Whether there's anything on the profile worth confirming before
+    suggesting a destination - mirrors exactly what _traveler_context_note
+    below would mention, so the confirmation gate never fires for a
+    profile with nothing to confirm."""
     if profile is None:
         return False
     return bool(
@@ -1454,40 +1332,28 @@ def _has_confirmable_profile_data(profile: TravelerProfile | None) -> bool:
 
 def _traveler_context_note(profile: TravelerProfile | None, *, always_mention: bool = False) -> str:
     """A short free-text note the AI can factor into its reasoning when
-    relevant - never a hard constraint (recommendations.scoring's hard
-    filters stay message-only, per RecommendationRequest). budget_amount
-    is only ever handed over converted to an approximate USD figure
-    (2026-09-02, direct follow-up request: "budget must be always on
-    dolar... the agent must also check for this currency in dolar and
-    convert to estimate") via users.currency.convert_to_usd - never the
-    raw currency-ambiguous number, and always explicitly labeled as a
-    rough estimate rather than a precise constraint, the same "let the AI
-    reason from what's actually known, don't invent precision"
-    philosophy already applied to every other dimension in this module.
+    relevant - never a hard constraint, those stay message-only via
+    RecommendationRequest. budget_amount always goes through
+    users.currency.convert_to_usd first, never the raw currency-ambiguous
+    number, and is always labeled a rough estimate rather than a precise
+    figure - same "reason from what's actually known, don't invent
+    precision" approach as every other dimension here.
 
-    always_mention=True (2026-09-03 QA re-test finding) is for the one
-    caller - _build_profile_confirmation_messages - whose entire purpose
-    is to state these details every time, not just when "relevant"; the
-    default phrasing's "don't force it in every time" caveat is correct
-    guidance for every other caller (explanation/no-matches/open-ended,
-    where mentioning the profile unprompted really can be intrusive) but
-    directly undercut the one caller instructing the model to confirm
-    them - a live reproduction showed the profile context being silently
-    dropped from a confirmation reply that existed specifically to state
-    it."""
+    always_mention=True is for the one caller
+    (_build_profile_confirmation_messages) whose whole job is to state
+    these details every time, not just when relevant - the default
+    phrasing's "don't force it in" caveat is right for every other caller
+    but was undercutting that one, since a confirmation reply is supposed
+    to actually confirm the profile, not skip it."""
     if profile is None:
         return ""
     bits = []
     if profile.preferred_trip_types:
-        # 2026-09-05, direct user feedback: the AI claimed it had no
-        # access to the traveler's profile at all when asked, even though
-        # this exact field already existed and already influenced
-        # recommendations.scoring's deterministic preference_fit bonus -
-        # it just was never actually told to the AI itself, so it had
-        # nothing true to say about it. TRIP_TYPE_CHOICES's labels are
-        # capitalized for form display ("Beach") - lowercased here for
-        # the same reason budget_period's period_phrase below is a
-        # separate mid-sentence mapping, not the raw choice label.
+        # The AI used to claim it had no access to the profile at all,
+        # even though this field already fed recommendations.scoring's
+        # preference_fit bonus - it just was never actually told. Labels
+        # are capitalized for form display ("Beach") - lowercased here
+        # for the same mid-sentence reason as period_phrase below.
         trip_type_labels = dict(TRIP_TYPE_CHOICES)
         preferred = [
             str(trip_type_labels.get(code, code)).lower() for code in profile.preferred_trip_types
@@ -1509,11 +1375,9 @@ def _traveler_context_note(profile: TravelerProfile | None, *, always_mention: b
             f"usually travels with {profile.travelers_count} people total (including themselves)"
         )
     if profile.budget_amount and profile.budget_period and profile.budget_currency:
-        # Deliberately a separate, lowercase, mid-sentence phrasing rather
-        # than reusing BUDGET_PERIOD_CHOICES's form-label text ("Per day")
-        # directly - that capitalization only reads naturally as a select
-        # option, not inline in a sentence ("... per Per day" was the bug
-        # this local map exists to avoid).
+        # Lowercase, mid-sentence phrasing instead of reusing
+        # BUDGET_PERIOD_CHOICES's form label directly - "... per Per day"
+        # read wrong inline, this local map avoids it.
         period_phrase = {"day": "day", "week": "week", "month": "month"}.get(
             profile.budget_period, profile.budget_period
         )
@@ -1526,10 +1390,9 @@ def _traveler_context_note(profile: TravelerProfile | None, *, always_mention: b
                 "a rough estimate, not a precise constraint)"
             )
         else:
-            # Defensive fallback only - budget_currency is a fixed choices
-            # list that always matches users.currency's rate table, so
-            # this shouldn't happen in practice, but degrade gracefully
-            # rather than silently dropping the traveler's budget context.
+            # Shouldn't really happen - budget_currency always matches
+            # users.currency's rate table - but degrade gracefully instead
+            # of silently dropping the budget context.
             bits.append(
                 f"has a self-reported typical budget around {profile.budget_amount} "
                 f"{profile.budget_currency} per {period_phrase} (couldn't convert this "
@@ -1552,16 +1415,12 @@ def _entry_requirements_note(
     profile: TravelerProfile | None, destinations: list[Destination]
 ) -> str:
     """Real, verified visa-requirement facts for the traveler's own
-    nationality against each candidate destination's country - built from
-    travel.CountryEntryRequirement (2026-09-02, wiring in the table added
-    earlier the same day but deliberately left unconnected until
-    home_country existed anywhere to compare against). Deterministic
-    lookup, not AI general knowledge, per 05_AI_DESIGN.md §7 - we only
-    ever hand the model data our own dataset actually has, exactly like
-    candidates_summary below. Only meaningful for real ScoredDestination
-    candidates (a known .country); the no-matches/open-ended paths
-    suggest destinations from the AI's own knowledge instead, so there's
-    no reliable Destination row to look this up against there."""
+    nationality against each candidate's country, from
+    travel.CountryEntryRequirement. A deterministic lookup, not AI
+    knowledge - we only ever hand the model data our dataset actually
+    has. Only meaningful for real ScoredDestination candidates; the
+    no-matches/open-ended paths suggest from the AI's own knowledge
+    instead, so there's no real Destination row to check here."""
     if profile is None or not profile.home_country:
         return ""
     lines = []
@@ -1603,13 +1462,11 @@ def _extract_intent(
     messages = [AIMessage(role="system", content=INTENT_EXTRACTION_SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
     messages.append(AIMessage(role="user", content=message))
-    # temperature=0: this call's output feeds directly into deterministic
-    # application logic (which branch runs, what gets queried) - it needs
-    # to be as consistent as possible given the same conversation, not
-    # creative. Without this, the same message + history could extract
-    # different fields (e.g. month) on different calls (a real bug found
-    # live: an already-established value from one turn silently disappeared
-    # on the very next, unprompted by anything the traveler said differently).
+    # temperature=0 - this feeds straight into deterministic logic (which
+    # branch runs, what gets queried), so it needs to be consistent, not
+    # creative. Without it, the same message + history could extract a
+    # different value from one call to the next - we actually saw an
+    # already-established month silently vanish on a later turn.
     data = ai_provider.generate_structured_reply(messages, json_schema=INTENT_SCHEMA, temperature=0)
     return _validate_intent(data)
 
@@ -1617,27 +1474,21 @@ def _extract_intent(
 def _extract_climate_budget_signal(
     message: str, *, ai_provider: AIProvider, conversation_key: str | None = None
 ) -> dict:
-    """Derive min_temp_c/max_temp_c/max_cost_of_living from THIS message
-    alone - deliberately no conversation history at all. See
-    CLIMATE_BUDGET_SYSTEM_PROMPT's own comment and DEVELOPMENT_LOG.md
-    (2026-09-06) for why: a history-aware version of this extraction let
-    the model reconstruct a climate/budget assumption from destination
-    names/descriptions the AI itself had mentioned earlier, even after
-    sanitize_reply_for_context() stripped the literal numbers out of what
-    gets remembered. Giving this call no history closes that structurally
-    - not just by instruction - regardless of what the model would
-    otherwise infer."""
+    """Derive min_temp_c/max_temp_c/max_cost_of_living from this message
+    alone - no conversation history at all. A history-aware version of
+    this let the model reconstruct a climate/budget assumption from
+    destination names the AI itself had mentioned earlier, even with the
+    literal numbers stripped out. No history closes that off
+    structurally, not just by instruction."""
     messages = [
         AIMessage(role="system", content=CLIMATE_BUDGET_SYSTEM_PROMPT),
         AIMessage(role="user", content=message),
     ]
     try:
-        # Wrapped here, inside the try/except, rather than around this
-        # whole function's call site (2026-09-09) - this function already
-        # catches AIProviderError itself and degrades to an all-None
-        # signal, so the exception never propagates out; instrumenting
-        # only from outside would always record success=True even on a
-        # real provider failure.
+        # Wrapped inside the try/except, not around the call site - this
+        # function already catches AIProviderError and degrades to an
+        # all-None signal, so instrumenting from outside would always
+        # record success=True even when the provider actually failed.
         with track_llm_call(
             operation="extract_climate_budget_signal", conversation_key=conversation_key
         ):
@@ -1690,14 +1541,11 @@ def _validate_intent(data: dict) -> dict:
     data["month_was_assumed"] = False
 
     if data.get("message_type") == "recommendation" and not month_is_valid:
-        # Month is the only thing RecommendationRequest needs to look up
-        # real climate data, but a real user will rarely state every
-        # dimension in one message - rather than blocking on it (removed
-        # 2026-08-30, per direct user feedback: no field should ever gate
-        # a real answer), always default to the current month and say so
-        # transparently in the explanation, exactly like every other
-        # unspecified field (trip_type, temperature, budget) already just
-        # means "not relevant" rather than "missing".
+        # Month is the only thing RecommendationRequest needs for real
+        # climate data, but people rarely state every dimension in one
+        # message - rather than blocking on it, default to the current
+        # month and say so transparently, same as every other unspecified
+        # field just meaning "not relevant" instead of "missing."
         data["month"] = date.today().month
         data["month_was_assumed"] = True
 
@@ -1757,18 +1605,13 @@ def _clean_string_list(value) -> list:
 def _build_profile_confirmation_messages(
     message: str, profile: TravelerProfile, history: list[dict] | None = None
 ) -> list[AIMessage]:
-    """Built once per conversation, the first time there's enough signal to
-    actually suggest a destination and the traveler has relevant
-    TravelerProfile details on file (2026-09-02, direct user request: "IA
-    must always confirm this information with the user before suggest any
-    destination"). Asks the traveler to confirm or correct the
-    profile-derived context before anything gets suggested, rather than
-    silently trusting stored preferences might not still apply to this
-    trip. Only ever built once per conversation - see the
-    memory.is_profile_confirmed gate in stream_travel_recommendation - the
-    traveler's very next message proceeds straight to real suggestions no
-    matter how they answered, matching the low-friction "never block a
-    second time" philosophy the rest of this module already follows."""
+    """Built once per conversation, the first time there's enough signal
+    to suggest something and the traveler has relevant profile details on
+    file. Asks them to confirm or correct that context before anything
+    gets suggested, rather than trusting stored preferences that might not
+    apply to this trip. Only ever built once - see the
+    memory.is_profile_confirmed gate above - the next message goes
+    straight to real suggestions no matter how they answered."""
     traveler_note = _traveler_context_note(profile, always_mention=True)
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
@@ -1794,15 +1637,13 @@ def _build_profile_confirmation_messages(
 
 
 def _video_availability_note(destinations: list[Destination]) -> str:
-    """Which of these candidates' countries have a real video on file
-    (CountryEntryRequirement.videos, 2026-09-07) - lets the explanation
-    offer to show a video with actual confidence there's something real
-    behind it, rather than a blind guess that might dead-end into "sorry,
-    no video" on the very next turn. Live testing found the model rarely
-    volunteered the offer at all when it had no idea whether one existed;
-    naming a real, deliverable candidate here makes the offer both more
-    likely and more trustworthy - it's never invented, same as every
-    other note built this way (see _entry_requirements_note above)."""
+    """Which of these candidates' countries have a real video on file -
+    lets the explanation offer one with actual confidence, instead of a
+    blind guess that dead-ends into "sorry, no video" a turn later. The
+    model rarely volunteered the offer at all when it had no idea whether
+    one existed; naming a real candidate makes it both more likely to
+    offer and honest when it does, same pattern as
+    _entry_requirements_note above."""
     countries_with_videos = []
     seen_countries = set()
     for destination in destinations:
@@ -1852,10 +1693,8 @@ def _build_explanation_messages(
         profile, [r.destination for r in top_results]
     )
     video_note = _video_availability_note([r.destination for r in top_results])
-    # 2026-09-02, direct user request: when the real match count exceeds
-    # what we ever show (MAX_RECOMMENDATIONS), say so honestly rather than
-    # silently presenting the capped list as if it were everything -
-    # naming the actual number instead of a vague "there are more".
+    # When the real match count exceeds what we show, say so honestly
+    # instead of presenting the capped list as if it were everything.
     more_matches_note = (
         f"\n\nThis request actually matched {total_matches} destinations in our data - "
         f"only the top {MAX_RECOMMENDATIONS} are listed above to keep this focused. "

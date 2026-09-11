@@ -12,10 +12,10 @@ __all__ = [
 ]
 
 # Maps a short settings.AFFILIATE_PROVIDER key to the adapter that
-# implements it - same swappable-via-settings pattern as every other
-# provider interface in this app (integrations.climate.
-# get_climate_provider(), integrations.flights.get_flight_provider(),
-# integrations.hotels.get_hotel_provider(), ai.provider.get_ai_provider()).
+# implements it - same swappable-via-settings pattern as the other
+# provider interfaces (climate.get_climate_provider(),
+# flights.get_flight_provider(), hotels.get_hotel_provider(),
+# ai.provider.get_ai_provider()).
 _PROVIDER_REGISTRY = {
     "cj": "integrations.affiliates.cj.CJAffiliateProvider",
 }

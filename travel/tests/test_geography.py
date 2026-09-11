@@ -5,18 +5,17 @@ from travel.models import Destination
 
 
 class ContinentClassificationCoversEveryCuratedCountryTests(TestCase):
-    """2026-09-04, real production bug: a "Eurotrip" request's
+    """Regression test for a real bug: a "Eurotrip" request's
     recommendation cards included Bali, Marrakech, Chiang Mai, Hoi An,
-    and Ayutthaya alongside the genuinely European options, because
-    nothing classified Destination.country by continent at all.
+    and Ayutthaya right alongside the actual European options, because
+    nothing classified Destination.country by continent.
 
-    A country present in the curated catalog but missing from every
-    continent set wouldn't raise an error - countries_in_continent()
-    would just never match it, silently excluding every one of its
-    destinations from that continent's results instead of including
-    them or failing loudly. This test is the actual safety net: it must
-    be updated whenever travel/data/curated_destinations.json introduces
-    a country not already classified in travel/geography.py."""
+    A country in the curated catalog but missing from every continent
+    set wouldn't raise - countries_in_continent() would just never
+    match it, silently dropping its destinations from that continent's
+    results instead of erroring. This test is the actual safety net and
+    needs updating whenever curated_destinations.json adds a country
+    not yet classified in geography.py."""
 
     def test_every_destination_country_is_classified_in_exactly_one_continent(self):
         db_countries = set(Destination.objects.values_list("country", flat=True).distinct())

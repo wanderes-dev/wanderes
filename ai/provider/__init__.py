@@ -12,9 +12,9 @@ __all__ = [
     "get_ai_provider",
 ]
 
-# Maps a short settings.AI_PROVIDER key to the adapter that implements it,
-# so switching providers is a settings change, not an application-code
-# change - same pattern as integrations.climate's provider registry.
+# Maps a short settings.AI_PROVIDER key to the adapter implementing it, so
+# switching providers is a settings change, not a code change - same
+# pattern as integrations.climate's provider registry.
 _PROVIDER_REGISTRY = {
     "openai": "ai.provider.openai_provider.OpenAIProvider",
 }

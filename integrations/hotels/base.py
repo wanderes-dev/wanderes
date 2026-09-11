@@ -5,19 +5,15 @@ from datetime import date
 
 @dataclass(frozen=True)
 class HotelOption:
-    """Normalized hotel search result, regardless of the external
-    provider's own response shape (10_EXTERNAL_INTEGRATIONS.md §13.2 -
-    "Normalized internal representations"). Every hotel provider adapter
-    must return these, never a raw provider response, so the rest of the
-    application (scoring, the chat UI) never needs to know which provider
-    produced a given option.
+    """Normalized hotel search result, independent of the provider's own
+    response shape (§13.2). Every hotel adapter returns these, never a
+    raw provider response, so scoring/the chat UI never need to know
+    which provider produced a given option.
 
-    Deliberately does not carry a raw commission/payout figure - per
-    10_EXTERNAL_INTEGRATIONS.md §13.3, hotel options must be scored on
-    genuine fit (price, rating, location, cancellation terms), never on
-    which provider pays Wanderes more; keeping that data out of this
-    dataclass entirely is a structural guard against it ever leaking into
-    scoring - the same guard already applied to FlightOption.
+    No raw commission/payout figure on purpose - per §13.3, hotel
+    options get scored on genuine fit (price, rating, location,
+    cancellation terms), never on which provider pays Wanderes more.
+    Same structural guard as FlightOption.
     """
 
     provider: str
@@ -44,18 +40,15 @@ class HotelProviderError(Exception):
 
 
 class HotelProvider(ABC):
-    """Internal Travel Data Interface for hotel/accommodation search
-    (2026-09-04, scaffolded ahead of a concrete adapter - see
-    DECISIONS_PENDING.md §4 and 10_EXTERNAL_INTEGRATIONS.md §13 for the
-    full research/decision record this shape comes from).
+    """Internal Travel Data Interface for hotel/accommodation search -
+    scaffolded ahead of a concrete adapter (DECISIONS_PENDING.md §4, §13
+    has the full research behind this shape).
 
-    The rest of the application depends on this interface, never on a
-    specific provider's API client directly (10_EXTERNAL_INTEGRATIONS.md
-    §3) - so a concrete provider is added by implementing this interface
-    once and pointing settings.HOTEL_PROVIDER at it, per
-    integrations.hotels.get_hotel_provider()'s factory pattern (same shape
-    as integrations.flights.get_flight_provider(),
-    integrations.climate.get_climate_provider(), and
+    The rest of the app depends on this interface, never on a specific
+    provider's client directly (§3) - a concrete provider gets added by
+    implementing this interface and pointing settings.HOTEL_PROVIDER at
+    it, via get_hotel_provider()'s factory (same shape as
+    get_flight_provider(), get_climate_provider(), and
     ai.provider.get_ai_provider()).
     """
 

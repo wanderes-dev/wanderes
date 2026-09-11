@@ -11,10 +11,10 @@ __all__ = [
     "get_climate_provider",
 ]
 
-# Maps a short settings.CLIMATE_PROVIDER key to the adapter that implements
-# it, so switching providers is a settings change, not an application-code
-# change (10_EXTERNAL_INTEGRATIONS.md §3 - "Provider replaceability is an
-# architectural requirement").
+# Maps a settings.CLIMATE_PROVIDER key to the adapter that implements it,
+# so switching providers is a settings change, not an application-code
+# change (§3 - "Provider replaceability is an architectural
+# requirement").
 _PROVIDER_REGISTRY = {
     "open_meteo": "integrations.climate.open_meteo.OpenMeteoClimateProvider",
 }

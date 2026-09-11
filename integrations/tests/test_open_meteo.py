@@ -68,9 +68,9 @@ class OpenMeteoClimateProviderTests(TestCase):
 
     @patch("integrations.climate.open_meteo.requests.get")
     def test_cache_miss_records_exactly_one_provider_request_completed(self, mock_get):
-        # 2026-09-09: instrumented at _fetch(), not the public
-        # get_monthly_climate() entry point - a miss is the only case
-        # that's genuinely "a provider request."
+        # Instrumented at _fetch(), not the public get_monthly_climate()
+        # entry point - a miss is the only case that's genuinely "a
+        # provider request."
         mock_get.return_value = _fake_response(
             {"temperature_2m_max": [20.0], "temperature_2m_min": [10.0], "precipitation_sum": [0.0]}
         )
@@ -103,9 +103,9 @@ class OpenMeteoClimateProviderTests(TestCase):
         event = Event.objects.get(event_type="provider_request_completed")
         self.assertFalse(event.metadata["success"])
         # ClimateProviderError, not the underlying ConnectionError - the
-        # wrap-and-reraise happens inside the instrumented block, so that's
-        # the type that's actually recorded (also what every caller of
-        # this provider actually sees and handles).
+        # wrap-and-reraise happens inside the instrumented block, so
+        # that's what actually gets recorded (and what every caller of
+        # this provider sees and handles).
         self.assertEqual(event.metadata["error_type"], "ClimateProviderError")
 
     def test_defaults_to_most_recently_completed_month(self):

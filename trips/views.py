@@ -54,13 +54,10 @@ def travel_history_delete(request, pk):
 
 @login_required
 def trip_list(request):
-    # 2026-09-05, direct request: "desfaça a aba my history, quero que o
-    # historico seja possivel consultar dentro de my trips" - travel
-    # history is no longer its own top-level nav destination
-    # (trips:history-list removed); it's shown as a second section on
-    # this same page instead. TravelHistoryEntry stays its own model/URLs
-    # (add/edit/delete) - only the standalone list page and nav entry are
-    # gone.
+    # Travel history isn't a separate top-level nav page anymore
+    # (trips:history-list removed) - it's just a second section on this
+    # same page. TravelHistoryEntry keeps its own model/URLs for
+    # add/edit/delete, only the standalone list page and nav entry went away.
     trips = Trip.objects.filter(user=request.user).select_related("destination")
     history_entries = TravelHistoryEntry.objects.filter(user=request.user).select_related(
         "destination"
@@ -81,14 +78,12 @@ def trip_create(request):
         if destination:
             initial["destination"] = destination.pk
 
-    # Distinguishes "saved via the chat recommendation flow" from any other
-    # entry point (2026-09-09, analytics pass) - a real, separate one
-    # exists (trip_list.html's plain "Create a new trip" link), so
-    # `source="form"` alone previously couldn't tell the two apart.
-    # Round-tripped through a hidden form field (GET -> template -> POST)
-    # since this view has no other query-string-preserving mechanism;
-    # constrained to an exact allow-listed value rather than trusting
-    # arbitrary echoed input for an analytics field.
+    # Distinguishes the chat "save this trip" flow from other entry points
+    # (e.g. trip_list.html's plain "Create a new trip" link) - source="form"
+    # alone can't tell those apart. Round-tripped through a hidden form
+    # field since GET's ?source= wouldn't otherwise survive the POST, and
+    # constrained to an allow-listed value rather than trusting arbitrary
+    # echoed input for an analytics field.
     source = "chat_recommendation" if request.GET.get("source") == "chat_recommendation" else "form"
 
     if request.method == "POST":

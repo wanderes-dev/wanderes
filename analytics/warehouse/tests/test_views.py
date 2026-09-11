@@ -1,15 +1,13 @@
-"""Data-quality and correctness tests for the warehouse views
-(2026-09-09) - these query the real Postgres views (created by
-analytics/migrations/0003_create_warehouse_views.py), not mocks, so a
-real SQL regression in any view actually fails these.
+"""Data-quality and correctness tests for the warehouse views - these
+query the real Postgres views (created by
+analytics/migrations/0003_create_warehouse_views.py), not mocks, so a real
+SQL regression in any view actually fails these.
 
 Event.created_at uses auto_now_add=True, which silently ignores any
 explicit value passed to .objects.create() - every fixture below creates
-the row first, then uses a bare .update() (which bypasses auto_now_add,
-unlike .save()) to set the timestamp actually needed for a test. Caught
-this the hard way while manually verifying episode-splitting before
-writing these tests - worth calling out so a future test in this file
-doesn't repeat it."""
+the row first, then uses a bare .update() (bypasses auto_now_add, unlike
+.save()) to set the timestamp a test actually needs. Worth remembering so
+a future test here doesn't trip over the same thing."""
 
 import datetime
 
@@ -55,11 +53,11 @@ def _event_at(event_type, *, offset_minutes, base, **kwargs):
 
 
 class EpisodeSplittingTests(TestCase):
-    """The single most important correctness fix in this warehouse:
-    ai.memory.conversation_key() alone is NOT a per-conversation
-    identifier for an authenticated user (same string for their entire
-    chat history) - int_event_episodes must split it into real episodes
-    on a 30-minute inactivity gap, or every fact table built on top would
+    """The most important correctness fix in this warehouse:
+    ai.memory.conversation_key() alone is NOT a per-conversation identifier
+    for an authenticated user (same string across their entire chat
+    history) - int_event_episodes has to split it into real episodes on a
+    30-minute inactivity gap, or every fact table built on top would
     silently merge unrelated visits together."""
 
     def setUp(self):
@@ -180,9 +178,9 @@ class FactRecommendationsTests(TestCase):
         self.assertFalse(lisbon.was_saved)
 
     def test_a_selection_before_the_recommendation_does_not_count(self):
-        # Correlation only looks forward in time within the same episode -
-        # an unrelated earlier destination_selected for the same slug (a
-        # different recommendation entirely) must not be misattributed.
+        # Correlation only looks forward within the same episode - an
+        # earlier, unrelated destination_selected for the same slug must
+        # not get misattributed to this recommendation.
         _event_at(
             "destination_selected",
             offset_minutes=0,
@@ -256,9 +254,9 @@ class FactAiRequestsTests(TestCase):
         self.assertGreaterEqual(row.latency_ms, 0)
 
     def test_latency_is_never_negative(self):
-        # A data-quality invariant, not just a happy-path check - if a
-        # future bug ever computed a negative duration, this would catch
-        # it rather than silently poisoning a p50/p95/p99 query.
+        # Data-quality invariant, not just a happy-path check - a future
+        # bug computing a negative duration would get caught here instead
+        # of silently poisoning a p50/p95/p99 query.
         Event.objects.create(
             event_type="provider_request_completed",
             metadata={

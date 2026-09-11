@@ -1,19 +1,17 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-# Canonical source for both choice lists (2026-09-02 - previously
-# duplicated byte-for-byte in users.models, and a third time as a
-# hardcoded enum in ai.orchestration's INTENT_SCHEMA/prompt, with nothing
-# keeping the three in sync). travel owns the destination catalog these
-# describe, so it's the natural single source of truth - users.models
-# imports and re-exports COST_OF_LIVING_CHOICES from here, and
-# ai.orchestration derives its intent-extraction schema's trip_type enum
-# from TRIP_TYPE_CHOICES directly instead of hardcoding its own copy.
+# Canonical source for both choice lists - used to be duplicated in
+# users.models and again as a hardcoded enum in ai.orchestration's
+# INTENT_SCHEMA. travel owns the destination catalog these describe, so
+# it's the natural home for them: users.models re-exports
+# COST_OF_LIVING_CHOICES from here, and ai.orchestration derives its
+# trip_type enum from TRIP_TYPE_CHOICES instead of keeping its own copy.
 #
-# Only the labels are wrapped in gettext_lazy, never the stored codes
-# (1-5, "beach"/"city"/etc.) - ai.orchestration.TRIP_TYPE_CODES extracts
-# just the code half of each tuple, so translating the label can never
-# affect the AI's own intent-extraction schema or any stored DB value.
+# Only the labels are gettext_lazy, never the stored codes (1-5,
+# "beach"/"city"/...) - TRIP_TYPE_CODES in ai.orchestration pulls just
+# the code half of each tuple, so translating a label can't affect
+# intent extraction or anything stored in the DB.
 COST_OF_LIVING_CHOICES = [
     (1, _("Very low")),
     (2, _("Low")),
@@ -33,11 +31,11 @@ TRIP_TYPE_CHOICES = [
 class Destination(models.Model):
     """A place that can be recommended, visited, planned, or discussed.
 
-    Shaped to match travel/data/curated_destinations.json (the
-    approved Phase 3 seed dataset) so loading it is a straight import, not
-    a redesign. Real-time climate data is intentionally NOT stored here —
-    it's fetched live from Open-Meteo by coordinates at request time, per
-    the Phase 3 decision to keep static facts and live weather separate.
+    Shaped to match travel/data/curated_destinations.json so loading it
+    is a straight import rather than a redesign. Climate data isn't
+    stored here on purpose - it's fetched live from Open-Meteo by
+    coordinates at request time, keeping static facts separate from
+    live weather.
     """
 
     slug = models.SlugField(unique=True)
@@ -61,31 +59,25 @@ class Destination(models.Model):
 
 
 class CountryEntryRequirement(models.Model):
-    """Visa/vaccine/insurance entry guidance for one destination country
-    (2026-09-02, direct user request - "tabela de country regulation").
+    """Visa/vaccine/insurance entry guidance for one destination country.
 
-    IMPORTANT - a fundamentally higher-stakes category of data than
-    Destination's descriptive travel facts: a traveler relying on a wrong
-    visa or vaccine requirement can be denied boarding, denied entry, or
-    face a real legal/health problem (some countries legally require proof
-    of a specific vaccination at the border). This data is compiled from
-    general knowledge, not verified against each country's official
-    government/embassy source, and does NOT cover every UN member state -
-    see travel/data/country_entry_requirements.json's own $schema_note for
-    the honest coverage/confidence account. For this reason:
+    Higher stakes than Destination's descriptive travel facts: a wrong
+    visa or vaccine requirement can get a traveler denied boarding or
+    entry, or into a real legal/health problem. This data is compiled
+    from general knowledge, not verified against each country's official
+    government/embassy source, and doesn't cover every UN member state -
+    see travel/data/country_entry_requirements.json's own $schema_note
+    for the honest coverage picture. Because of that:
 
-    - `travel.services.ENTRY_REQUIREMENT_DISCLAIMER` MUST be shown
-      alongside this data wherever it is ever displayed or referenced -
-      never presented as a substitute for an official source. This is
-      enforced by convention (there is no automatic way to guarantee a
-      future caller includes it), so any new code path that surfaces this
-      data must carry the disclaimer explicitly, the same way
-      05_AI_DESIGN.md §7 already requires for any AI-generated content.
-    - Visa requirements genuinely depend on the traveler's own
-      nationality, not just the destination - `visa_required_nationalities`
-      is deliberately a list (which nationalities need a visa for this
-      destination), not a single yes/no flag, so that nationality
-      dependency is structurally represented rather than flattened away.
+    - `travel.services.ENTRY_REQUIREMENT_DISCLAIMER` must be shown
+      alongside this data wherever it's displayed or referenced, never
+      as a substitute for an official source. Nothing enforces this
+      automatically, so any new code path surfacing this data has to add
+      the disclaimer itself.
+    - Visa requirements depend on the traveler's own nationality, not
+      just the destination, so `visa_required_nationalities` is a list
+      (which nationalities need a visa here) rather than a single
+      yes/no flag.
     """
 
     country = models.CharField(

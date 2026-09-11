@@ -7,12 +7,10 @@ logger = logging.getLogger(__name__)
 
 EVENT_TYPE_KEYS = {key for key, _label in EVENT_TYPE_CHOICES}
 
-# Anonymization masks (Phase 17 decision, 2026-08-30): zero the last IPv4
-# octet / keep only the IPv6 /48 prefix before ever storing an anonymous
-# visitor's address - the same approach used by privacy-conscious analytics
-# tools (e.g. Google Analytics', Matomo's IP anonymization). Reduces
-# re-identification risk while still letting metrics distinguish separate
-# anonymous visitors well enough to be useful.
+# Zero the last IPv4 octet / keep only the IPv6 /48 prefix before storing
+# an anonymous visitor's address - the same approach GA and Matomo use for
+# IP anonymization. Cuts re-identification risk while still letting
+# metrics tell separate anonymous visitors apart.
 IPV4_ANONYMIZATION_PREFIX = 24
 IPV6_ANONYMIZATION_PREFIX = 48
 
@@ -28,26 +26,24 @@ def record_event(
 ) -> None:
     """Record one product-analytics event.
 
-    Never raises: analytics is a non-critical side channel (Phase 16's own
-    review criteria - don't let non-critical work affect the main
-    request/response flow), so a failure here is logged and swallowed
-    rather than breaking registration, chat, trip creation, or feedback.
+    Never raises: analytics is a non-critical side channel, so a failure
+    here is logged and swallowed rather than breaking registration, chat,
+    trip creation, or feedback.
 
     `user=None` records an anonymous event. `request` is only used in that
-    case, to resolve and anonymize the visitor's IP (per the Phase 17
-    decision to track anonymous chat interactions by IP rather than a
-    session identifier) - it's ignored for authenticated events.
+    case, to resolve and anonymize the visitor's IP (anonymous chat
+    interactions are tracked by IP, not a session identifier) - it's
+    ignored for authenticated events.
 
-    `event_type in OPERATIONAL_EVENT_TYPES` (2026-09-09 addition) is the one
-    exception to the "must resolve user or IP" rule below: these are system
-    telemetry about the AI/provider layers, not a specific visitor's
-    behavior, so attribution isn't their point - both `user` and
-    `anonymized_ip` stay None for these, which Event's model already
-    supports (see its own docstring).
+    `event_type in OPERATIONAL_EVENT_TYPES` is the one exception to the
+    "must resolve user or IP" rule below: these are system telemetry about
+    the AI/provider layers, not a specific visitor's behavior, so
+    attribution isn't the point - both `user` and `anonymized_ip` stay None
+    for these, which Event already supports (see its own docstring).
 
-    `conversation_key`/`locale` (2026-09-09) are optional, small structured
-    dimensions - a caller passes them when already available (e.g. the chat
-    view already has both), never worth resolving specially just for this.
+    `conversation_key`/`locale` are optional, small structured dimensions -
+    pass them along when already available (e.g. the chat view has both),
+    not worth resolving specially just for this.
     """
     if event_type not in EVENT_TYPE_KEYS:
         logger.warning("Ignoring unknown analytics event_type=%r", event_type)

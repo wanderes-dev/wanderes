@@ -5,20 +5,19 @@ from travel.models import Destination
 
 class LandingPageTests(TestCase):
     def test_root_renders_landing_page_not_a_redirect(self):
-        # 2026-09-01, direct user request: a first-time visitor should see
-        # a real landing page, not be redirected straight into /chat/
-        # (the previous behavior - replaces test_root_redirect.py).
+        # A first-time visitor should see a real landing page, not get
+        # redirected straight into /chat/ (that used to be the behavior -
+        # this replaces test_root_redirect.py).
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "core/landing.html")
 
     def test_beta_banner_shows_on_every_page(self):
-        # 2026-09-11, direct user request: an honest "we're in beta"
-        # notice, site-wide via base.html - not premium/trial-related,
-        # since Premium doesn't exist yet (see DECISIONS_PENDING.md's
-        # Phase 19 entry) and a public promise this site can't fulfill
-        # was deliberately not built.
+        # An honest "we're in beta" notice, site-wide via base.html - not
+        # premium/trial-related, since Premium doesn't exist yet (see
+        # DECISIONS_PENDING.md) and a public promise this site can't
+        # fulfill was deliberately left out.
         response = self.client.get("/")
 
         self.assertContains(response, "Wanderes is in beta")
@@ -49,13 +48,12 @@ class LandingPageTests(TestCase):
         self.assertContains(response, '/chat/')
 
     def test_preview_card_demonstrates_fit_reasoning(self):
-        # 2026-09-06, direct request: the "see it in action" example should
-        # demonstrate signals (climate/style/budget/pace fit and a tradeoff),
-        # not just a couple of generic, context-free bullets. Reworded
-        # 2026-09-09 to demonstrate multiple concrete dimensions (climate,
-        # interests, budget, pace) plus an honest, specific tradeoff tied
-        # to a stated preference, rather than generic positive badges -
-        # "Tradeoff:" became its own "Worth knowing" section to match.
+        # The "see it in action" example should demonstrate real signals
+        # (climate/style/budget/pace fit and a tradeoff), not just a
+        # couple of generic, context-free bullets - concrete dimensions
+        # plus an honest tradeoff tied to a stated preference, rather than
+        # generic positive badges. "Tradeoff:" is its own "Worth knowing"
+        # section to match.
         Destination.objects.create(
             slug="test-beach-destination",
             name="Test Beach Destination",
@@ -80,11 +78,11 @@ class LandingPageTests(TestCase):
         self.assertContains(response, "Matches your preferred travel pace")
 
     def test_preview_card_pins_to_bali_when_present(self):
-        # 2026-09-09: the preview card's copy now names Bali specifically
-        # ("Popular parts of Bali can get busy...") - it must always show
-        # the real Bali row, not whatever beach/nature destination
-        # happens to sort first by id, or the hardcoded copy and the
-        # destination shown could mismatch.
+        # The preview card's copy names Bali specifically ("Popular parts
+        # of Bali can get busy...") - it must always show the real Bali
+        # row, not whatever beach/nature destination happens to sort
+        # first by id, or the hardcoded copy and the destination shown
+        # could mismatch.
         Destination.objects.create(
             slug="test-beach-destination",
             name="Test Beach Destination",
@@ -117,11 +115,11 @@ class LandingPageTests(TestCase):
         self.assertContains(response, "Popular parts of Bali can get busy")
 
     def test_landing_copy_does_not_claim_live_travel_inventory(self):
-        # Direct product constraint: Wanderes has real climate/destination
-        # data, but no production hotel/flight inventory yet (Priceline/
-        # Booking.com/Agoda integrations are pursued but not live) - the
-        # landing page must never read as promising live prices,
-        # availability, or bookable inventory it can't actually back up.
+        # Wanderes has real climate/destination data, but no production
+        # hotel/flight inventory yet (Priceline/Booking.com/Agoda
+        # integrations are pursued but not live) - the landing page must
+        # never read as promising live prices, availability, or bookable
+        # inventory it can't actually back up.
         response = self.client.get("/")
         content = response.content.decode()
 
