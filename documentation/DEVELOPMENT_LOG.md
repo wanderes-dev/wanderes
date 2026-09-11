@@ -2330,3 +2330,15 @@ Anchored `core/views.py`'s `landing()` view to fetch the Bali destination by its
 **What's left** (user's own Purelymail account + `wanderes.com`'s DNS, can't be done from here): create/confirm the Purelymail account, add `wanderes.com` as a custom domain (ownership TXT + MX + SPF records at the domain's DNS host, DKIM once verified), create the `noreply@wanderes.com` mailbox, then set `EMAIL_HOST_USER`/`EMAIL_HOST_PASSWORD` on Render. Full steps in `DECISIONS_PENDING.md` §6 and `PROJECT_STATE.md`'s pending-action section.
 
 **Files changed**: `render.yaml`, `.env.example`, `config/settings/base.py`, `core/context_processors.py`, `users/tests/test_password_reset.py`. Documentation: `documentation/PROJECT_STATE.md`, `documentation/DECISIONS_PENDING.md` §5/§6.
+
+## 2026-09-11 — Same day, live production bug found while verifying the above: a template comment leaking as visible text
+
+**Found live, not reported**: checking `https://www.wanderes.com/users/login/` in a browser to confirm the OAuth/SMTP work above was actually live, the accessibility tree showed literal text after "Novo na Wanderes?" reading `{# Preserves ?next= across the login<->register hop (2026-09-09) ... #}` - a raw Django template comment, visible to every real visitor of both `/users/login/` and `/users/register/` since the 2026-09-09 UX pass that added it.
+
+**Root cause**: Django's `{# ... #}` comment tag - unlike `{% comment %}...{% endcomment %}` - cannot span multiple lines; the tokenizer's regex for it doesn't match across a newline, so a `{#` that opens on one line and closes on a later one falls through as plain text instead of being parsed as a comment. Both `users/templates/users/login.html` and `users/templates/users/register.html` had the same multi-line `{# #}` explaining the `?next=`-forwarding cross-links added the same day (2026-09-09) - genuinely easy to miss, since it renders correctly in most template previews/linters and only fails at actual Django template-parse time.
+
+**Fix**: both replaced with `{% comment %}...{% endcomment %}`, which does support multiple lines. New regression test `test_login_and_register_pages_never_leak_the_next_param_comment` (`users/tests/test_auth.py`) asserts neither page's rendered HTML contains a literal `{#`. Verified live in an isolated Docker stack (not just the test) that the comment text is gone from both pages post-fix.
+
+**486/486 tests passing** (1 new), `ruff check .` clean, no migrations.
+
+**Files changed**: `users/templates/users/login.html`, `users/templates/users/register.html`, `users/tests/test_auth.py`.
