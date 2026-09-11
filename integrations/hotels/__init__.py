@@ -13,15 +13,12 @@ __all__ = [
 
 # Maps a settings.HOTEL_PROVIDER key to the adapter that implements it,
 # so switching (or adding) a provider is a settings change, not an
-# application-code change (§13.1 - same pattern as get_flight_provider(),
-# get_climate_provider(), and ai.provider.get_ai_provider()).
-# "booking_com" points at a deliberate skeleton
-# (integrations/hotels/booking_com.py), not a working adapter - there's
-# no real Booking.com Affiliate Partner Program access to build against
-# yet (DECISIONS_PENDING.md §4).
-_PROVIDER_REGISTRY = {
-    "booking_com": "integrations.hotels.booking_com.BookingComHotelProvider",
-}
+# application-code change - same pattern as get_flight_provider(),
+# get_climate_provider(), and ai.provider.get_ai_provider(). Empty for
+# now - Booking.com was ruled out 2026-09-11 (no property-level data feed
+# available to Wanderes, see DECISIONS_PENDING.md §4), nothing else has
+# been chosen yet.
+_PROVIDER_REGISTRY = {}
 
 
 def get_hotel_provider() -> HotelProvider:

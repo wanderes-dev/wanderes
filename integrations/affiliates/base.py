@@ -36,14 +36,14 @@ class AffiliateNetworkProvider(ABC):
 
     Kept separate from HotelProvider rather than folded in -
     HotelProvider.build_affiliate_link() (integrations/hotels/base.py)
-    still needs a real HotelOption, which needs search_hotels() to work,
-    which still needs Booking.com Demand API access we don't have
-    (10_EXTERNAL_INTEGRATIONS.md §13.8). This interface covers what CJ's
-    API can do today - discover real, trackable links by
+    needs a real HotelOption from a real search_hotels() implementation,
+    which no accommodation provider currently backs (Booking.com was
+    ruled out 2026-09-11 - no property-level data feed available to us,
+    see DECISIONS_PENDING.md §4). This interface covers what CJ's API can
+    do today regardless - discover real, trackable links by
     keyword/country/advertiser, independent of property-level search -
-    and is a natural building block for
-    BookingComHotelProvider.build_affiliate_link() once search_hotels()
-    is real too, not a replacement for it.
+    and stays a useful building block for whichever accommodation
+    provider search_hotels() eventually gets built against.
 
     A concrete network is added by implementing this interface and
     pointing settings.AFFILIATE_PROVIDER at it, per

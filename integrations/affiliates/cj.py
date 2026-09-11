@@ -8,7 +8,7 @@ from .base import AffiliateLinkResult, AffiliateNetworkError, AffiliateNetworkPr
 
 # CJ Developer Portal, Link Search API reference
 # (developers.cj.com/docs/rest-apis/link-search) - read directly, not
-# guessed at, same discipline as kayak.py/booking_com.py.
+# guessed at, same discipline as integrations/flights/kayak.py.
 LINK_SEARCH_URL = "https://link-search.api.cj.com/v2/link-search"
 REQUEST_TIMEOUT_SECONDS = 10
 # Documented limit: 25 calls/minute, publishers only. Nothing here loops
