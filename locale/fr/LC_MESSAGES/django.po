@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-08 22:59+0000\n"
+"POT-Creation-Date: 2026-09-11 11:50+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -93,7 +93,7 @@ msgstr ""
 #: ai/templates/ai/chat.html:392 templates/base.html:50
 #: users/templates/users/login.html:4 users/templates/users/login.html:16
 #: users/templates/users/password_reset_complete.html:15
-#: users/templates/users/register.html:34
+#: users/templates/users/register.html:37
 msgid "Log in"
 msgstr "Se connecter"
 
@@ -194,6 +194,147 @@ msgstr ""
 #: ai/views.py:72
 msgid "Something went wrong on our end. Please try again."
 msgstr "Une erreur s'est produite de notre côté. Veuillez réessayer."
+
+#: analytics/templates/analytics/dashboard.html:9
+msgid "Analytics"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:13
+msgid ""
+"The daily metrics haven't refreshed in over 26 hours - the scheduled job may "
+"have stalled."
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:16
+msgid ""
+"No daily metrics yet - the nightly refresh job hasn't run. Real numbers will "
+"appear here once there's real chat activity and the job has run at least "
+"once."
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:20
+#, python-format
+msgid "Last %(lookback_days)s days"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:26
+msgid "Date"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:27
+#, fuzzy
+#| msgid "New conversation"
+msgid "Conversations"
+msgstr "Nouvelle conversation"
+
+#: analytics/templates/analytics/dashboard.html:28
+#, fuzzy
+#| msgid "Message"
+msgid "Messages"
+msgstr "Message"
+
+#: analytics/templates/analytics/dashboard.html:29
+msgid "Reached rec."
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:30
+#: analytics/templates/analytics/dashboard.html:72
+msgid "Selected"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:31
+#: analytics/templates/analytics/dashboard.html:73
+#, fuzzy
+#| msgid "Save"
+msgid "Saved"
+msgstr "Enregistrer"
+
+#: analytics/templates/analytics/dashboard.html:32
+msgid "Signups"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:33
+msgid "AI failures"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:34
+msgid "AI p95 (ms)"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:55
+#: analytics/templates/analytics/dashboard.html:90
+#: analytics/templates/analytics/dashboard.html:126
+#: analytics/templates/analytics/dashboard.html:142
+#, fuzzy
+#| msgid "No saved conversations yet."
+msgid "No data yet."
+msgstr "Aucune conversation enregistrée pour l'instant."
+
+#: analytics/templates/analytics/dashboard.html:60
+msgid "Destination performance"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:62
+msgid ""
+"Which destinations get recommended, chosen, and saved - approximate, session-"
+"based correlation (see documentation)."
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:69
+#, fuzzy
+#| msgid "destination"
+msgid "Destination"
+msgstr "destination"
+
+#: analytics/templates/analytics/dashboard.html:70
+#, fuzzy
+#| msgid "Account"
+msgid "Country"
+msgstr "Compte"
+
+#: analytics/templates/analytics/dashboard.html:71
+#, fuzzy
+#| msgid "comment"
+msgid "Recommended"
+msgstr "commentaire"
+
+#: analytics/templates/analytics/dashboard.html:95
+msgid "AI operational health"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:101
+#, fuzzy
+#| msgid "rating"
+msgid "Operation"
+msgstr "note"
+
+#: analytics/templates/analytics/dashboard.html:102
+msgid "Type"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:103
+msgid "Total"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:104
+msgid "Failed"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:105
+msgid "p50 (ms)"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:106
+msgid "p95 (ms)"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:107
+msgid "p99 (ms)"
+msgstr ""
+
+#: analytics/templates/analytics/dashboard.html:131
+msgid "Locales"
+msgstr ""
 
 #: core/context_processors.py:107
 msgid ""
@@ -398,16 +539,20 @@ msgstr "S'inscrire"
 msgid "Language"
 msgstr "Langue"
 
-#: templates/base.html:77
+#: templates/base.html:67
+msgid "Wanderes is in beta — thanks for trying it out early!"
+msgstr "Wanderes est en version bêta — merci de le tester en avant-première !"
+
+#: templates/base.html:79
 #, python-format
 msgid "Prefer Wanderes in %(language)s?"
 msgstr "Préférez-vous Wanderes en %(language)s ?"
 
-#: templates/base.html:80
+#: templates/base.html:82
 msgid "Not now"
 msgstr "Pas maintenant"
 
-#: templates/base.html:90
+#: templates/base.html:92
 msgid ""
 "We collect anonymized usage data (such as which features are used) to "
 "improve our recommendations. We never store your message text or share this "
@@ -466,7 +611,7 @@ msgstr ""
 
 #: travel/templates/travel/country_admin_form.html:13
 #: trips/templates/trips/travel_history_form.html:12
-#: trips/templates/trips/trip_form.html:12
+#: trips/templates/trips/trip_form.html:15
 #: users/templates/users/profile.html:69
 msgid "Save"
 msgstr "Enregistrer"
@@ -705,7 +850,7 @@ msgstr "Ajouter une destination visitée"
 
 #: trips/templates/trips/travel_history_form.html:14
 #: trips/templates/trips/trip_detail.html:37
-#: trips/templates/trips/trip_form.html:14
+#: trips/templates/trips/trip_form.html:17
 msgid "Back to my trips"
 msgstr "Retour à mes voyages"
 
@@ -832,19 +977,19 @@ msgstr "Mis à jour."
 msgid "Removed from your travel history."
 msgstr "Retiré de votre historique de voyage."
 
-#: trips/views.py:99
+#: trips/views.py:112
 msgid "Trip saved."
 msgstr "Voyage enregistré."
 
-#: trips/views.py:127
+#: trips/views.py:142
 msgid "Trip updated."
 msgstr "Voyage mis à jour."
 
-#: trips/views.py:139
+#: trips/views.py:154
 msgid "Trip deleted."
 msgstr "Voyage supprimé."
 
-#: trips/views.py:168
+#: trips/views.py:183
 msgid "Thanks for your feedback!"
 msgstr "Merci pour votre avis !"
 
@@ -1071,7 +1216,7 @@ msgstr "Continuer avec Google"
 msgid "New to Wanderes?"
 msgstr "Nouveau sur Wanderes ?"
 
-#: users/templates/users/login.html:41
+#: users/templates/users/login.html:44
 msgid "Create an account"
 msgstr "Créer un compte"
 
@@ -1227,6 +1372,6 @@ msgstr ""
 msgid "Already have an account?"
 msgstr "Vous avez déjà un compte ?"
 
-#: users/views.py:91
+#: users/views.py:117
 msgid "Your traveler profile was updated."
 msgstr "Votre profil voyageur a été mis à jour."
