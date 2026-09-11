@@ -133,11 +133,15 @@ def site_meta(request):
         "organization_jsonld": organization_jsonld,
         "google_oauth_configured": google_oauth_configured,
         # 2026-09-04, password reset via emailed token: same reasoning as
-        # google_oauth_configured above - EMAIL_HOST unset means the
-        # console backend is in effect (reset "succeeds" but delivers
-        # nothing anyone can see), so the "Forgot your password?" link
-        # stays hidden until real SMTP credentials exist.
-        "email_configured": bool(settings.EMAIL_HOST),
+        # google_oauth_configured above. Checks EMAIL_BACKEND rather than
+        # EMAIL_HOST directly - EMAIL_HOST alone has a real non-secret
+        # default since the 2026-09-11 Purelymail decision (see
+        # config/settings/base.py), so config/settings/base.py's own
+        # EMAIL_HOST/EMAIL_HOST_USER-gated backend choice is the actual
+        # source of truth for whether real credentials exist. Console
+        # backend means a reset "succeeds" but delivers nothing anyone can
+        # see, so the "Forgot your password?" link stays hidden until then.
+        "email_configured": settings.EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend",
         "og_locale": OG_LOCALE_BY_LANGUAGE.get(get_language(), "en_US"),
         # Raw settings.LANGUAGES, deliberately not Django's own
         # {% get_available_languages %} template tag - that tag runs each
