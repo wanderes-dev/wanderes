@@ -15,10 +15,10 @@ from users.models import User
 
 
 class StubSubjectProvider:
-    """Minimal AIProvider stub for tests that exercise a NEW saved
-    conversation being created (the only path that actually needs an AI
-    call, for the conversation's subject/title) - see ai/conversations.py's
-    record_turn docstring for why this needs to be stubbed explicitly
+    """Minimal AIProvider stub for tests exercising a NEW saved
+    conversation being created - the only path that actually needs an AI
+    call, for the conversation's subject/title. See record_turn's
+    docstring in ai/conversations.py for why this has to be stubbed
     rather than letting the view construct a real OpenAIProvider."""
 
     def __init__(self, subject="A trip idea"):
@@ -37,17 +37,15 @@ class ChatPageTests(TestCase):
         self.assertContains(response, "chat-form")
 
     def test_no_login_prompt_modal_for_anonymous_users(self):
-        # 2026-09-09, direct request: the soft "Save your trips as you go"
-        # nudge modal (2026-09-02, previously retimed to open once a first
-        # reply completed - 2026-09-06) is removed entirely. Anonymous
-        # visitors should reach /chat/ with zero account-related decision
-        # in the way, at any point - account creation is now only
-        # surfaced contextually, at the moment of actually saving a trip
-        # (trips.views.trip_create's existing @login_required + ?next=
-        # redirect - see trips/tests/test_trip_views.py). Anonymous users
-        # render no <dialog> at all (the saved-conversation limit notices
-        # are login-gated too), so this asserts the strongest version of
-        # "no modal" rather than just the login-prompt's own strings.
+        # The soft "Save your trips as you go" nudge modal is gone for
+        # good - anonymous visitors should hit /chat/ with zero
+        # account-related decision in the way. Account creation now only
+        # comes up contextually, at the moment of actually saving a trip
+        # (trips.views.trip_create's @login_required + ?next= redirect -
+        # see trips/tests/test_trip_views.py). Anonymous users render no
+        # <dialog> at all (the saved-conversation limit notices are
+        # login-gated too), so this checks for "no modal" broadly rather
+        # than just the removed login-prompt's own strings.
         response = self.client.get(reverse("ai:chat"))
 
         self.assertEqual(response.status_code, 200)
@@ -58,8 +56,8 @@ class ChatPageTests(TestCase):
 
     def test_no_login_prompt_modal_for_authenticated_users(self):
         # Authenticated users do render other <dialog> elements (the
-        # saved-conversation limit notices), so this can't assert "no
-        # dialog at all" like the anonymous case above - just that the
+        # saved-conversation limit notices), so we can't assert "no dialog
+        # at all" here like the anonymous case above - just check the
         # removed login-prompt modal's own content is gone.
         user = User.objects.create_user(email="traveler@example.com", password="testpass123")
         self.client.force_login(user)
@@ -71,10 +69,10 @@ class ChatPageTests(TestCase):
         self.assertNotContains(response, "Continue without an account")
 
     def test_saved_conversation_ui_shown_to_authenticated_users(self):
-        # 2026-09-02, direct request: a ChatGPT-style sidebar (new
-        # conversation, save checkbox, saved-conversation list) - saving is
-        # a registered-users-only feature, so the save-specific pieces are
-        # login-gated even though the sidebar itself isn't (2026-09-04).
+        # ChatGPT-style sidebar: new conversation, save checkbox,
+        # saved-conversation list. Saving is registered-users-only, so the
+        # save-specific pieces are login-gated even though the sidebar
+        # itself isn't.
         user = User.objects.create_user(email="traveler@example.com", password="testpass123")
         self.client.force_login(user)
 
@@ -87,14 +85,14 @@ class ChatPageTests(TestCase):
         self.assertContains(response, 'id="conversation-size-limit-modal"')
 
     def test_sidebar_and_new_conversation_still_shown_to_anonymous_users(self):
-        # 2026-09-04, direct request: the history column and "+ New
-        # conversation" stay visible for anonymous visitors too (the
-        # reset endpoint already works for them, keyed by session) - only
-        # the save checkbox and the saved-conversation list itself (both
-        # meaningless without an account) are login-gated, replaced with
-        # a login call-to-action. The two saved-conversation *limit*
-        # modals stay authenticated-only - they can only ever fire for a
-        # feature (saving) anonymous visitors don't have.
+        # The history column and "+ New conversation" stay visible for
+        # anonymous visitors too - the reset endpoint already works for
+        # them, keyed by session. Only the save checkbox and the
+        # saved-conversation list (both meaningless without an account)
+        # are login-gated, replaced with a login call-to-action. The two
+        # saved-conversation *limit* modals stay authenticated-only since
+        # they can only fire for a feature (saving) anonymous visitors
+        # don't have.
         response = self.client.get(reverse("ai:chat"))
 
         self.assertContains(response, 'id="chat-sidebar"')
@@ -198,10 +196,10 @@ class RecommendationsStreamViewTests(TestCase):
 
     @patch("ai.views.stream_travel_recommendation")
     def test_recommendation_footer_translates_scoring_factors_into_fit_reasons(self, mock_stream):
-        # 2026-09-01 UI/UX pass: the chat page's recommendation cards show
-        # "why this fits you" - only ever derived from real scoring
-        # factors already computed by recommendations.scoring, never
-        # invented or exposing the AI's own reasoning.
+        # The chat page's recommendation cards show "why this fits you" -
+        # derived only from real scoring factors already computed by
+        # recommendations.scoring, never invented or exposing the AI's
+        # own reasoning.
         destination = Destination.objects.create(
             slug="bali-id",
             name="Bali",
@@ -412,8 +410,8 @@ class RecommendationsStreamAnalyticsTests(TestCase):
 
     @patch("ai.views.stream_travel_recommendation")
     def test_recommendation_generated_metadata_carries_slugs_and_constraints(self, mock_stream):
-        # 2026-09-09: enough to answer "which destinations get recommended"
-        # and "under what constraints" without a separate persisted table.
+        # Enough to answer "which destinations get recommended" and
+        # "under what constraints" without a separate persisted table.
         destination = Destination.objects.create(
             slug="lisbon-pt",
             name="Lisbon",
@@ -459,8 +457,8 @@ class RecommendationsStreamAnalyticsTests(TestCase):
     def test_destination_detail_result_records_destination_selected_not_generated(
         self, mock_stream
     ):
-        # "Choose this trip" (2026-09-08) is a distinct, deliberate action -
-        # must not also count as a fresh recommendation_generated.
+        # "Choose this trip" is a distinct, deliberate action - must not
+        # also count as a fresh recommendation_generated.
         destination = Destination.objects.create(
             slug="bali-id",
             name="Bali",
@@ -529,11 +527,11 @@ class SavedConversationStreamTests(TestCase):
 
     @patch("ai.views.stream_travel_recommendation")
     def test_ai_provider_fallback_reply_is_not_saved(self, mock_stream):
-        # 2026-09-02 review: a degraded FALLBACK_REPLY (the AI provider
-        # was unreachable) used to be saved into SavedConversation exactly
-        # like a real answer - permanently baking a transient outage
-        # message into the traveler's history and counting toward their
-        # char limit. It should be skipped entirely, same as save=false.
+        # A degraded FALLBACK_REPLY (AI provider unreachable) used to get
+        # saved into SavedConversation exactly like a real answer -
+        # permanently baking a transient outage message into the
+        # traveler's history and counting toward their char limit. It
+        # should be skipped entirely, same as save=false.
         mock_stream.return_value = StreamingOrchestrationResult(
             recommendations=[], reply_chunks=iter([FALLBACK_REPLY])
         )

@@ -1,13 +1,11 @@
-# The assistant persona name decided alongside the AI provider (Phase 2,
-# 2026-08-29) - see documentation/DECISIONS_PENDING.md §1. Renamed from
-# "Lunna" to "Wander" on 2026-08-30, per direct user request.
+# The assistant's name - see DECISIONS_PENDING.md §1 for how it got
+# picked (was "Lunna" for a bit, renamed after user feedback).
 ASSISTANT_NAME = "Wander"
 
-# Encodes two explicit product rules as a default system prompt: stay
-# travel-only (09_AI_ORCHESTRATION.md §10) and never invent travel data
-# (05_AI_DESIGN.md §7). Callers (the future orchestration layer, Phase 9)
-# prepend this as the first AIMessage - it is not injected automatically
-# by the provider adapter, which stays a thin, opinion-free wrapper.
+# Two product rules baked into the default system prompt: stay travel-only
+# and never invent travel data. Callers prepend this as the first
+# AIMessage themselves - the provider adapter stays a dumb wrapper and
+# doesn't inject anything on its own.
 SYSTEM_PROMPT = (
     f"You are {ASSISTANT_NAME}, Wanderes's intelligent travel consultant. "
     "You reason genuinely about what the traveler needs, the way a "

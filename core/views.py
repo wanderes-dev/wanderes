@@ -14,15 +14,14 @@ from travel.models import Destination
 
 logger = logging.getLogger(__name__)
 
-# The full set of genuinely public, content-bearing pages worth telling
-# search engines about (2026-09-03, SEO prep) - drives sitemap.xml. Every
-# other route either needs a login (account/profile/trips - real SEO value
-# there is zero, and a crawler would just hit the login redirect), is an
-# API endpoint, or is /admin/ - none of those belong in a sitemap.
-# register/login are deliberately left out too: they're thin, duplicate-ish
-# form pages with no unique content to rank on, though nothing stops a
-# crawler that finds them via the nav from indexing them (robots.txt
-# doesn't disallow them, only the truly private paths below).
+# Genuinely public, content-bearing pages worth telling search engines
+# about - feeds sitemap.xml. Everything else needs a login (account/
+# profile/trips - zero real SEO value there, a crawler would just hit the
+# login redirect), is an API endpoint, or is /admin/, so none of those
+# belong here. register/login are left out too: thin, duplicate-ish forms
+# with no unique content to rank on - robots.txt doesn't disallow them, so
+# a crawler that finds them via the nav can still index them, they just
+# aren't listed explicitly.
 _SITEMAP_ENTRIES = [
     {"url_name": "core:landing", "changefreq": "weekly", "priority": "1.0"},
     {"url_name": "ai:chat", "changefreq": "weekly", "priority": "0.9"},
@@ -32,28 +31,24 @@ _SITEMAP_ENTRIES = [
 def landing(request):
     """Marketing/entry page at the bare domain root.
 
-    2026-09-01, direct user request: "nao caia direto no chat" - a
-    first-time visitor should land somewhere that explains the product
-    before being dropped into the chat, not be redirected straight to
-    /chat/ (the previous behavior, added right after the first Phase 18
-    deploy just to avoid a 404 - see DEVELOPMENT_LOG.md). The destination
-    teaser below uses real curated Destination rows, never invented
-    copy - `05_AI_DESIGN.md` §7's "never invent travel data" principle
-    applies to product marketing surfaces too, not just AI replies.
+    A first-time visitor should land somewhere that explains the product
+    before getting dropped into the chat, not redirected straight to
+    /chat/ (the old behavior). The destination teaser below uses real
+    curated Destination rows, never invented copy - `05_AI_DESIGN.md`
+    §7's "never invent travel data" principle applies to marketing
+    surfaces too, not just AI replies.
     """
     featured_destinations = Destination.objects.order_by("id")[:3]
-    # A single example destination for the "see it in action" product
-    # preview (2026-09-01, second UX pass, §4: "show the product, not
-    # just describe it") - reuses the exact same .chat-bubble/
-    # .recommendation-card markup as the real chat page, so this is a
-    # real product screenshot in spirit, not a disconnected mockup.
-    # Pinned to Bali specifically (2026-09-09 UX pass) rather than
-    # "whatever beach/nature destination sorts first" - the fit-reasons
-    # copy in landing.html now names Bali and its real crowd/quiet-area
-    # tradeoff directly, so the destination shown must always be Bali,
+    # A single example destination for the "see it in action" preview -
+    # reuses the same .chat-bubble/.recommendation-card markup as the
+    # real chat page, so this is a real product screenshot in spirit, not
+    # a disconnected mockup. Pinned to Bali specifically rather than
+    # "whatever beach/nature destination sorts first" - landing.html's
+    # fit-reasons copy names Bali and its real crowd/quiet-area tradeoff
+    # directly, so the destination shown must always actually be Bali,
     # not just resemble the kind of place the copy describes. Falls back
-    # to the old generic lookup only if the curated set ever stops
-    # including Bali (e.g. an incompletely-seeded dev database).
+    # to the generic lookup only if the curated set ever stops including
+    # Bali (e.g. an incompletely-seeded dev database).
     preview_destination = (
         Destination.objects.filter(slug="bali-id").first()
         or Destination.objects.filter(trip_type__in=["beach", "nature"]).order_by("id").first()
@@ -70,20 +65,19 @@ def landing(request):
 
 
 def set_language(request):
-    """Wraps Django's own django.views.i18n.set_language view (2026-09-04,
-    automatic language detection) to also persist an authenticated
-    visitor's explicit choice to their account
-    (users.User.preferred_language), so it follows them to any device -
-    not just the browser that set the django_language cookie. Reuses
-    100% of Django's own cookie-setting/redirect/referer-validation logic
-    rather than reimplementing any of it; the only thing added is the
-    account-level side effect Django's own view has no concept of.
+    """Wraps Django's own django.views.i18n.set_language view to also
+    persist an authenticated visitor's explicit choice to their account
+    (users.User.preferred_language), so it follows them to any device,
+    not just the browser that set the django_language cookie. Reuses all
+    of Django's own cookie-setting/redirect/referer-validation logic
+    rather than reimplementing it; the only addition is the account-level
+    side effect Django's own view has no concept of.
 
     Mirrors Django's own validation exactly (request.method == "POST" and
     check_for_language(lang_code)) rather than a separate check, so this
-    only ever persists a value Django's own view just accepted - never a
-    value it silently ignored (e.g. a POST with no or invalid `language`,
-    which leaves the cookie/account untouched, per its own docstring)."""
+    only ever persists a value Django's view just accepted - never one it
+    silently ignored (e.g. a POST with no or invalid `language`, which
+    leaves the cookie/account untouched, per its own docstring)."""
     response = django_set_language(request)
     if request.method == "POST" and request.user.is_authenticated:
         lang_code = request.POST.get("language")
@@ -97,9 +91,9 @@ def set_language(request):
 def health_check(request):
     """Report application health, including critical infrastructure.
 
-    Milestone 1 (04_MVP_IMPLEMENTATION_PLAN.md) requires a basic health
-    endpoint confirming the app can reach PostgreSQL. Redis and other
-    dependencies can be added here as they become part of the request path.
+    Confirms the app can reach PostgreSQL, per 04_MVP_IMPLEMENTATION_PLAN.md.
+    Redis and other dependencies can be added here as they become part of
+    the request path.
     """
     database_ok = _database_is_reachable()
     status = "ok" if database_ok else "degraded"
@@ -115,21 +109,22 @@ def _database_is_reachable():
         connections["default"].cursor()
         return True
     except OperationalError:
-        # Never swallow this silently - the real driver error (bad host,
-        # SSL requirement, connection limit, etc.) is exactly what's needed
-        # to diagnose a real "database unavailable" incident, and it was
-        # previously only visible as a generic 503 in the access log.
+        # Don't swallow this silently - the real driver error (bad host,
+        # SSL requirement, connection limit, etc.) is exactly what's
+        # needed to diagnose a "database unavailable" incident, and
+        # otherwise it's only ever visible as a generic 503 in the access
+        # log.
         logger.error("Database health check failed.", exc_info=True)
         return False
 
 
 def robots_txt(request):
-    """Tells crawlers what's actually worth indexing (2026-09-03, SEO
-    prep). Disallows only genuinely private, login-gated, or non-content
-    paths - a crawler hitting one of these unauthenticated would just find
-    a login redirect or raw JSON, neither of which is worth indexing.
-    Points at sitemap.xml using SITE_DOMAIN, never request.get_host(), for
-    the same duplicate-hostname reason as everywhere else in this pass."""
+    """Tells crawlers what's actually worth indexing. Disallows only
+    genuinely private, login-gated, or non-content paths - an
+    unauthenticated crawler hitting one of these would just find a login
+    redirect or raw JSON, neither worth indexing. Points at sitemap.xml
+    using SITE_DOMAIN, never request.get_host(), for the same
+    duplicate-hostname reason as everywhere else here."""
     lines = [
         "User-agent: *",
         "Allow: /",
@@ -139,16 +134,13 @@ def robots_txt(request):
         "Disallow: /trips/",
         "Disallow: /api/",
         "Disallow: /health/",
-        # 2026-09-07: /travel/ only ever holds the staff-only country-videos
-        # editing tool (@staff_member_required) added 2026-09-06 - missed
-        # when this list was first written, since the travel app had no
-        # user-facing pages yet at that point. Same reasoning as every
-        # other disallowed path here: an unauthenticated crawler would just
-        # find a login redirect, nothing worth indexing.
+        # /travel/ only ever holds the staff-only country-videos editing
+        # tool (@staff_member_required) - missed when this list was first
+        # written, since travel had no user-facing pages yet at that
+        # point. Same reasoning as every other disallowed path here: an
+        # unauthenticated crawler just finds a login redirect.
         "Disallow: /travel/",
-        # 2026-09-09: the staff-only internal analytics dashboard - added
-        # to this list from day one this time (unlike /travel/ above,
-        # which was reactively fixed after already shipping crawlable).
+        # The staff-only internal analytics dashboard.
         "Disallow: /analytics/",
         "",
         f"Sitemap: https://{settings.SITE_DOMAIN}{reverse('core:sitemap')}",
@@ -157,14 +149,13 @@ def robots_txt(request):
 
 
 def sitemap_xml(request):
-    """A hand-written sitemap rather than django.contrib.sitemaps
-    (2026-09-03, SEO prep) - with only two genuinely public pages right
-    now, the framework's extra moving parts (django.contrib.sites,
-    per-model Sitemap classes) aren't worth it, and its default URL
-    generation reads the domain off the incoming request/Site object -
-    exactly the duplicate-hostname problem SITE_DOMAIN exists to avoid.
-    Revisit if/when the app gains real per-destination pages worth
-    listing individually."""
+    """A hand-written sitemap rather than django.contrib.sitemaps - with
+    only two genuinely public pages right now, the framework's extra
+    moving parts (django.contrib.sites, per-model Sitemap classes) aren't
+    worth it, and its default URL generation reads the domain off the
+    incoming request/Site object - exactly the duplicate-hostname problem
+    SITE_DOMAIN exists to avoid. Revisit once the app has real
+    per-destination pages worth listing individually."""
     urls = "".join(
         f"<url><loc>https://{settings.SITE_DOMAIN}{reverse(entry['url_name'])}</loc>"
         f"<changefreq>{entry['changefreq']}</changefreq>"

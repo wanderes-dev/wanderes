@@ -23,7 +23,7 @@ def _make_destination(slug, *, lat=10.0, lon=10.0):
     )
 
 
-@patch("integrations.tasks.time.sleep")  # the real inter-call delay shouldn't slow down a unit test
+@patch("integrations.tasks.time.sleep")  # don't let the real inter-call delay slow the test down
 class WarmClimateCacheTests(TestCase):
     @patch("integrations.tasks.get_climate_provider")
     def test_calls_climate_provider_for_every_destination_and_month(
@@ -41,9 +41,9 @@ class WarmClimateCacheTests(TestCase):
 
         self.assertEqual(stub_provider.get_monthly_climate.call_count, 2 * 12)
         self.assertEqual(result, {"warmed": 24, "failed": 0})
-        # A real delay must actually happen between calls (2026-09-02 fix -
-        # an undelayed burst is what triggered the original hang) - just
-        # not a real one slowing down this test.
+        # A real delay must actually happen between calls (an undelayed
+        # burst is what triggered the original hang) - just not a real
+        # one slowing down this test.
         self.assertEqual(mock_sleep.call_count, 24)
 
     @patch("integrations.tasks.get_climate_provider")

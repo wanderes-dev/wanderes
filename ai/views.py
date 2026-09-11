@@ -19,33 +19,29 @@ from .orchestration import FALLBACK_REPLY, MAX_RECOMMENDATIONS, stream_travel_re
 
 MAX_MESSAGE_LENGTH = 2000
 
-# Appended after the streamed reply text so the chat page can offer
-# "save as trip" links for the recommended destinations (Phase 13 -
-# "Save relevant recommendations") without needing a second endpoint or
-# server-side session state. Distinctive enough that real reply text is
-# very unlikely to contain it by coincidence.
+# Appended after the streamed reply so the chat page can build "save as
+# trip" links without a second endpoint or server-side session state.
+# Distinctive enough real reply text won't collide with it by accident.
 RECOMMENDATIONS_DELIMITER = "\n<<<WANDERES_RECOMMENDATIONS>>>\n"
 
-# Same approach, same reasoning, for saved-conversation status (2026-09-02):
-# whether this turn got persisted, and why not when it didn't - lets the
-# chat page show a one-time explanatory modal without a second endpoint or
-# server-side session state either. Only ever appended for authenticated
-# users - anonymous visitors can't save conversations at all.
+# Same trick for saved-conversation status - whether this turn got
+# persisted, and why not if it didn't - so the chat page can show its
+# explanatory modal without another endpoint. Only appended for
+# authenticated users; anonymous visitors can't save conversations.
 CONVERSATION_DELIMITER = "\n<<<WANDERES_CONVERSATION>>>\n"
 
 
 def _chat_i18n_json() -> str:
-    """Translated strings the chat page's own JS needs at runtime
-    (2026-09-04, translation rollout) - loading messages, dynamically
-    built recommendation cards, and error bubbles, none of which a
-    template-level {% trans %} tag can reach directly. Serialized with
-    json.dumps rather than hand-quoted inside JS string literals in the
-    template - several of these strings contain an apostrophe (e.g.
-    "Couldn't load that conversation."), which would silently break a
-    naively single-quoted JS literal the moment it was translated into a
-    language whose translation also happens to contain one. Same
-    <>&-escaping as core.context_processors.site_meta's JSON-LD, for the
-    same reason (safe to embed in a <script> tag)."""
+    """Translated strings the chat page's JS needs at runtime - loading
+    messages, dynamically built recommendation cards, error bubbles -
+    none of which a template-level {% trans %} tag can reach.
+
+    Serialized with json.dumps rather than hand-quoted into JS string
+    literals: some of these strings contain an apostrophe (e.g. "Couldn't
+    load that conversation."), which breaks a naive single-quoted JS
+    literal once translated. Same <>&-escaping as
+    core.context_processors.site_meta's JSON-LD, for the same reason -
+    safe to embed in a <script> tag."""
     data = json.dumps(
         {
             "loadingMessages": [
@@ -87,10 +83,10 @@ def chat_page(request):
 
 
 def _require_authenticated_json(request):
-    """Shared guard for the small JSON conversation-management endpoints
-    below - a plain 403 rather than login_required's HTML redirect, since
+    """Guard for the small JSON conversation-management endpoints below.
+    Returns a plain 403 instead of login_required's HTML redirect, since
     these are only ever called by the chat page's own JS, which already
-    knows (from the template) whether the visitor is signed in."""
+    knows from the template whether the visitor is signed in."""
     if not request.user.is_authenticated:
         return HttpResponseForbidden("Login required.")
     return None
@@ -104,19 +100,18 @@ def _parse_conversation_id(raw: str | None) -> int | None:
 
 def _recommendation_card_data(scored_destination, *, detail_shown=False):
     """Shape one ScoredDestination into what the chat page's recommendation
-    cards need (2026-09-01 UI/UX pass - `05_AI_DESIGN.md` §7 "never invent
-    travel data" applies to the frontend too, so this only ever exposes
-    real fields already computed by recommendations.scoring, never new
-    facts). `fit_reasons` translates the scoring factors that are already
-    used to rank destinations into safe, user-facing explanations - never
-    exposes the AI's own reasoning or raw scores, matching the existing
-    "no internal chain-of-thought in the UI" boundary.
+    cards need. `05_AI_DESIGN.md` §7's "never invent travel data" applies
+    to the frontend too - only real fields already computed by
+    recommendations.scoring get exposed here, never new facts.
+    `fit_reasons` turns the scoring factors already used to rank
+    destinations into safe, user-facing explanations - never the AI's own
+    reasoning or raw scores.
 
-    `detail_shown` (2026-09-08, "choose this trip" flow) tells the frontend
-    whether this card came from ai.orchestration's single-destination detail
-    path - if so it renders the real "Save this trip" link; otherwise it
-    renders "Choose this trip", which sends the traveler back into that
-    detail path instead of saving immediately."""
+    `detail_shown` tells the frontend whether this card came from
+    ai.orchestration's single-destination detail path. If so it renders
+    the real "Save this trip" link; otherwise "Choose this trip", which
+    sends the traveler back into that detail path instead of saving
+    immediately."""
     destination = scored_destination.destination
     fit_reasons = []
     if scored_destination.preference_fit > 0:
@@ -140,8 +135,8 @@ def _recommendation_card_data(scored_destination, *, detail_shown=False):
 
 @require_POST
 def recommendations_stream(request):
-    # Request Validation (09_AI_ORCHESTRATION.md §3, step 1): reject empty
-    # or absurdly long input before spending an AI call on it.
+    # Reject empty or absurdly long input before spending an AI call on it
+    # (09_AI_ORCHESTRATION.md §3, step 1).
     message = request.POST.get("message", "").strip()
     if not message:
         return HttpResponseBadRequest("Message must not be empty.")
@@ -150,21 +145,19 @@ def recommendations_stream(request):
 
     user = request.user if request.user.is_authenticated else None
 
-    # Anonymous conversation memory (ai.memory) is keyed by the Django
-    # session, which is otherwise unused for anonymous visitors - force it
-    # to exist now rather than waiting for some other write to create it,
-    # so the very first message already has a stable key. Moved ahead of
-    # the analytics call below (2026-09-09) so conversation_key is already
-    # resolvable on this request's very first event, not just from the
-    # second message onward.
+    # ai.memory keys anonymous conversations by the Django session, which
+    # is otherwise unused for anonymous visitors - force it to exist now
+    # instead of waiting for some other write to create it later, so even
+    # the first message gets a stable key. Has to happen before the
+    # analytics call below so conversation_key is resolvable from the
+    # very first event, not just from the second message onward.
     if not request.session.session_key:
         request.session.save()
     conversation_key = memory.conversation_key(user=user, session_key=request.session.session_key)
     locale = request.LANGUAGE_CODE
 
-    # Any chat interaction counts, regardless of what it turns out to be
-    # (recommendation, feedback, future intent, or off-topic) - Phase 17
-    # decision, 2026-08-30.
+    # Any chat interaction counts here, regardless of what it turns out to
+    # be - recommendation, feedback, future intent, or off-topic.
     record_event(
         "travel_question_submitted",
         user=user,
@@ -173,9 +166,9 @@ def recommendations_stream(request):
         locale=locale,
     )
 
-    # Saved conversations (2026-09-02, direct request) - registered users
-    # only; the checkbox itself isn't even rendered for anonymous visitors,
-    # but this is enforced server-side too, not just hidden in the UI.
+    # Saving is for registered users only - the checkbox isn't even
+    # rendered for anonymous visitors, but enforce it server-side too,
+    # not just hide it in the UI.
     save_requested = user is not None and request.POST.get("save") == "true"
     conversation_id = _parse_conversation_id(request.POST.get("conversation_id"))
     conversation = None
@@ -183,24 +176,23 @@ def recommendations_stream(request):
     if conversation_id is not None and user is not None:
         conversation = SavedConversation.objects.filter(pk=conversation_id, user=user).first()
         if conversation is None:
-            # Stale/foreign id (e.g. deleted from another tab) - fall back
-            # to treating this exactly like a fresh, not-yet-saved thread.
+            # Stale or foreign id (e.g. deleted from another tab) - treat
+            # this like a fresh, not-yet-saved thread.
             conversation_id = None
         else:
             history_override = conversation.messages[-memory.MAX_HISTORY_MESSAGES :]
 
-    # "Choose this trip" (2026-09-08): sent only by the chat page's own
-    # button, which already knows the exact destination - no validation
-    # here, stream_travel_recommendation's own Destination lookup is the
-    # single source of truth, and a bogus/stale slug just falls through to
-    # normal message handling there.
+    # Sent only by the chat page's own "Choose this trip" button, which
+    # already knows the destination - no validation here,
+    # stream_travel_recommendation's own Destination lookup is the source
+    # of truth, and a bogus/stale slug just falls through to normal
+    # message handling there.
     focus_destination_slug = request.POST.get("focus_destination_slug", "").strip() or None
 
-    # No explicit ai_provider passed - stream_travel_recommendation resolves
-    # its own default lazily, same as before this feature (2026-09-02:
-    # record_turn below does the same, for the same reason - constructing
-    # a real AIProvider isn't free and isn't always needed, e.g. whenever
-    # save_requested is False).
+    # No explicit ai_provider - stream_travel_recommendation resolves its
+    # own default lazily. record_turn below does the same, for the same
+    # reason: constructing a real AIProvider isn't free and isn't always
+    # needed (e.g. whenever save_requested is False).
     result = stream_travel_recommendation(
         message,
         user=user,
@@ -210,11 +202,11 @@ def recommendations_stream(request):
     )
     if result.recommendations:
         if result.is_destination_detail:
-            # The "Choose this trip" detail reply (2026-09-08) - a real,
-            # deliberate user action, distinct from a normal browse-stage
+            # The "Choose this trip" detail reply is a deliberate user
+            # action, distinct from a normal browse-stage
             # recommendation_generated. Its single ScoredDestination isn't
-            # itself a fresh recommendation_generated event (it grew out of
-            # one already recorded on an earlier turn).
+            # a fresh recommendation_generated event - it grew out of one
+            # already recorded on an earlier turn.
             record_event(
                 "destination_selected",
                 user=user,
@@ -247,11 +239,10 @@ def recommendations_stream(request):
         full_reply = "".join(collected)
 
         if result.recommendations:
-            # result.recommendations is already capped to MAX_RECOMMENDATIONS
-            # by ai.orchestration before it ever reaches this view - this
-            # slice is a defensive no-op for the current caller, kept so a
-            # future caller that doesn't pre-cap still can't flood the UI
-            # with cards.
+            # Already capped to MAX_RECOMMENDATIONS by ai.orchestration
+            # before it reaches this view - this slice is a no-op today,
+            # kept so a future caller that doesn't pre-cap can't flood the
+            # UI with cards.
             payload = [
                 _recommendation_card_data(r, detail_shown=result.is_destination_detail)
                 for r in result.recommendations[:MAX_RECOMMENDATIONS]
@@ -259,15 +250,14 @@ def recommendations_stream(request):
             yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)
 
         if user is not None:
-            # A degraded reply (the AI provider was unreachable, or failed
-            # mid-stream) shouldn't be permanently written into the
+            # A degraded reply (provider unreachable, or failed
+            # mid-stream) shouldn't get permanently written into the
             # traveler's saved conversation as if it were a real answer -
-            # 2026-09-02 review: previously it was, counting toward the
-            # conversation's char limit and staying visible on reload.
-            # FALLBACK_REPLY appears verbatim (a full failure) or as a
-            # suffix (a partial reply before a mid-stream failure); either
-            # way, skip saving this turn - the conversation itself already
-            # continued normally, this only affects persistence.
+            # it would count toward the char limit and stay visible on
+            # reload. FALLBACK_REPLY shows up verbatim (a full failure) or
+            # as a suffix (partial reply before a mid-stream failure);
+            # either way, skip saving this turn. The conversation itself
+            # already continued normally - this only affects persistence.
             save_result = record_turn(
                 user=user,
                 conversation=conversation,
@@ -290,11 +280,11 @@ def recommendations_stream(request):
 @require_POST
 def conversation_reset(request):
     """Clear whatever short-term AI context (ai.memory, Redis-backed)
-    exists under this visitor's key - called when they click "New
-    conversation" so a genuinely fresh thread doesn't silently inherit
-    context from whatever was last discussed under the same key. Works for
-    anonymous visitors too (keyed by session), not just registered users -
-    conversation *saving* is registered-only, but starting fresh isn't."""
+    exists under this visitor's key. Called on "New conversation" so a
+    genuinely fresh thread doesn't silently inherit context from whatever
+    was last discussed under the same key. Works for anonymous visitors
+    too, keyed by session - saving a conversation is registered-only, but
+    starting fresh isn't."""
     user = request.user if request.user.is_authenticated else None
     if not request.session.session_key:
         request.session.save()
@@ -329,8 +319,8 @@ def conversation_detail(request, pk):
     forbidden = _require_authenticated_json(request)
     if forbidden:
         return forbidden
-    # Structural authorization, same pattern as every trips/users view:
-    # only ever fetches the caller's own conversation.
+    # Same pattern as every trips/users view - only ever fetches the
+    # caller's own conversation.
     conversation = get_object_or_404(SavedConversation, pk=pk, user=request.user)
     return JsonResponse(
         {

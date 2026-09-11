@@ -92,8 +92,8 @@ class OpenAIProviderTests(TestCase):
     @patch("ai.provider.openai_provider.OpenAI")
     def test_generate_structured_reply_passes_temperature_when_given(self, mock_openai_class):
         # Intent extraction calls this with temperature=0 for consistent
-        # results across near-identical calls - confirms it actually
-        # reaches the provider rather than being silently dropped.
+        # results across near-identical calls - just confirming it
+        # actually reaches the provider instead of getting dropped.
         mock_client = Mock()
         mock_client.chat.completions.create.return_value = _fake_completion(content='{"a": 1}')
         mock_openai_class.return_value = mock_client
@@ -140,9 +140,9 @@ class OpenAIProviderTests(TestCase):
 
     @patch("ai.provider.openai_provider.OpenAI")
     def test_stream_reply_passes_temperature_when_given(self, mock_openai_class):
-        # 2026-09-03 QA finding: the visa-question reply needs temperature=0
-        # to faithfully relay already-verified data rather than write
-        # creatively - confirms it actually reaches the provider.
+        # The visa-question reply needs temperature=0 to faithfully relay
+        # already-verified data rather than write creatively - confirms
+        # it actually reaches the provider.
         mock_client = Mock()
         mock_client.chat.completions.create.return_value = _fake_stream_chunks(["Hi"])
         mock_openai_class.return_value = mock_client

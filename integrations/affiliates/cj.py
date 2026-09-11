@@ -6,40 +6,32 @@ from django.core.exceptions import ImproperlyConfigured
 
 from .base import AffiliateLinkResult, AffiliateNetworkError, AffiliateNetworkProvider
 
-# CJ Developer Portal, Link Search API reference (developers.cj.com/docs/
-# rest-apis/link-search - fetched and read directly 2026-09-09, not
-# guessed at, per this project's own "don't guess at an undocumented
-# shape" discipline already applied to kayak.py/booking_com.py).
+# CJ Developer Portal, Link Search API reference
+# (developers.cj.com/docs/rest-apis/link-search) - read directly, not
+# guessed at, same discipline as kayak.py/booking_com.py.
 LINK_SEARCH_URL = "https://link-search.api.cj.com/v2/link-search"
 REQUEST_TIMEOUT_SECONDS = 10
-# Documented limit: 25 calls/minute, publishers only. Nothing in this
-# module currently calls it in a loop - noted here for whoever adds bulk
-# fetching later.
+# Documented limit: 25 calls/minute, publishers only. Nothing here loops
+# over it yet - noted for whoever adds bulk fetching later.
 RATE_LIMIT_CALLS_PER_MINUTE = 25
 
 
 class CJAffiliateProvider(AffiliateNetworkProvider):
-    """CJ Affiliate's Link Search API (2026-09-09) - CJ's OWN link/product
-    discovery API, authenticated with a personal access token
-    (settings.CJ_API_TOKEN) plus a registered Website ID/PID
-    (settings.CJ_WEBSITE_ID). This is NOT Booking.com's Demand API - see
-    this module's package docstring (base.py) and
+    """CJ Affiliate's Link Search API - CJ's own link/product discovery
+    API, authenticated with a personal access token (settings.CJ_API_TOKEN)
+    plus a registered Website ID/PID (settings.CJ_WEBSITE_ID). Not
+    Booking.com's Demand API - see this package's base.py docstring and
     10_EXTERNAL_INTEGRATIONS.md §13.8 for why that distinction matters.
 
-    Response parsing note: CJ's own documented sample response XML shows
-    an apparent double-nested <link><link>...</link>...</link> structure
-    that looks like a documentation rendering artifact (the "Per Record
-    (Link)" field table it's paired with describes a single flat set of
-    fields per link, with no indication of two nesting levels). This
-    parses defensively - it looks for any <link> element that directly
-    contains a <link-id> child, rather than assuming one fixed nesting
-    depth - so a single extra wrapping level either way doesn't break it.
-    This has not been exercised against a real live response (no
-    CJ_WEBSITE_ID was available while building it - see
-    documentation/16_ANALYTICS_ARCHITECTURE.md-adjacent honesty
-    convention: flag what's verified against real docs vs. what's still
-    unverified against a real call). Verify against one real response
-    before trusting this for anything user-facing.
+    Parsing note: CJ's documented sample response shows an apparent
+    double-nested <link><link>...</link>...</link> structure, which looks
+    like a docs rendering artifact - the accompanying field table
+    describes one flat set of fields per link, no second nesting level.
+    We parse defensively (look for any <link> with a direct <link-id>
+    child, not a fixed depth) so an extra wrapping level either way
+    doesn't break it. Untested against a real live response (no
+    CJ_WEBSITE_ID available while building this) - verify against one
+    real response before trusting it for anything user-facing.
     """
 
     def search_links(
@@ -96,10 +88,10 @@ class CJAffiliateProvider(AffiliateNetworkProvider):
         for link_el in root.iter("link"):
             link_id = link_el.findtext("link-id")
             if link_id is None:
-                # Not a per-record element (e.g. an outer wrapping <link>
-                # if the documented sample's extra nesting level is real,
-                # not a docs artifact) - only elements with their own
-                # link-id are actual records.
+                # Skip non-record elements - e.g. an outer wrapping <link>
+                # if that extra nesting level turns out to be real, not a
+                # docs artifact. Only elements with their own link-id
+                # count as records.
                 continue
 
             raw_countries = link_el.findtext("targeted-countries") or ""

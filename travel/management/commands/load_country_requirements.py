@@ -6,10 +6,9 @@ from django.core.management.base import BaseCommand
 
 from travel.models import CountryEntryRequirement
 
-# Lives inside the travel app itself, same reasoning as
-# load_destinations.py's DEFAULT_DATASET_PATH - real application data, not
-# developer documentation, so it isn't silently excluded from the Docker
-# image by .dockerignore.
+# Same reasoning as load_destinations.py's DEFAULT_DATASET_PATH - real
+# application data, not dev docs, so .dockerignore doesn't silently drop
+# it from the image.
 DEFAULT_DATASET_PATH = (
     settings.BASE_DIR / "travel" / "data" / "country_entry_requirements.json"
 )

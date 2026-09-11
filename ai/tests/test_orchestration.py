@@ -49,12 +49,12 @@ class StubAIProvider:
         return self.structured_response
 
     def generate_reply(self, messages, *, max_tokens=None):
-        # Used by _localize_reply (2026-08-31) to phrase a fixed feedback/
-        # future-intent confirmation in the traveler's language. Echoing
-        # the original English fact back verbatim (stripping the wrapping
-        # localization instruction) keeps every existing assertion against
-        # those exact fact strings valid - actual localization quality is
-        # a live-only concern this stub isn't meant to exercise.
+        # Used by _localize_reply to phrase a fixed feedback/future-intent
+        # confirmation in the traveler's language. Echoing the original
+        # English fact back verbatim (stripping the wrapping localization
+        # instruction) keeps every existing assertion against those exact
+        # fact strings valid - actual localization quality is a live-only
+        # concern this stub isn't meant to exercise.
         self.generate_reply_calls.append(messages)
         last_content = messages[-1].content
         marker = "this applies just as much to English as to any other language: "
@@ -75,8 +75,8 @@ class SchemaAwareStubAIProvider:
     canned response for any schema, which can't simulate the combined
     intent-extraction call ("travel_message") and the isolated climate/
     budget call ("climate_budget_signal") returning genuinely different
-    things - exactly the scenario the 2026-09-06 structural fix needs to
-    be tested against (see ClimateBudgetSignalTests)."""
+    things - exactly the scenario ClimateBudgetSignalTests needs to test
+    against."""
 
     def __init__(self, *, responses_by_schema, reply_text="Here's my recommendation."):
         self.responses_by_schema = responses_by_schema
@@ -195,10 +195,10 @@ class GetTravelRecommendationTests(TestCase):
         )
 
     def test_off_topic_message_gets_a_real_ai_reply(self):
-        # 2026-08-30, direct user feedback: returning the exact same fixed
-        # sentence for every off-topic message (even "are you an AI?")
-        # felt scripted, not like a real assistant. Off-topic now makes a
-        # real AI call instead of returning a canned string.
+        # Returning the exact same fixed sentence for every off-topic
+        # message (even "are you an AI?") felt scripted, not like a real
+        # assistant. Off-topic now makes a real AI call instead of
+        # returning a canned string.
         ai_provider = StubAIProvider(
             structured_response=_intent(message_type="off_topic"),
             reply_text="Paris is the capital of France! Now, where are you thinking of traveling?",
@@ -216,10 +216,10 @@ class GetTravelRecommendationTests(TestCase):
         self.assertEqual(len(ai_provider.stream_reply_calls), 1)
 
     def test_missing_month_defaults_to_current_month_and_proceeds(self):
-        # No clarification gate (removed 2026-08-30, per direct user
-        # feedback): a real user will rarely state every dimension in one
-        # message, and should never be blocked from a real answer for it -
-        # month defaults to the current one instead of being asked about.
+        # No clarification gate here - a real user will rarely state every
+        # dimension in one message, and shouldn't be blocked from a real
+        # answer for it. Month defaults to the current one instead of
+        # being asked about.
         ai_provider = StubAIProvider(
             structured_response=_intent(min_temp_c=20.0),
             reply_text="Try the warm destination!",
@@ -253,10 +253,10 @@ class GetTravelRecommendationTests(TestCase):
         self.assertEqual(len(ai_provider.stream_reply_calls), 1)
 
     def test_max_temp_c_is_wired_through_to_recommendation_request(self):
-        # 2026-09-02 review: max_temp_c existed as a hard constraint in
-        # recommendations.scoring.RecommendationRequest since Phase 8, but
-        # nothing in the AI orchestration layer ever extracted or passed
-        # it - "somewhere not too hot" could never actually be honored.
+        # max_temp_c existed as a hard constraint in
+        # recommendations.scoring.RecommendationRequest, but nothing in
+        # the AI orchestration layer ever extracted or passed it -
+        # "somewhere not too hot" could never actually be honored.
         # warm-cheap's real avg_high_c for month 10 is 28.0 (see setUp) -
         # a max_temp_c of 25.0 should filter it out entirely.
         ai_provider = StubAIProvider(
@@ -276,8 +276,8 @@ class GetTravelRecommendationTests(TestCase):
         # Mirrors the existing min_temp_c-alone-is-enough-signal behavior -
         # a traveler rarely states an explicit temperature bound without
         # real intent, so max_temp_c alone should also skip the "gather
-        # more first" open-ended path and search immediately. 30.0 is
-        # above warm-cheap's real 28.0 avg_high_c, so it should match.
+        # more first" open-ended path and search right away. 30.0 is above
+        # warm-cheap's real 28.0 avg_high_c, so it should match.
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, max_temp_c=30.0),
             reply_text="Try this one!",
@@ -296,9 +296,9 @@ class GetTravelRecommendationTests(TestCase):
         # Reported live: "oi, pode me ajudar com uma viagem?" (hi, can you
         # help me with a trip?) with genuinely nothing else - no month,
         # climate, budget, trip type - jumped straight to specific
-        # destination suggestions, which felt presumptuous. When there is
-        # truly no signal at all, the app should hand the "ask vs suggest"
-        # judgment to the AI rather than running an unfiltered search.
+        # destination suggestions, which felt presumptuous. With truly no
+        # signal at all, the app should hand the "ask vs suggest" judgment
+        # to the AI rather than run an unfiltered search.
         ai_provider = StubAIProvider(
             structured_response=_intent(),  # everything null - a bare opener
             reply_text="What kind of trip are you dreaming about?",
@@ -315,10 +315,10 @@ class GetTravelRecommendationTests(TestCase):
         self.assertEqual(len(ai_provider.stream_reply_calls), 1)
 
     def test_no_matches_asks_ai_to_help_instead_of_a_dead_end_reply(self):
-        # Per the Phase 11 recommendation philosophy and direct user
-        # feedback: a hard-constraint dead end should not be a canned
-        # message - the AI should always try to help from its own
-        # knowledge rather than asking yet another question.
+        # Per the recommendation philosophy: a hard-constraint dead end
+        # should not be a canned message - the AI should always try to
+        # help from its own knowledge rather than ask yet another
+        # question.
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=100.0),
             reply_text="Here's a real suggestion from general knowledge.",
@@ -359,10 +359,9 @@ class GetTravelRecommendationTests(TestCase):
 
 class TravelerProfileContextTests(TestCase):
     """Tests that TravelerProfile's home_country/travelers_count/budget
-    (2026-09-02) and preferred_trip_types/preferred_cost_of_living
-    (2026-09-05) reach the AI's reasoning prompts as context, and that
-    CountryEntryRequirement data is looked up (not invented) when a home
-    country is known."""
+    and preferred_trip_types/preferred_cost_of_living reach the AI's
+    reasoning prompts as context, and that CountryEntryRequirement data is
+    looked up (not invented) when a home country is known."""
 
     def setUp(self):
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
@@ -380,10 +379,9 @@ class TravelerProfileContextTests(TestCase):
             budget_currency="BRL",
             budget_period="day",
         )
-        # Bypasses the 2026-09-02 confirmation gate (its own dedicated
-        # tests are in ProfileConfirmationGateTests below) - this test is
-        # specifically about what the explanation prompt contains, not
-        # about the gate itself.
+        # Bypasses the confirmation gate (its own dedicated tests live in
+        # ProfileConfirmationGateTests below) - this test only cares what
+        # the explanation prompt contains, not the gate itself.
         memory.mark_profile_confirmed(memory.conversation_key(user=self.user, session_key=None))
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
@@ -399,8 +397,7 @@ class TravelerProfileContextTests(TestCase):
         explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertIn("traveling from Brazil", explanation_prompt)
         self.assertIn("3 people", explanation_prompt)
-        # Always converted to an approximate USD figure (2026-09-02 direct
-        # follow-up: "budget must be always on dolar") - never the raw
+        # Always converted to an approximate USD figure - never the raw
         # currency-ambiguous number handed to the AI directly. Computed
         # from the same conversion table rather than hardcoding the
         # expected figure, so this test doesn't break if the static rates
@@ -411,11 +408,11 @@ class TravelerProfileContextTests(TestCase):
         self.assertIn("per day", explanation_prompt)
 
     def test_preferred_trip_types_reach_the_explanation_prompt(self):
-        # 2026-09-05, direct user feedback: the AI claimed it had no
-        # access to the traveler's profile at all when asked, even though
-        # preferred_trip_types already existed and already influenced
-        # recommendations.scoring's deterministic preference_fit bonus -
-        # it just was never actually told to the AI itself.
+        # The AI used to claim it had no access to the traveler's profile
+        # at all when asked, even though preferred_trip_types already
+        # existed and already influenced recommendations.scoring's
+        # deterministic preference_fit bonus - it just was never actually
+        # told to the AI itself.
         TravelerProfile.objects.create(
             user=self.user, preferred_trip_types=["beach", "culture"]
         )
@@ -464,7 +461,7 @@ class TravelerProfileContextTests(TestCase):
         self.assertNotIn("Traveler profile context", explanation_prompt)
 
     def test_budget_without_a_period_is_not_included(self):
-        # The profile form itself requires all three together, but the
+        # The profile form requires all three together, but the
         # orchestration layer shouldn't trust that - a directly-created
         # row with only one of the trio set must not surface a
         # meaningless "amount with no unit/currency" note.
@@ -484,10 +481,10 @@ class TravelerProfileContextTests(TestCase):
         self.assertNotIn("budget", explanation_prompt.lower())
 
     def test_budget_without_a_currency_is_not_included(self):
-        # A pre-migration or directly-created row could have amount+period
-        # but no currency - without a currency there's nothing real to
-        # convert, so this must degrade to no budget note at all rather
-        # than guessing a currency.
+        # A pre-migration or directly-created row could have amount and
+        # period but no currency - without a currency there's nothing
+        # real to convert, so this must degrade to no budget note at all
+        # rather than guess one.
         TravelerProfile.objects.create(user=self.user, budget_amount=150, budget_period="day")
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Here you go!"
@@ -510,7 +507,7 @@ class TravelerProfileContextTests(TestCase):
             visa_required_nationalities=["Brazil"],
             visa_notes="Apply online at least 30 days in advance.",
         )
-        # Bypasses the 2026-09-02 confirmation gate - see the comment on
+        # Bypasses the confirmation gate - see the comment on
         # test_profile_budget_and_travelers_reach_the_explanation_prompt.
         memory.mark_profile_confirmed(memory.conversation_key(user=self.user, session_key=None))
         ai_provider = StubAIProvider(
@@ -548,12 +545,12 @@ class TravelerProfileContextTests(TestCase):
 
 
 class ProfileConfirmationGateTests(TestCase):
-    """Tests the 2026-09-02 gate: "IA must always confirm this information
-    with the user before suggest any destination" - the first message in a
-    conversation that reaches enough signal to search must confirm
-    on-file TravelerProfile details first, with no destinations attached;
-    every later message in that same conversation proceeds straight to
-    real suggestions."""
+    """Tests the confirmation gate: "the AI must always confirm this
+    information with the user before suggesting any destination" - the
+    first message in a conversation that reaches enough signal to search
+    must confirm on-file TravelerProfile details first, with no
+    destinations attached; every later message in that same conversation
+    proceeds straight to real suggestions."""
 
     def setUp(self):
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
@@ -582,12 +579,12 @@ class ProfileConfirmationGateTests(TestCase):
         self.assertIn("Do not suggest or list any destinations", confirmation_prompt)
 
     def test_confirmation_prompt_does_not_say_the_context_is_optional(self):
-        # 2026-09-03 QA re-test finding: _traveler_context_note()'s default
-        # "use only when relevant, don't force it in every time" caveat -
-        # correct for every other caller - directly undercut this one,
-        # whose entire purpose is to state the details every time. A live
-        # reproduction showed the profile context silently dropped from a
-        # confirmation reply because of it.
+        # _traveler_context_note()'s default "use only when relevant,
+        # don't force it in every time" caveat is correct for every other
+        # caller, but directly undercuts this one, whose entire purpose is
+        # to state the details every time. A live reproduction showed the
+        # profile context silently dropped from a confirmation reply
+        # because of it.
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=20.0),
             reply_text="Just to confirm, still traveling from Brazil?",
@@ -605,11 +602,11 @@ class ProfileConfirmationGateTests(TestCase):
         self.assertIn("state all of this", confirmation_prompt)
 
     def test_trip_type_preference_alone_triggers_the_gate(self):
-        # 2026-09-05: preferred_trip_types/preferred_cost_of_living are
-        # now confirmable too, not just home_country/travelers_count/
-        # budget - a profile with only a trip-type preference set (no
-        # travel-details fields) previously got no confirmation at all,
-        # even though it already silently influenced scoring.
+        # preferred_trip_types/preferred_cost_of_living are confirmable
+        # too, not just home_country/travelers_count/budget - a profile
+        # with only a trip-type preference set (no travel-details fields)
+        # used to get no confirmation at all, even though it already
+        # silently influenced scoring.
         user = User.objects.create_user(email="other@example.com", password="testpass123")
         TravelerProfile.objects.create(user=user, preferred_trip_types=["beach"])
         ai_provider = StubAIProvider(
@@ -692,8 +689,8 @@ class StreamTravelRecommendationTests(TestCase):
         self.assertEqual(len(result.recommendations), 1)
 
     def test_valid_request_populates_recommendation_constraints(self):
-        # 2026-09-09: lets ai/views.py enrich recommendation_generated's
-        # analytics metadata without needing to know anything about intent
+        # Lets ai/views.py enrich recommendation_generated's analytics
+        # metadata without needing to know anything about intent
         # extraction itself.
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=20.0, trip_type="beach"),
@@ -758,9 +755,9 @@ class StreamTravelRecommendationTests(TestCase):
 
 
 class LlmRequestInstrumentationTests(TestCase):
-    """2026-09-09: latency/success telemetry for the AI-provider calls -
-    deliberately not tokens/model/cost, see analytics.instrumentation's
-    own docstring for why."""
+    """Latency/success telemetry for the AI-provider calls - deliberately
+    not tokens/model/cost, see analytics.instrumentation's own docstring
+    for why."""
 
     def setUp(self):
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
@@ -883,13 +880,12 @@ class TripTypeAndExclusionTests(TestCase):
         self.assertEqual(slugs, {"warm-beach"})
 
     def test_trip_type_alone_is_now_enough_signal_to_search(self):
-        # 2026-09-02, direct user feedback on a real transcript: "praia"
-        # (beach) with no other detail kept getting an open-ended
-        # gathering question forever instead of any real answer. Reopens
-        # the narrower 2026-08-31 restriction (trip_type required a
-        # co-stated month too) now that the catalog is large enough (384
-        # destinations) for trip_type alone to be real, differentiating
-        # signal rather than a near-unfiltered dump.
+        # A real transcript: "praia" (beach) with no other detail kept
+        # getting an open-ended gathering question forever instead of any
+        # real answer. Reopens an earlier, narrower restriction (trip_type
+        # required a co-stated month too) now that the catalog is large
+        # enough (384 destinations) for trip_type alone to be real,
+        # differentiating signal rather than a near-unfiltered dump.
         ai_provider = StubAIProvider(
             structured_response=_intent(trip_type="beach"),  # no month, no temp, no cost
             reply_text="Here are some beach options!",
@@ -937,12 +933,12 @@ class TripTypeAndExclusionTests(TestCase):
 
 
 class ContinentTests(TestCase):
-    """2026-09-04, real production bug reported live: a "Eurotrip"
-    request's recommendation cards included Bali, Marrakech, Chiang Mai,
-    Hoi An, and Ayutthaya alongside the genuinely European options -
-    nothing extracted or filtered by continent at all before this field
-    existed, even though the AI's own free-text reply correctly talked
-    about "Europe" the whole time."""
+    """A real production bug reported live: a "Eurotrip" request's
+    recommendation cards included Bali, Marrakech, Chiang Mai, Hoi An, and
+    Ayutthaya alongside the genuinely European options - nothing extracted
+    or filtered by continent at all before this field existed, even though
+    the AI's own free-text reply correctly talked about "Europe" the whole
+    time."""
 
     def setUp(self):
         self.lisbon = _make_destination(
@@ -971,9 +967,9 @@ class ContinentTests(TestCase):
         self.assertEqual(slugs, {"lisbon"})
 
     def test_continent_alone_is_enough_signal_to_search(self):
-        # Mirrors test_trip_type_alone_is_now_enough_signal_to_search above -
-        # a continent name is at least as strong a differentiating signal
-        # as a trip_type, so it shouldn't trigger an open-ended
+        # Mirrors test_trip_type_alone_is_now_enough_signal_to_search
+        # above - a continent name is at least as strong a differentiating
+        # signal as a trip_type, so it shouldn't trigger an open-ended
         # clarification question either.
         ai_provider = StubAIProvider(
             structured_response=_intent(continent="europe"),  # no month, no temp, no cost
@@ -991,7 +987,7 @@ class ContinentTests(TestCase):
 
 
 class CountryTests(TestCase):
-    """2026-09-07, real production bug reported live: asking for Thailand
+    """Another real production bug reported live: asking for Thailand
     ("quero ir pra tailandia") returned cards from Japan, Vietnam,
     Indonesia, and the Maldives too - continent="asia" alone can't express
     "just this one country", the same gap the continent field itself
@@ -1042,12 +1038,11 @@ class CountryTests(TestCase):
 
 
 class RecommendationCapTests(TestCase):
-    """2026-09-02, direct user request: cap recommendations at
-    MAX_RECOMMENDATIONS (10) regardless of how many real destinations
-    match a broad request, and tell the traveler honestly when there were
-    more than that on file - the trip_type-alone fix above (same day) can
-    now return dozens of real matches against the 384-destination
-    catalog."""
+    """Cap recommendations at MAX_RECOMMENDATIONS (10) regardless of how
+    many real destinations match a broad request, and tell the traveler
+    honestly when there were more than that on file - the trip_type-alone
+    fix above can now return dozens of real matches against the
+    384-destination catalog."""
 
     def _make_beach_destinations(self, count):
         climate_by_coords = {}
@@ -1097,12 +1092,12 @@ class RecommendationCapTests(TestCase):
 
 
 class RecallRequestTests(TestCase):
-    """2026-09-03 QA finding: "voltando, quais praias você tinha
-    sugerido?" fell through to a fresh generate_recommendations() call,
-    which shared only 1 of 3 destinations with what was actually
-    suggested earlier - the AI re-searched instead of recalling. Fixed
-    with a new is_recall_request intent field that skips search entirely
-    and hands the model only its own conversation history."""
+    """QA finding: "voltando, quais praias você tinha sugerido?" fell
+    through to a fresh generate_recommendations() call, which shared only
+    1 of 3 destinations with what was actually suggested earlier - the AI
+    re-searched instead of recalling. Fixed with a new is_recall_request
+    intent field that skips search entirely and hands the model only its
+    own conversation history."""
 
     def setUp(self):
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
@@ -1129,7 +1124,7 @@ class RecallRequestTests(TestCase):
         self.assertIn("Do not run a new search", recall_prompt)
 
     def test_recall_request_takes_priority_over_message_type(self):
-        # Even a message_type the model got wrong shouldn't matter -
+        # Even a wrong message_type shouldn't matter here -
         # is_recall_request is checked first, before any branching on it.
         ai_provider = StubAIProvider(
             structured_response=_intent(message_type="off_topic", is_recall_request=True),
@@ -1157,11 +1152,11 @@ class RecallRequestTests(TestCase):
 
 
 class FocusDestinationTests(TestCase):
-    """2026-09-08, "choose this trip" flow: the chat page's own button
-    already knows the exact destination slug, so this skips intent
-    extraction entirely and goes straight to a grounded, detailed reply
-    about that one place - see stream_travel_recommendation's
-    focus_destination_slug parameter."""
+    """"Choose this trip" flow: the chat page's own button already knows
+    the exact destination slug, so this skips intent extraction entirely
+    and goes straight to a grounded, detailed reply about that one place -
+    see stream_travel_recommendation's focus_destination_slug
+    parameter."""
 
     def setUp(self):
         self.destination = Destination.objects.create(
@@ -1224,9 +1219,9 @@ class FocusDestinationTests(TestCase):
 
         # 2, not 1: normal handling runs both the combined intent
         # extraction and the isolated climate/budget signal extraction
-        # (see _extract_climate_budget_signal) - this test only cares that
+        # (see _extract_climate_budget_signal). This test only cares that
         # a bogus slug reaches normal handling at all, not the exact shape
-        # of that path's own calls.
+        # of that path's calls.
         self.assertEqual(len(ai_provider.generate_structured_reply_calls), 2)
         self.assertFalse(result.is_destination_detail)
 
@@ -1289,16 +1284,16 @@ class FocusDestinationTests(TestCase):
 
         sent_prompt = ai_provider.stream_reply_calls[0][-1].content
         # The grounding note names the country, not the raw URL - the real
-        # URL is only ever surfaced later, through the existing
+        # URL only ever surfaces later, through the existing
         # is_video_request conversational flow (_build_video_reply_messages),
-        # exactly like _build_explanation_messages' own video note.
+        # same as _build_explanation_messages' own video note.
         self.assertIn("A real video is on file for: Testland", sent_prompt)
 
     def test_no_video_note_when_none_is_on_file(self):
         # setUp's destination's country ("Testland") has no
         # CountryEntryRequirement row at all here - confirms the grounding
-        # note is silently omitted (not a crash, not a fabricated offer)
-        # exactly like _build_explanation_messages already does.
+        # note is silently omitted (not a crash, not a fabricated offer),
+        # same as _build_explanation_messages already does.
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=20.0),
             reply_text="Here's more.",
@@ -1318,12 +1313,12 @@ class FocusDestinationTests(TestCase):
 
 
 class VisaQuestionTests(TestCase):
-    """2026-09-03 QA finding: a bare informational visa question got zero
-    access to travel.CountryEntryRequirement, answering entirely from the
-    model's own general knowledge - the same underlying fact about Japan
-    got contradictory answers depending only on how the question was
-    phrased. Fixed with a new is_visa_or_entry_question intent field that
-    routes to a dedicated handler carrying real, verified data."""
+    """QA finding: a bare informational visa question got zero access to
+    travel.CountryEntryRequirement, answering entirely from the model's
+    own general knowledge - the same underlying fact about Japan got
+    contradictory answers depending only on how the question was phrased.
+    Fixed with a new is_visa_or_entry_question intent field that routes to
+    a dedicated handler carrying real, verified data."""
 
     def setUp(self):
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
@@ -1460,11 +1455,10 @@ class VisaQuestionTests(TestCase):
         self.assertIn("for a traveler from Brazil", prompt)
 
     def test_visa_reply_uses_temperature_zero(self):
-        # 2026-09-03 QA re-test finding: the default (non-zero) temperature
-        # occasionally contradicted the verified data handed to the model
-        # (e.g. claiming a visa was required for a nationality the dataset
-        # explicitly excludes) - this is a faithful-transcription task, not
-        # a creative one.
+        # The default (non-zero) temperature occasionally contradicted the
+        # verified data handed to the model (e.g. claiming a visa was
+        # required for a nationality the dataset explicitly excludes) -
+        # this is a faithful-transcription task, not a creative one.
         ai_provider = StubAIProvider(
             structured_response=_intent(
                 is_visa_or_entry_question=True,
@@ -1502,11 +1496,11 @@ class VisaQuestionTests(TestCase):
 
 
 class BookingRequestTests(TestCase):
-    """2026-09-03 QA finding: only 1 of 10 flight/hotel booking-style
-    requests ever disclosed that Wanderes can't actually make a booking -
-    the other 9 launched straight into the normal recommendation flow.
-    Fixed with a new is_booking_request intent field that forces the
-    disclosure every time."""
+    """QA finding: only 1 of 10 flight/hotel booking-style requests ever
+    disclosed that Wanderes can't actually make a booking - the other 9
+    launched straight into the normal recommendation flow. Fixed with a
+    new is_booking_request intent field that forces the disclosure every
+    time."""
 
     def setUp(self):
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
@@ -1571,10 +1565,10 @@ class BookingRequestTests(TestCase):
 
 
 class VideoRequestTests(TestCase):
-    """2026-09-07, direct request: the AI should offer/share real videos
-    from CountryEntryRequirement.videos, never invent a link, and be
-    honest when nothing is on file for the resolved country (no live
-    search fallback - a direct user decision, see DEVELOPMENT_LOG.md)."""
+    """The AI should offer/share real videos from
+    CountryEntryRequirement.videos, never invent a link, and be honest
+    when nothing is on file for the resolved country (no live search
+    fallback - see DEVELOPMENT_LOG.md for that decision)."""
 
     def setUp(self):
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
@@ -1707,14 +1701,14 @@ class VideoRequestTests(TestCase):
 
 
 class ActivityQuestionTests(TestCase):
-    """2026-09-07, direct user report: "ELE NAO me responde so fica
-    indicando cidade" - asking "mas o que tem de bom pra fazer la?" about
-    an already-established destination kept getting forced into the
+    """A direct user report: "ELE NAO me responde so fica indicando
+    cidade" - asking "mas o que tem de bom pra fazer la?" about an
+    already-established destination kept getting forced into the
     destination-comparison-table format instead of an actual answer. This
     intent flag bypasses generate_recommendations() entirely for a
-    follow-up activities/things-to-do question, per the already-approved
-    recommendation philosophy (2026-08-29: answer from general knowledge
-    for anything the deterministic model doesn't cover)."""
+    follow-up activities/things-to-do question, per the recommendation
+    philosophy: answer from general knowledge for anything the
+    deterministic model doesn't cover."""
 
     def setUp(self):
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
@@ -1805,10 +1799,10 @@ class ActivityQuestionTests(TestCase):
 
 
 class PromptReinforcementTests(TestCase):
-    """2026-09-03 QA-driven prompt reinforcements. These lock in that the
+    """QA-driven prompt reinforcements. These lock in that the
     strengthened instructions actually reach the model's prompt - whether
     a live model reliably follows them is a live-only concern, per this
-    project's established verification pattern (see DEVELOPMENT_LOG.md)."""
+    project's verification pattern (see DEVELOPMENT_LOG.md)."""
 
     def setUp(self):
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
@@ -1850,11 +1844,10 @@ class PromptReinforcementTests(TestCase):
         self.assertIn("must be a real, actual place", prompt)
 
     def test_no_matches_prompt_requires_honoring_free_text_specifics(self):
-        # 2026-09-03 QA re-test finding (chaos-2): a no-matches reply
-        # correctly said there was no curated data for a named region,
-        # then suggested destinations from elsewhere entirely without
-        # flagging the mismatch. constraints_summary only ever covers
-        # structured fields (month/trip_type/temperature/budget/
+        # A no-matches reply correctly said there was no curated data for
+        # a named region, then suggested destinations from elsewhere
+        # entirely without flagging the mismatch. constraints_summary only
+        # covers structured fields (month/trip_type/temperature/budget/
         # exclusions), so a free-text detail like a region name has to be
         # separately reinforced.
         ai_provider = StubAIProvider(
@@ -1879,11 +1872,11 @@ class PromptReinforcementTests(TestCase):
         self.assertIn("actually satisfy anything specific the traveler stated", prompt)
 
     def test_explanation_prompt_requires_checking_candidates_against_a_named_region(self):
-        # 2026-09-03 QA re-test finding: the top-N candidates handed to
-        # this prompt are ranked by climate/cost/trip-type fit only, never
-        # filtered by region - a live reproduction showed destinations
-        # from unrelated countries presented as the answer to an
-        # explicit region request, with no mismatch flagged.
+        # The top-N candidates handed to this prompt are ranked by
+        # climate/cost/trip-type fit only, never filtered by region - a
+        # live reproduction showed destinations from unrelated countries
+        # presented as the answer to an explicit region request, with no
+        # mismatch flagged.
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=20.0), reply_text="Sure!"
         )
@@ -1915,9 +1908,9 @@ class PromptReinforcementTests(TestCase):
 
 
 class UnhandledRequestLoggingTests(TestCase):
-    """Per the 2026-08-29 recommendation-philosophy decision: unplanned
-    requests fall to the AI's own judgment, but that fact gets logged for
-    future review rather than passing silently."""
+    """Per the recommendation-philosophy decision: unplanned requests fall
+    to the AI's own judgment, but that fact gets logged for future review
+    rather than passing silently."""
 
     def setUp(self):
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
@@ -1927,10 +1920,10 @@ class UnhandledRequestLoggingTests(TestCase):
 
     def test_logs_when_no_differentiating_signal_extracted(self):
         # Month alone (no trip_type/temperature/budget) isn't enough to
-        # differentiate destinations by - 2026-08-31, direct user feedback:
-        # this used to still run an unfiltered search and suggest whatever
-        # came back. It now routes to the AI-judgment "ask vs suggest" path
-        # instead, same as a fully blank opener.
+        # differentiate destinations by - this used to still run an
+        # unfiltered search and suggest whatever came back. It now routes
+        # to the AI-judgment "ask vs suggest" path instead, same as a
+        # fully blank opener.
         ai_provider = StubAIProvider(structured_response=_intent(month=6))
 
         with self.assertLogs("ai.orchestration", level="INFO") as logs:
@@ -1969,7 +1962,7 @@ class UnhandledRequestLoggingTests(TestCase):
 class ConversationalFeedbackAndFutureIntentTests(TestCase):
     """The AI must be able to receive feedback and register a past visit,
     or a stated future travel intention, directly from the chat - no
-    separate page needed (2026-08-29 requirement)."""
+    separate page needed."""
 
     def setUp(self):
         self.user = User.objects.create_user(email="traveler@example.com", password="testpass123")
@@ -2091,8 +2084,8 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
 
     def test_feedback_without_destination_asks_instead_of_requiring_login(self):
         # Regression test: an anonymous user must never hit a login wall
-        # before the app even knows there's a real destination to save -
-        # otherwise a misclassified message (e.g. a bare month/timing
+        # before the app even knows there's a real destination to save.
+        # Otherwise a misclassified message (e.g. a bare month/timing
         # answer the model mistook for feedback) dead-ends the chat.
         ai_provider = StubAIProvider(
             structured_response=_intent(message_type="feedback")
@@ -2176,9 +2169,9 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
         # Regression test: reported live - "someday between september and
         # october" (a month-only reply, no destination at all) was
         # misclassified as future_intent and hard-blocked an anonymous
-        # user behind NEEDS_LOGIN_REPLY, killing the conversation. There is
-        # nothing to save without a destination, so there's nothing to
-        # gate on login for either.
+        # user behind NEEDS_LOGIN_REPLY, killing the conversation. Nothing
+        # to save without a destination, so nothing to gate on login for
+        # either.
         ai_provider = StubAIProvider(structured_response=_intent(message_type="future_intent"))
 
         result = get_travel_recommendation(
@@ -2192,12 +2185,12 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
         self.assertIn("which destination", result.reply)
 
     def test_unrecognized_destination_in_future_intent_uses_ai_knowledge(self):
-        # 2026-09-02, direct user feedback: "Quero ir pra monaco" previously
-        # got a canned "I don't have it in my catalog, but I've noted it"
-        # reply - it should now get a real AI-generated reply from general
-        # knowledge instead (matching the same philosophy already used for
-        # an unmatched recommendation request), and no Trip is persisted -
-        # there's no valid Destination row to attach one to.
+        # "Quero ir pra monaco" used to get a canned "I don't have it in
+        # my catalog, but I've noted it" reply - it should now get a real
+        # AI-generated reply from general knowledge instead (matching the
+        # same philosophy already used for an unmatched recommendation
+        # request), and no Trip is persisted since there's no valid
+        # Destination row to attach one to.
         ai_provider = StubAIProvider(
             structured_response=_intent(
                 message_type="future_intent", future_destination_name="Monaco"
@@ -2216,13 +2209,12 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
         self.assertFalse(Trip.objects.exists())
 
     def test_unrecognized_destination_in_feedback_uses_ai_knowledge(self):
-        # 2026-09-02 review: previously a canned "I don't have it in my
-        # catalog, but thanks for sharing" reply - the same dead-end
-        # pattern already fixed for future_intent, for the identical
-        # underlying case (destination not in the curated catalog). Now
-        # gets a real AI-generated reply instead, and still persists
-        # nothing - there's no valid Destination row to attach a
-        # TravelHistoryEntry/Feedback to.
+        # Previously a canned "I don't have it in my catalog, but thanks
+        # for sharing" reply - the same dead-end pattern already fixed for
+        # future_intent, for the identical underlying case (destination
+        # not in the curated catalog). Now gets a real AI-generated reply
+        # instead, and still persists nothing - there's no valid
+        # Destination row to attach a TravelHistoryEntry/Feedback to.
         ai_provider = StubAIProvider(
             structured_response=_intent(
                 message_type="feedback", feedback_destination_name="Nowhereland", feedback_rating=7
@@ -2242,12 +2234,12 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
 
 
 class ConversationMemoryTests(TestCase):
-    """Conversation memory (ai.memory, added 2026-08-30): prior turns should
-    reach the intent extraction call so a short follow-up reply can be
-    understood in context, per the real conversation that surfaced this -
-    an anonymous user answering "what month?" with only a month, which is
-    meaningless taken in isolation but is exactly the missing piece once
-    the prior turn is visible."""
+    """Conversation memory (ai.memory): prior turns should reach the
+    intent extraction call so a short follow-up reply can be understood in
+    context, per the real conversation that surfaced this - an anonymous
+    user answering "what month?" with only a month, which is meaningless
+    taken in isolation but is exactly the missing piece once the prior
+    turn is visible."""
 
     def setUp(self):
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
@@ -2299,14 +2291,14 @@ class ConversationMemoryTests(TestCase):
         self.assertIn("Here's a warm suggestion for you! ", contents)
 
     def test_reply_generation_call_also_receives_prior_history_not_just_extraction(self):
-        # 2026-08-31, found live: a short/ambiguous follow-up like a bare
-        # destination name ("Bahia") answered in English mid a Portuguese
-        # conversation, because the reply-generation call (unlike the
-        # intent-extraction call) was never given the conversation history
-        # at all - it only ever saw the current message in isolation, with
-        # nothing to judge language or continuity from. Every builder now
-        # receives and forwards history; this locks that in for the
-        # explanation path specifically (the one that produced the bug).
+        # Found live: a short/ambiguous follow-up like a bare destination
+        # name ("Bahia") answered in English mid a Portuguese conversation,
+        # because the reply-generation call (unlike the intent-extraction
+        # call) was never given the conversation history at all - it only
+        # ever saw the current message in isolation, with nothing to judge
+        # language or continuity from. Every builder now receives and
+        # forwards history; this locks that in for the explanation path
+        # specifically (the one that produced the bug).
         first_provider = StubAIProvider(
             structured_response=_intent(message_type="recommendation", min_temp_c=22.0),
             reply_text="Aqui vai uma sugestão calorosa!",
@@ -2399,12 +2391,12 @@ class ConversationMemoryTests(TestCase):
 
 
 class ClimateBudgetSignalTests(TestCase):
-    """2026-09-06 structural fix, round 2: min_temp_c/max_temp_c/
-    max_cost_of_living are now extracted from the current message alone
-    (no history), overwriting whatever the combined intent-extraction call
-    produced, and merged with an accumulator so real multi-turn
-    combining still works. See DEVELOPMENT_LOG.md for the two prior
-    (reverted) prompt-only attempts and why they weren't enough."""
+    """min_temp_c/max_temp_c/max_cost_of_living are extracted from the
+    current message alone (no history), overwriting whatever the combined
+    intent-extraction call produced, and merged with an accumulator so
+    real multi-turn combining still works. See DEVELOPMENT_LOG.md for the
+    two prior (reverted) prompt-only attempts and why they weren't
+    enough."""
 
     def setUp(self):
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
@@ -2455,7 +2447,7 @@ class ClimateBudgetSignalTests(TestCase):
         )
 
     def test_isolated_call_overrides_a_contaminated_combined_extraction(self):
-        # Simulates exactly the reported bug: the combined call (as if
+        # Simulates the reported bug: the combined call (as if
         # contaminated by destination names/descriptions in history) comes
         # back with min_temp_c=28, but the isolated call - correctly,
         # since the current message says nothing about climate - returns
@@ -2504,7 +2496,7 @@ class ClimateBudgetSignalTests(TestCase):
             climate_provider=self.climate,
         )
 
-        # Second turn's own message says nothing about climate - the
+        # The second turn's own message says nothing about climate - the
         # isolated call correctly returns null for it - but the earlier
         # turn's min_temp_c=22 should still apply via the accumulator.
         second_provider = SchemaAwareStubAIProvider(

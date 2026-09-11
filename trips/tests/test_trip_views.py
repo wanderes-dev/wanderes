@@ -34,12 +34,9 @@ class TripViewsTests(TestCase):
         self.assertEqual(response.status_code, 302)
 
     def test_create_requires_login_and_redirects_with_next(self):
-        # 2026-09-06: this is the "save as trip" login gate an anonymous
-        # chat visitor actually hits (the chat page always renders a "Save
-        # this trip" link, login-gated only here at trip_create, not
-        # earlier) - confirming the existing, correct, unregressed
-        # behavior since this exact flow was reviewed as part of a UX pass
-        # on where account creation gets introduced.
+        # This is the login gate an anonymous chat visitor actually hits -
+        # the chat page always renders a "Save this trip" link, gated only
+        # here at trip_create, not earlier.
         create_url = reverse("trips:trip-create") + f"?destination={self.destination.slug}"
 
         response = self.client.get(create_url)
@@ -74,9 +71,8 @@ class TripViewsTests(TestCase):
         )
 
     def test_create_from_chat_recommendation_records_that_source(self):
-        # 2026-09-09: distinguishes "saved via the chat recommendation
-        # flow" (the "Save this trip" link) from any other entry point
-        # (e.g. trip_list.html's plain "Create a new trip" link) - the
+        # Distinguishes the "Save this trip" chat flow from other entry
+        # points (e.g. trip_list.html's plain "Create a new trip" link) -
         # source is round-tripped through a hidden form field since GET's
         # ?source= wouldn't otherwise survive the POST.
         self.client.force_login(self.user)

@@ -44,14 +44,13 @@ class OpenMeteoClimateProvider(ClimateProvider):
     def _fetch(
         self, latitude: float, longitude: float, month: int, year: int
     ) -> MonthlyClimateSummary:
-        # Instrumented here, not the public get_monthly_climate() above
-        # (2026-09-09) - that entry point is called once per surviving
-        # candidate destination during scoring (up to ~384 times for a
-        # single chat message) and ~4,600 times per 3-day cache-warming
-        # run, but almost all of those are cache hits. _fetch() only runs
-        # on an actual miss, which is what "a provider request" honestly
-        # means here - instrumenting the public method would have
-        # multiplied write volume for zero new signal.
+        # Instrumented here, not in the public get_monthly_climate()
+        # above - that gets called once per surviving candidate during
+        # scoring (up to ~384 times for a single chat message) and
+        # ~4,600 times per cache-warming run, but almost all of those are
+        # cache hits. _fetch() only runs on an actual miss, which is what
+        # "a provider request" really means - instrumenting the public
+        # method would just multiply write volume for no new signal.
         with track_provider_call(operation="open_meteo_monthly_climate"):
             start_date = date(year, month, 1)
             end_date = date(year, month, calendar.monthrange(year, month)[1])

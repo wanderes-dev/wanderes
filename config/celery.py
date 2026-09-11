@@ -1,10 +1,9 @@
 """Celery application for Wanderes background processing.
 
-Per 03_SYSTEM_ARCHITETURE.md, Redis backs the background job queue and no
-tasks are defined yet at this stage of the project (Milestone 1 only
-establishes the infrastructure). Real background jobs are introduced later,
-per 15_IMPLEMENTATION_GUIDE.md Phase 16, only when a specific need justifies
-them.
+Redis backs the background job queue - see 03_SYSTEM_ARCHITETURE.md for
+the broader design. New background jobs get added under
+15_IMPLEMENTATION_GUIDE.md's guidance, only when a specific need
+justifies them.
 """
 
 import os

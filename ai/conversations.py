@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 SUBJECT_MAX_LENGTH = 60
 
-# Reasons record_turn() reports to the caller so the chat page can show a
-# one-time explanatory modal - never anything that blocks the conversation
-# itself, only whether *this* turn got persisted.
+# record_turn()'s reason codes, surfaced to the chat page for a one-time
+# explanatory modal - never blocks the conversation, just says whether
+# this particular turn got saved.
 REASON_CONVERSATION_LIMIT_REACHED = "conversation_limit_reached"
 REASON_SIZE_LIMIT_EXCEEDED = "size_limit_exceeded"
 
@@ -36,39 +36,24 @@ def record_turn(
     assistant_reply: str,
     ai_provider: AIProvider | None = None,
 ) -> SaveResult:
-    """Persist one (user, assistant) turn, enforcing the two Free-tier
-    limits on SavedConversation - decided directly by the user, 2026-09-02,
-    not guessed by Claude Code (CLAUDE.md rule 2 reserves the actual
-    pricing/plan boundaries for the human; only these specific numbers were
-    supplied directly in that request).
+    """Persist one (user, assistant) turn, enforcing SavedConversation's
+    Free-tier limits (those numbers came from the user, not a guess here).
 
-    `conversation` is the already-resolved SavedConversation this turn
-    should continue (or None for a not-yet-saved/brand-new conversation) -
-    resolved by the caller (the view), which also needs it to build the
-    conversation's history for the AI call before this function ever runs,
-    so there is no reason to look it up a second time here.
+    `conversation` is whichever SavedConversation this turn continues, or
+    None for a brand-new one - the caller already resolved it to build the
+    AI call's history, so no need to look it up again here.
 
-    `ai_provider` defaults to None and is only ever actually resolved (via
-    get_ai_provider()) deep inside _append_turn, and only when a NEW
-    conversation needs a subject generated - i.e. never for the very
-    common case of an unsaved/bypassed turn (save_requested=False, the
-    overwhelming majority of calls into this function). Constructing a
-    real AIProvider eagerly here, on every call regardless of whether it's
-    needed, would require OPENAI_API_KEY to be configured just to run a
-    request that never touches the AI provider at all - true today of
-    CI/most tests, and needlessly wasteful even outside them.
+    `ai_provider` stays unresolved until _append_turn actually needs one
+    (only for a new conversation's title) - building a real provider on
+    every call would require an API key even for the common case where
+    nothing gets saved at all.
 
-    Saving is entirely opt-in (`save_requested`, from the chat page's
-    checkbox - always unchecked here for anonymous users, since this whole
-    feature is registered-users-only) and never blocks the conversation
-    itself - every branch below still lets the chat continue; it only ever
-    decides whether *this* turn gets written to Postgres. Per that same
-    "never blocks the conversation" principle, this also never raises -
-    same pattern as analytics.services.record_event(): an unexpected
-    failure (e.g. a migration not yet applied on a freshly deployed
-    environment) degrades to "not saved" rather than breaking the
-    in-progress chat reply, which has already been generated and shown to
-    the traveler by the time this runs.
+    Saving is opt-in (the chat page's checkbox, always off for anonymous
+    visitors) and never blocks the conversation - every path below still
+    lets the chat continue, this only decides whether the turn gets
+    written to Postgres. Never raises either, same as
+    analytics.services.record_event(): a failure here just means "not
+    saved," not a broken reply that's already been shown to the traveler.
     """
     if not save_requested or user is None or not getattr(user, "is_authenticated", False):
         return SaveResult(saved=False, conversation_id=None, subject=None, reason=None)
@@ -101,8 +86,8 @@ def _record_turn(
 ) -> SaveResult:
     if conversation is not None:
         if conversation.is_full:
-            # Already warned once, the turn this crossed MAX_CHARS on -
-            # stay quiet from here on, exactly like the checkbox being off.
+            # We already warned once, on the turn that crossed MAX_CHARS.
+            # Stay quiet after that.
             return SaveResult(
                 saved=False, conversation_id=conversation.pk, subject=None, reason=None
             )
@@ -110,15 +95,11 @@ def _record_turn(
             conversation, user_message, assistant_reply, ai_provider=ai_provider, is_new=False
         )
 
-    # No conversation to continue - this turn is starting a new one.
-    # Locking the user row serializes concurrent "start a new conversation"
-    # requests for the same account (e.g. two open tabs sending near-
-    # simultaneously) - without it, two requests could both read the same
-    # existing_count before either commits its INSERT, letting the cap be
-    # exceeded (2026-09-02 review). Kept to just the count-check-and-create
-    # (fast, no external I/O) rather than wrapping _append_turn too, since
-    # that can make a real network call (subject generation) that has no
-    # business holding a row lock.
+    # Starting a new conversation. Locking the user row here stops two
+    # near-simultaneous requests (two open tabs, say) from both reading the
+    # same count and both squeaking past the cap. Kept narrow - just the
+    # count-check-and-create - since _append_turn below can make a real
+    # network call (title generation) that shouldn't sit behind a row lock.
     with transaction.atomic():
         get_user_model().objects.select_for_update().get(pk=user.pk)
         existing_count = SavedConversation.objects.filter(user=user).count()
@@ -149,17 +130,16 @@ def _append_turn(
         {"role": "assistant", "content": sanitize_reply_for_context(assistant_reply)}
     )
 
-    # Only ever True on the exact turn that pushes the total over MAX_CHARS
-    # - record_turn() already returned early above for a conversation that
-    # was already full, so this is genuinely the first time it happens.
+    # True only on the turn that actually pushes us over MAX_CHARS -
+    # record_turn() already bailed early for a conversation that was
+    # already full.
     just_crossed_limit = conversation.char_count() > SavedConversation.MAX_CHARS
     if just_crossed_limit:
         conversation.is_full = True
 
     generated_subject = None
     if is_new:
-        # Lazily resolved - see record_turn's docstring for why this isn't
-        # constructed any earlier than strictly necessary.
+        # See record_turn's docstring - this is deliberately lazy.
         provider = ai_provider or get_ai_provider()
         generated_subject = _generate_subject(user_message, assistant_reply, ai_provider=provider)
         conversation.subject = generated_subject
@@ -175,11 +155,10 @@ def _append_turn(
 
 
 def _generate_subject(user_message: str, assistant_reply: str, *, ai_provider: AIProvider) -> str:
-    """One small, non-streaming AI call per NEW saved conversation (never
-    per message) - names the thread from its opening exchange, the way a
-    ChatGPT-style sidebar entry gets its title. Falls back to a plain
-    truncation of the traveler's own first message if the call fails, so
-    saving a conversation never hard-fails just because titling did."""
+    """One small AI call per new saved conversation (not per message) -
+    titles the thread from its opening exchange, sidebar-style. Falls back
+    to truncating the traveler's own message if the call fails - a bad
+    title beats a failed save."""
     messages = [
         AIMessage(
             role="system",

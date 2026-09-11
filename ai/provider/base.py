@@ -35,14 +35,14 @@ class AIProviderError(Exception):
 
 
 class AIProvider(ABC):
-    """Internal AI Provider Abstraction (05_AI_DESIGN.md §10, 09_AI_ORCHESTRATION.md §11).
+    """Internal AI provider abstraction (05_AI_DESIGN.md §10, 09_AI_ORCHESTRATION.md §11).
 
-    The rest of the application depends on this interface, never on a
-    specific provider's SDK directly, so the provider or model can change
-    without redesigning the recommendation system. This interface is
-    intentionally thin: building the actual conversation context (traveler
-    profile, relevant travel data, summarized history) is the orchestration
-    layer's job (Phase 9), not the adapter's.
+    The rest of the app depends on this interface, never a specific
+    provider's SDK directly, so the provider or model can change without
+    redesigning the recommendation system. Kept intentionally thin -
+    building the actual conversation context (traveler profile, relevant
+    travel data, summarized history) is the orchestration layer's job,
+    not the adapter's.
     """
 
     @abstractmethod
@@ -96,9 +96,8 @@ class AIProvider(ABC):
 
         temperature is None by default (provider's own default, deliberately
         high-variety for most callers - see orchestration.py's per-call
-        choices); pass 0 only for a call whose output must faithfully
-        transcribe already-verified facts rather than write creatively
-        (2026-09-03 QA finding: the visa-question reply occasionally
-        contradicted its own verified CountryEntryRequirement data when
-        left at the default temperature).
+        choices); pass 0 only when the output must faithfully transcribe
+        already-verified facts rather than write creatively - a QA pass
+        found the visa-question reply occasionally contradicted its own
+        verified CountryEntryRequirement data at the default temperature.
         """

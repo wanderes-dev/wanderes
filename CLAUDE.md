@@ -26,6 +26,12 @@ These come directly from `02_PROJECT_CONTEXT.md` and `15_IMPLEMENTATION_GUIDE.md
 5. **The product/UI is English-only for now** (explicit decision, 2026-08-29) — but built translation-ready from day one: `USE_I18N=True`, `LocaleMiddleware`, `LOCALE_PATHS`, and a `LANGUAGES` list already wired in `config/settings/base.py`. Wrap every user-facing string as it's written — `gettext`/`gettext_lazy` in Python, `{% trans %}`/`{% blocktrans %}` in templates — so adding a language later is a translation/config task, not a refactor. Don't add other languages to `LANGUAGES` or build a language switcher until asked.
 6. Every meaningful chunk of work gets logged in `documentation/DEVELOPMENT_LOG.md`, and `documentation/PROJECT_STATE.md` gets updated so a future session (or a fresh one after context loss) can resume without re-deriving everything.
 7. Be technically critical, not agreeable by default — point out risks and better alternatives per `02_PROJECT_CONTEXT.md`'s "My Role" section.
+8. **Write code and comments like a human developer, not an AI change-log** (explicit direction, 2026-09-11 — the whole codebase was rewritten for this once, see that date's `DEVELOPMENT_LOG.md` entry; keep writing new code this way rather than drifting back). Concretely:
+   - No dates, no "2026-09-XX", no "direct user request," no quoted verbatim user messages in code comments — that belongs in `DEVELOPMENT_LOG.md`, not inline. A comment should read like a teammate wrote it, explaining *why* something non-obvious is the way it is, not narrating when/who asked for it.
+   - Keep the "why," drop the essay. A comment that took three sentences to justify a decision usually fits in one. Never delete a comment that documents a real gotcha/warning (a Django/Postgres quirk, a past production incident, an unverified assumption) — just say it tighter.
+   - Don't make every comment/docstring follow the identical template. Real teams write some as fragments, some as full sentences; that's fine here too.
+   - Never touch functional string content while doing this — AI prompt text, `gettext`/`{% trans %}`-wrapped strings, log/error messages, test assertions/fixtures, choices labels. Only `#` comments and docstrings are fair game for a pure writing-style pass.
+   - This doesn't apply to `documentation/*.md`, `DEVELOPMENT_LOG.md`, `PROJECT_STATE.md`, `DECISIONS_PENDING.md`, or `testes/*.md` — those are deliberately a dated, detailed project journal, a different thing on purpose.
 
 ## Safety judgment calls already made — keep applying these
 

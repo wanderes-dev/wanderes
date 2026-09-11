@@ -9,11 +9,11 @@ from django.utils.http import urlsafe_base64_encode
 
 from users.models import User
 
-# EMAIL_BACKEND is the actual signal core.context_processors reads (see
-# its 2026-09-11 update) - EMAIL_HOST alone is no longer enough now that
-# it has a real non-secret Purelymail default; EMAIL_HOST_USER/BACKEND
-# included here too so the override reads as a genuinely configured state,
-# not just the one field the assertion technically depends on.
+# EMAIL_BACKEND is what core.context_processors actually reads now -
+# EMAIL_HOST alone isn't enough since it has a real non-secret Purelymail
+# default. EMAIL_HOST_USER/BACKEND are included too so this override reads
+# as a genuinely configured state, not just the one field the assertion
+# technically needs.
 _SMTP_SETTINGS = {
     "EMAIL_HOST": "smtp.example.com",
     "EMAIL_HOST_USER": "noreply@example.com",
@@ -22,10 +22,10 @@ _SMTP_SETTINGS = {
 
 
 class ForgotPasswordLinkVisibilityTests(TestCase):
-    """Mirrors the google_oauth_configured pattern (users/tests/
-    test_google_oauth.py) - the link must never render until real SMTP
-    credentials exist, since the console-backend fallback "succeeds"
-    without ever actually delivering anything a visitor could see."""
+    """Same pattern as test_google_oauth.py's button-visibility tests -
+    the link must never render until real SMTP credentials exist, since
+    the console-backend fallback "succeeds" without delivering anything a
+    visitor could actually see."""
 
     def test_link_hidden_on_login_page_without_real_email_credentials(self):
         response = self.client.get(reverse("users:login"))
@@ -41,11 +41,10 @@ class ForgotPasswordLinkVisibilityTests(TestCase):
 
 
 class PasswordResetFlowTests(TestCase):
-    """End-to-end coverage of Django's built-in reset views wired up
-    under the users: namespace (2026-09-04) - the real risk here was
-    never the view logic itself (Django's own, well-tested), but getting
-    the namespaced success_url/email-link reversal wrong, which would
-    have 404ed silently instead of erroring loudly."""
+    """End-to-end coverage of Django's built-in reset views under the
+    users: namespace. The real risk was never the view logic (Django's
+    own, well-tested), it's getting the namespaced success_url/email-link
+    reversal wrong, which would 404 instead of erroring loudly."""
 
     def setUp(self):
         self.user = User.objects.create_user(
@@ -94,11 +93,10 @@ class PasswordResetFlowTests(TestCase):
         self.assertTrue(self.user.check_password("brand-new-password-456"))
 
     def test_email_uses_the_canonical_site_domain_not_the_request_host(self):
-        # The reset link's domain comes from django.contrib.sites's Site
-        # row (kept in sync with settings.SITE_DOMAIN), not
-        # request.get_host() - matters because the live service is
-        # reachable under more than one hostname (see
-        # core.middleware.CanonicalDomainRedirectMiddleware).
+        # Domain comes from django.contrib.sites's Site row (kept in sync
+        # with settings.SITE_DOMAIN), not request.get_host() - matters
+        # since the live service is reachable under more than one
+        # hostname (see core.middleware.CanonicalDomainRedirectMiddleware).
         self.client.post(
             reverse("users:password_reset"),
             {"email": "reset-flow@example.com"},

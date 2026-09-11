@@ -83,12 +83,12 @@ class RecordTurnTests(TestCase):
         self.assertEqual(len(provider.generate_reply_calls), 1)
 
     def test_stores_a_sanitized_reply_but_generates_subject_from_the_raw_text(self):
-        # 2026-09-06 bug: a later turn's intent extraction was reading
-        # temperature/cost-tier figures back out of a SavedConversation's
-        # stored messages (used as history_override) and misattributing
-        # them to the traveler. Structural fix: strip those figures from
-        # what's persisted, but keep using the raw reply for the subject,
-        # since that's unrelated to the bug and benefits from real text.
+        # A later turn's intent extraction was reading temperature/
+        # cost-tier figures back out of a SavedConversation's stored
+        # messages (used as history_override) and misattributing them to
+        # the traveler. Fix: strip those figures from what's persisted,
+        # but keep using the raw reply for the subject, since that's
+        # unrelated and benefits from real text.
         provider = StubAIProvider(subject="Beach trip planning")
 
         result = record_turn(
@@ -216,11 +216,11 @@ class RecordTurnTests(TestCase):
 
     @patch("ai.conversations.SavedConversation.objects.create")
     def test_unexpected_error_degrades_to_not_saved_instead_of_raising(self, mock_create):
-        # Saving must never break the chat reply itself that's already
-        # been generated and shown by the time this runs (e.g. a fresh
-        # deploy where this app's migration hasn't been applied yet would
-        # otherwise turn a missing-table error into a broken response) -
-        # same "never raises" contract as analytics.services.record_event.
+        # Saving must never break the chat reply that's already been
+        # generated and shown by the time this runs - e.g. a fresh deploy
+        # where this app's migration hasn't landed yet would otherwise
+        # turn a missing-table error into a broken response. Same "never
+        # raises" contract as analytics.services.record_event.
         mock_create.side_effect = Exception("relation does not exist")
 
         result = record_turn(

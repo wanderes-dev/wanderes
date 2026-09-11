@@ -4,10 +4,9 @@ from django.utils.translation import activate, deactivate
 
 
 class LanguageSwitcherTests(TestCase):
-    """2026-09-04, direct user request: "quero que vc coloque traduçao na
-    pagina para EN / PT / ES / DE / IT / FR". The switcher posts to
-    Django's own set_language view (django.conf.urls.i18n), which sets a
-    cookie LocaleMiddleware then reads on every later request."""
+    """The switcher posts to Django's own set_language view
+    (django.conf.urls.i18n), which sets a cookie LocaleMiddleware then
+    reads on every later request."""
 
     def test_switcher_lists_all_six_languages_by_native_name(self):
         response = self.client.get("/")
@@ -47,8 +46,7 @@ class TranslationCoverageTests(TestCase):
     """Confirms the compiled .mo catalogs actually contain real
     translations (not just registered as available languages with empty
     msgstr) for a representative sample spanning templates, form labels,
-    and model choice labels - the three different places strings were
-    wrapped in this pass."""
+    and model choice labels."""
 
     def tearDown(self):
         deactivate()

@@ -10,8 +10,8 @@ from integrations.flights.kayak import KayakFlightProvider
 class FlightProviderFactoryTests(TestCase):
     def test_unset_provider_raises_a_friendly_error(self):
         # FLIGHT_PROVIDER defaults to blank (config/settings/base.py) -
-        # nothing should silently no-op if something tries to use this
-        # before a real provider is configured.
+        # using this before a provider is configured shouldn't silently
+        # no-op.
         with self.assertRaises(ImproperlyConfigured):
             get_flight_provider()
 
@@ -28,11 +28,10 @@ class FlightProviderFactoryTests(TestCase):
 
 
 class KayakFlightProviderSkeletonTests(TestCase):
-    """KAYAK's API needs manual business approval Wanderes doesn't have
-    yet (DECISIONS_PENDING.md §4) - this adapter is a deliberate skeleton,
-    not a working implementation. These tests lock in that it fails
-    loudly and clearly (NotImplementedError) rather than silently
-    returning something that looks like real data."""
+    """KAYAK's API needs manual business approval we don't have yet
+    (DECISIONS_PENDING.md §4) - this adapter is a deliberate skeleton.
+    These tests just lock in that it fails loudly (NotImplementedError)
+    instead of silently returning something that looks like real data."""
 
     def setUp(self):
         self.provider = KayakFlightProvider()

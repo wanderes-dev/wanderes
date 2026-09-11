@@ -13,22 +13,19 @@ SQL_PATH = Path(__file__).resolve().parent / "warehouse" / "sql" / "daily_produc
 
 @shared_task(autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def refresh_daily_metrics(target_date=None) -> None:
-    """Recompute analytics.models.DailyProductMetrics for one calendar
-    date (2026-09-09), full recompute-and-upsert - the same
-    "idempotent/retry-safe by recomputing from scratch, never incremental
-    counters" pattern already proven by
-    trips.tasks.update_traveler_preferences_from_feedback. Unlike that
-    task, this one DOES configure Celery retry (autoretry_for/
-    retry_backoff): it's a scheduled batch job, not a per-request
-    synchronous write like analytics.services.record_event - a transient
-    DB blip here should retry rather than silently skip a whole day's
-    refresh, and recomputing from scratch means a retry can never
-    double-count anything.
+    """Recompute analytics.models.DailyProductMetrics for one calendar date,
+    full recompute-and-upsert - same idempotent/retry-safe-by-recomputing
+    pattern as trips.tasks.update_traveler_preferences_from_feedback.
+    Unlike that task, this one configures Celery retry (autoretry_for/
+    retry_backoff): it's a scheduled batch job rather than a per-request
+    write like record_event, so a transient DB blip should retry instead
+    of silently skipping a whole day - and recomputing from scratch means
+    a retry can never double-count.
 
     `target_date=None` (the real scheduled-run case, see
-    settings.CELERY_BEAT_SCHEDULE) computes yesterday (UTC) - never
-    today, to avoid a partial-day race against events still arriving for
-    the current day. Accepts an explicit date for manual backfills/tests.
+    settings.CELERY_BEAT_SCHEDULE) computes yesterday (UTC), never today,
+    to avoid racing events still arriving for the current day. Pass an
+    explicit date for manual backfills/tests.
     """
     if target_date is None:
         target_date = timezone.now().date() - timedelta(days=1)

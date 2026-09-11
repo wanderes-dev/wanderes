@@ -3,35 +3,30 @@ from contextlib import contextmanager
 
 from .services import record_event
 
-# 2026-09-09, analytics/data-engineering pass: latency + success/failure
-# instrumentation for AI-provider and external-provider calls. Lives here
-# (not in ai/) specifically so integrations.climate can use it too without
-# that low-level, dependency-free app having to import the ai app - both
-# already depend on analytics.services.record_event directly, so this is
-# just as safe a shared dependency.
+# Latency + success/failure instrumentation for AI-provider and external-
+# provider calls. Lives here rather than in ai/ so integrations.climate can
+# use it too without pulling in the whole ai app - both already depend on
+# analytics.services.record_event directly, so this is no riskier a shared
+# dependency.
 #
-# Deliberately thin: records ONLY latency + success/failure + a coarse
-# error_type (exception class name, never a message/stack - see
-# _track_call below), never tokens/model/cost. AIProvider.generate_structured_reply
-# returns a plain dict (not AIResponse), and AIProvider.stream_reply yields
-# raw text chunks - neither exposes token/model data today, so there is
-# nothing to capture for the three call sites this module is actually used
-# from (ai.orchestration._extract_intent/_extract_climate_budget_signal/
+# Deliberately thin: records latency + success/failure + a coarse
+# error_type (exception class name only, never a message/stack - see
+# _track_call below). Nothing about tokens/model/cost, because neither
+# AIProvider.generate_structured_reply (plain dict) nor stream_reply (raw
+# text chunks) exposes that today - there's nothing to capture at the three
+# call sites this is actually used from
+# (ai.orchestration._extract_intent/_extract_climate_budget_signal/
 # _stream_ai_reply). See documentation/16_ANALYTICS_ARCHITECTURE.md for the
-# documented future path to real token/cost metrics (extending
-# AIProvider.stream_reply's contract, and/or instrumenting the one call
-# site - ai.conversations._generate_subject - that already gets free
-# token data via generate_reply/AIResponse but is deliberately left
-# uninstrumented here: low volume, low value).
+# path to real token/cost metrics later.
 
 
 @contextmanager
 def _track_call(event_type: str, *, operation: str, conversation_key: str | None = None):
-    """Never suppresses the wrapped call's own exception - always
-    re-raises after recording, so callers see exactly the same
-    AIProviderError/ClimateProviderError they always did. record_event
-    itself never raises (see analytics.services), so a failure recording
-    this telemetry can never mask or replace the real error."""
+    """Never swallows the wrapped call's exception - always re-raises after
+    recording, so callers still see the exact AIProviderError/
+    ClimateProviderError they always did. record_event itself never raises
+    (see analytics.services), so recording this telemetry can't mask or
+    replace the real error."""
     start = time.perf_counter()
     try:
         yield

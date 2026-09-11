@@ -6,12 +6,11 @@ from django.core.management.base import BaseCommand
 
 from travel.models import Destination
 
-# Lives inside the travel app itself (not documentation/) specifically so
-# it's real application data, not developer documentation - the two got
-# conflated originally, which meant it was silently excluded from the
-# Docker image (.dockerignore excludes documentation/) and only ever
-# worked locally because docker-compose.yml bind-mounts the whole project
-# directory, masking the gap until a real deploy (no bind mount) hit it.
+# Lives under travel/, not documentation/ - it's application data, not
+# dev docs. Those got conflated once before, and since .dockerignore
+# excludes documentation/, the file silently vanished from the Docker
+# image; it only worked locally because docker-compose bind-mounts the
+# whole project, so the gap didn't show up until a real deploy.
 DEFAULT_DATASET_PATH = settings.BASE_DIR / "travel" / "data" / "curated_destinations.json"
 
 
@@ -57,9 +56,9 @@ class Command(BaseCommand):
 
     @staticmethod
     def _normalize_trip_type(raw_trip_type):
-        # The dataset's trip_type is free-form Portuguese (e.g. "Praia/natureza");
-        # the model's trip_type is a single English choice. Map on the first
-        # segment, defaulting to "city" if nothing matches.
+        # Dataset's trip_type is free-form Portuguese (e.g. "Praia/natureza"),
+        # the model's is a single English choice - map off the first segment,
+        # default to "city" if nothing matches.
         first_segment = raw_trip_type.split("/")[0].strip().lower()
         mapping = {
             "praia": "beach",

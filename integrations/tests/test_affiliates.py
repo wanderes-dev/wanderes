@@ -8,11 +8,10 @@ from integrations.affiliates import get_affiliate_network_provider
 from integrations.affiliates.base import AffiliateNetworkError
 from integrations.affiliates.cj import CJAffiliateProvider
 
-# A flat, single-nesting-level sample - matches the "Per Record (Link)"
-# field table in CJ's own docs (developers.cj.com/docs/rest-apis/
-# link-search), which is the more reliable source of truth than the
-# page's own sample response block (see cj.py's own docstring for why
-# that sample looks like it has a documentation rendering artifact).
+# Flat, single-nesting-level sample - matches the "Per Record (Link)"
+# field table in CJ's docs, the more reliable source of truth than the
+# page's own sample response block (see cj.py's docstring for why that
+# sample looks like a documentation rendering artifact).
 FLAT_RESPONSE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <cj-api>
     <links total-matched="1" records-returned="1" page-number="1">
@@ -31,10 +30,9 @@ FLAT_RESPONSE_XML = """<?xml version="1.0" encoding="UTF-8"?>
     </links>
 </cj-api>"""
 
-# CJ's OWN documented sample has this exact double-nested shape (copied
-# verbatim from the docs page, minus the html/js payloads for brevity) -
-# a real test that the defensive parser also survives it, whichever one
-# turns out to be the actual live shape.
+# CJ's documented sample has this exact double-nested shape (copied
+# verbatim, minus the html/js payloads for brevity) - tests that the
+# defensive parser survives it too, whichever shape turns out to be real.
 NESTED_RESPONSE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <cj-api>
     <links total-matched="1" records-returned="1" page-number="1">

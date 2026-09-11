@@ -14,14 +14,14 @@
 {% csrf_token %}
 
 <style>
-    /* Fills whatever height .content-flush has left after the site
-       header/footer (see static/css/main.css) - not 100vh, since the
-       chat page is no longer the only thing on screen. */
-    /* Sidebar + chat side by side (2026-09-02, saved-conversations
-       feature) - .chat-layout takes over the role .chat-page used to play
-       directly inside .content-flush, so .chat-page's own flex/min-height
-       rules stay meaningful either with or without a sidebar next to it
-       (the sidebar itself only renders for authenticated users). */
+    /* Fills whatever height .content-flush leaves after the header/footer
+       (see static/css/main.css) - not 100vh, since chat isn't the only
+       thing on screen anymore. */
+    /* Sidebar + chat side by side. .chat-layout now plays the role
+       .chat-page used to play directly inside .content-flush, so
+       .chat-page's own flex/min-height rules stay meaningful whether or
+       not there's a sidebar next to it (sidebar itself only renders for
+       authenticated users). */
     .chat-layout {
         display: flex;
         flex: 1 1 auto;
@@ -44,11 +44,11 @@
         flex-shrink: 0;
         transition: opacity 0.2s ease;
     }
-    /* Shown next to the title whenever this conversation currently won't
-       be saved - unchecked checkbox, or the 5-conversation cap silently
-       disabling saving for this thread (2026-09-02, direct request: make
-       that state visible instead of only surfacing it as a one-time
-       modal). Empty/hidden whenever saving is active. */
+    /* Shown next to the title whenever this conversation won't be saved -
+       unchecked checkbox, or the 5-conversation cap silently disabling
+       saving for this thread. Makes that state visible instead of only
+       surfacing it via a one-time modal. Empty/hidden while saving is
+       active. */
     .save-status-indicator {
         font-family: var(--font-sans);
         font-size: 0.85rem;
@@ -65,12 +65,11 @@
         gap: 0.75rem;
         padding: 0.5rem 0;
     }
-    /* Before the first message, the whole page centers as one group
-       (header + empty-state + input) instead of pinning the input to
-       the bottom with a big empty gap above it - the familiar
-       "new conversation" layout, direct request 2026-09-02. Once a
-       message is sent, .chat-empty is removed and the layout reverts to
-       the standard pinned-input/scrolling-messages shape below. */
+    /* Before the first message, the page centers as one group (header +
+       empty-state + input) instead of pinning the input to the bottom
+       with a big gap above it - the familiar "new conversation" look.
+       Once a message is sent, .chat-empty comes off and the layout
+       reverts to the standard pinned-input/scrolling-messages shape. */
     .chat-page.chat-empty {
         justify-content: center;
     }
@@ -82,8 +81,8 @@
         text-align: center;
     }
     /* .chat-bubble and .recommendation-card* live in static/css/main.css -
-       shared with the landing page's product preview, see 2026-09-01
-       second UX pass notes there. */
+       shared with the landing page's product preview, see the notes
+       there. */
     .chat-empty-state {
         margin: auto 0;
         text-align: center;
@@ -148,10 +147,9 @@
         .chat-page { padding: 0.5rem; }
     }
 
-    /* Saved-conversations sidebar (2026-09-02, direct request - "like
-       ChatGPT's left side") - registered users only, since saving is a
-       registered-only feature; anonymous visitors never render .chat-
-       sidebar at all, not just a disabled version of it. */
+    /* Saved-conversations sidebar - registered users only, since saving
+       itself is a registered-only feature; anonymous visitors never
+       render .chat-sidebar at all, not just a disabled version of it. */
     .chat-sidebar {
         flex: 0 0 260px;
         width: 260px;
@@ -282,11 +280,10 @@
         }
     }
 
-    /* Shared small confirmation/notice dialog styling - the login prompt
-       and the two saved-conversation limit notices below all use this
-       same shape (2026-09-02: previously login-prompt-* only, generalized
-       rather than duplicated once a second and third modal needed the
-       identical layout). */
+    /* Shared confirmation/notice dialog styling - the login prompt and
+       the two saved-conversation limit notices below all use this same
+       shape. Used to be login-prompt-* only; generalized once a second
+       and third modal needed the identical layout. */
     dialog.simple-modal {
         border: none;
         border-radius: var(--radius-lg);
@@ -339,13 +336,12 @@
 </style>
 
 {% if user.is_authenticated %}
-<!-- Saved-conversation limit notices (2026-09-02, direct request): both
-     are one-time, informational, and never block the conversation itself
-     - see ai/conversations.py's record_turn() for exactly when each
-     fires. Neither offers a real "upgrade" purchase flow, since Premium
-     pricing/plans don't exist as a purchasable product yet
-     (documentation/DECISIONS_PENDING.md) - naming that honestly here
-     instead of linking to something that doesn't work. -->
+<!-- Saved-conversation limit notices: one-time, informational, never
+     block the conversation itself - see ai/conversations.py's
+     record_turn() for exactly when each fires. No "upgrade" purchase
+     flow here, since Premium plans aren't a purchasable product yet
+     (documentation/DECISIONS_PENDING.md) - better to say that honestly
+     than link to something that doesn't work. -->
 <dialog id="conversation-limit-modal" class="simple-modal">
     <div class="simple-modal-body">
         <h2>{% trans "Saved conversation limit reached" %}</h2>
@@ -365,11 +361,10 @@
     </div>
 </dialog>
 {% endif %}
-<!-- Sidebar itself (toggle, backdrop, aside) is shown to everyone,
-     logged in or not (2026-09-04, direct request) - anonymous visitors
-     still get "+ New conversation" (ai.views.conversation_reset already
-     works for them, keyed by session, per its own docstring) and the
-     history panel's presence for layout consistency; only the
+<!-- Sidebar itself (toggle, backdrop, aside) shows for everyone, logged
+     in or not - anonymous visitors still get "+ New conversation"
+     (ai.views.conversation_reset already works for them, keyed by
+     session) and the history panel for layout consistency. Only the
      save-conversation checkbox and the actual saved-conversation list
      are login-gated, since saving itself is registered-only. -->
 <button type="button" id="sidebar-toggle" class="btn btn-secondary chat-sidebar-toggle" aria-expanded="false" aria-controls="chat-sidebar">{% trans "History" %}</button>
@@ -429,11 +424,11 @@
 <script>
 (function () {
     const CHAT_I18N = JSON.parse(document.getElementById("chat-i18n-data").textContent);
-    // 2026-09-04: the sidebar <aside> itself now renders for anonymous
-    // visitors too (only the save checkbox and the actual saved-list are
-    // login-gated), so #chat-sidebar-list exists in the DOM either way -
-    // this flag is what actually stops fetchSidebarList() from calling
-    // the login-required conversation-list endpoint for them.
+    // The sidebar <aside> renders for anonymous visitors too (only the
+    // save checkbox and the actual saved-list are login-gated), so
+    // #chat-sidebar-list exists in the DOM either way - this flag is
+    // what actually stops fetchSidebarList() from calling the
+    // login-required conversation-list endpoint for them.
     const IS_AUTHENTICATED = {{ user.is_authenticated|yesno:"true,false" }};
     const form = document.getElementById("chat-form");
     const input = document.getElementById("message-input");
@@ -443,18 +438,17 @@
     const RECOMMENDATIONS_DELIMITER = "\n<<<WANDERES_RECOMMENDATIONS>>>\n";
     const CONVERSATION_DELIMITER = "\n<<<WANDERES_CONVERSATION>>>\n";
 
-    // Saved-conversations state (2026-09-02) - currentConversationId is
-    // null for a conversation not yet (or no longer) tracked in the
-    // database; saveBlockedForThread is a client-only flag set once the
-    // backend reports the 5-saved-conversations cap for this thread, so
-    // it doesn't keep re-asking every subsequent message (see
-    // handleConversationStatus below) - reset only by starting a new
-    // conversation or loading a different saved one. currentConversationIsFull
-    // mirrors the backend's per-conversation is_full flag (the 50k-char
-    // cap) - added in a 2026-09-02 review after finding the save-status
-    // indicator had no way to reflect this state at all, so it kept
-    // silently reading "will save" for a conversation that had already
-    // stopped saving.
+    // currentConversationId is null for a conversation not yet (or no
+    // longer) tracked in the database. saveBlockedForThread is a
+    // client-only flag set once the backend reports the 5-saved-
+    // conversations cap for this thread, so it doesn't keep re-asking
+    // every subsequent message (see handleConversationStatus below) -
+    // reset only by starting a new conversation or loading a different
+    // saved one. currentConversationIsFull mirrors the backend's
+    // per-conversation is_full flag (the 50k-char cap) - added after the
+    // save-status indicator turned out to have no way to reflect this
+    // state, so it kept silently reading "will save" for a conversation
+    // that had already stopped saving.
     let currentConversationId = null;
     let saveBlockedForThread = false;
     let currentConversationIsFull = false;
@@ -473,12 +467,11 @@
     }
 
     function inlineFormat(text) {
-        // **bold** and [text](url) links (2026-09-07, direct request - a
-        // shared video link was rendering as plain escaped text, e.g.
-        // literal "[Watch here](https://...)" characters, not a clickable
-        // link). Only http(s) URLs - matches what the AI is ever actually
-        // given to share (real destination/video URLs), never anything
-        // that could produce a javascript: or other unsafe scheme.
+        // **bold** and [text](url) links - added after a shared video
+        // link rendered as literal "[Watch here](https://...)" text
+        // instead of a clickable link. Only http(s) URLs, matching what
+        // the AI actually shares - never anything that could smuggle in
+        // a javascript: or other unsafe scheme.
         let html = text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
         html = html.replace(
             /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
@@ -498,12 +491,12 @@
         return /^[\s|:-]+$/.test(line) && line.indexOf("-") !== -1;
     }
 
-    // Renders the AI's Markdown-ish replies (bold, tables, numbered/bulleted
-    // lists - the formats requested directly by the user, 2026-08-31, in
-    // place of walls of plain paragraphs) into real HTML. Escapes HTML
-    // first so nothing in the AI's own text - even if it echoed back
-    // something odd from a prior message - can inject markup; the only
-    // tags ever produced come from the specific constructs parsed below.
+    // Renders the AI's Markdown-ish replies (bold, tables, numbered/
+    // bulleted lists, in place of walls of plain paragraphs) into real
+    // HTML. Escapes HTML first so nothing in the AI's own text - even if
+    // it echoed back something odd from a prior message - can inject
+    // markup; the only tags ever produced come from the constructs
+    // parsed below.
     function renderMarkdown(text) {
         const lines = escapeHtml(text).split("\n");
         let html = "";
@@ -565,9 +558,9 @@
         sendButton.disabled = isLoading;
     }
 
-    // Contextual loading copy instead of a generic "thinking..." spinner
-    // (2026-09-01 UX pass, direct request) - picked at random each send so
-    // it doesn't feel like a fixed, repeated label.
+    // Contextual loading copy instead of a generic "thinking..." spinner -
+    // picked at random each send so it doesn't feel like a fixed, repeated
+    // label.
     function randomLoadingMessage() {
         const loadingMessages = CHAT_I18N.loadingMessages;
         return loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
@@ -633,15 +626,15 @@
                 card.appendChild(list);
             }
 
-            // "Choose this trip" (2026-09-08): browse-stage cards (from a
-            // normal recommendation) get a button that sends the traveler
-            // back into the chat for a real, detailed conversation about
-            // this one destination, instead of jumping straight to saving
-            // it. Only the card that comes back from that detail reply
+            // "Choose this trip": browse-stage cards (from a normal
+            // recommendation) get a button that sends the traveler back
+            // into the chat for a real, detailed conversation about this
+            // one destination, instead of jumping straight to saving it.
+            // Only the card that comes back from that detail reply
             // (detail_shown: true, set server-side by
             // ai.orchestration.StreamingOrchestrationResult.is_destination_detail)
             // shows the actual "Save this trip" link - deterministic, not
-            // an AI guess about whether the traveler seems ready.
+            // a guess about whether the traveler seems ready.
             if (destination.detail_shown) {
                 const link = document.createElement("a");
                 link.className = "btn btn-secondary";
@@ -667,16 +660,14 @@
         messages.scrollTop = messages.scrollHeight;
     }
 
-    // Splits the raw streamed buffer into the visible reply text and the
-    // two optional trailing footers (2026-09-02: a second footer,
-    // conversation-save status, was added alongside the existing
-    // recommendations one - both share the same "delimiter + JSON" shape
+    // Splits the raw streamed buffer into the visible reply text plus two
+    // optional trailing footers. Both share the same "delimiter + JSON"
+    // shape - following the precedent set by RECOMMENDATIONS_DELIMITER -
     // so the server can report structured data without a second endpoint
-    // or server-side session state, matching the precedent already
-    // established for RECOMMENDATIONS_DELIMITER). The server always
-    // writes the recommendations footer (if any) before the conversation
-    // one - see ai/views.py - so the conversation JSON is simply
-    // "everything after CONVERSATION_DELIMITER".
+    // or server-side session state. The server always writes the
+    // recommendations footer (if any) before the conversation one - see
+    // ai/views.py - so the conversation JSON is just "everything after
+    // CONVERSATION_DELIMITER".
     function splitFooters(buffer) {
         const recIndex = buffer.indexOf(RECOMMENDATIONS_DELIMITER);
         const convIndex = buffer.indexOf(CONVERSATION_DELIMITER);
@@ -700,20 +691,20 @@
     const saveCheckbox = document.getElementById("save-conversation-checkbox");
     const saveStatusIndicator = document.getElementById("save-status-indicator");
 
-    // Reflects whether the *next* message will actually be saved - next
-    // to the chat title, in smaller/muted text (2026-09-02, direct
-    // request), not just a one-time modal when a limit is hit. Covers all
-    // three reasons a message might not save: the checkbox itself is
-    // unchecked, the 5-conversation cap silently disabled saving for this
-    // thread (saveBlockedForThread), or this specific conversation already
-    // hit its own 50k-char size limit (currentConversationIsFull).
+    // Reflects whether the *next* message will actually be saved, shown
+    // next to the chat title in smaller/muted text - not just a one-time
+    // modal when a limit is hit. Covers all three reasons a message might
+    // not save: the checkbox itself is unchecked, the 5-conversation cap
+    // already blocking this thread (saveBlockedForThread), or this
+    // specific conversation already hit its own 50k-char size limit
+    // (currentConversationIsFull).
     function updateSaveStatusIndicator() {
         if (!saveStatusIndicator) {
             return;
         }
         if (!saveCheckbox) {
             // Anonymous visitors have no save feature at all - nothing to
-            // indicate (the checkbox itself isn't rendered for them either).
+            // show (the checkbox isn't rendered for them either).
             saveStatusIndicator.textContent = "";
             return;
         }
@@ -725,12 +716,10 @@
     }
     updateSaveStatusIndicator();
 
-    // Saved-conversations sidebar (2026-09-02, direct request - "like
-    // ChatGPT's left side, summarized history, click to load"). Everything
-    // in this section is a no-op when #chat-sidebar-list doesn't exist
-    // (anonymous visitors never render it), so it's safe to leave wired
-    // up unconditionally rather than wrapping the whole block in a
-    // template conditional.
+    // Saved-conversations sidebar - everything in this section is a no-op
+    // when #chat-sidebar-list doesn't exist (anonymous visitors never
+    // render it), so it's fine to leave it wired up unconditionally
+    // rather than wrapping the whole block in a template conditional.
     const sidebarList = document.getElementById("chat-sidebar-list");
 
     function formatSidebarDate(isoString) {
@@ -820,8 +809,8 @@
                 }
             })
             .catch(function () {
-                // Sidebar list is a nicety, not core chat functionality -
-                // fail silently rather than showing an error bubble.
+                // A nicety, not core chat functionality - fail silently
+                // instead of showing an error bubble.
             });
     }
 
@@ -869,8 +858,8 @@
                 }
             })
             .catch(function () {
-                // Best-effort - the sidebar just keeps showing the entry
-                // if the delete didn't actually go through.
+                // Best effort - if the delete didn't actually go through,
+                // the sidebar just keeps showing the entry.
             });
     }
 
@@ -885,9 +874,9 @@
         messages.innerHTML = "";
         if (emptyState) {
             // .remove() only detaches emptyState from the DOM - the
-            // reference (and its suggestion-chip listeners, attached once
-            // at page load) stays valid, so re-appending it is enough to
-            // bring the empty state back rather than rebuilding it.
+            // reference (and its suggestion-chip listeners from page
+            // load) stays valid, so just re-appending it brings the empty
+            // state back without rebuilding it.
             messages.appendChild(emptyState);
         }
         chatPage.classList.add("chat-empty");
@@ -899,14 +888,13 @@
         closeSidebar();
     }
 
-    // A brand new conversation is inserted into the sidebar immediately
-    // from the data already in this footer (no extra round-trip) - a real
-    // conversation genuinely did save correctly the first time this was
-    // tested live, but a fetchSidebarList()-only refresh has a visible
-    // network round-trip before the sidebar reflects it, which read as
-    // "not saving" in that live check. This makes the very first save of
-    // a conversation appear in the sidebar the instant the reply finishes,
-    // matching every subsequent turn's already-populated sidebar exactly.
+    // A brand new conversation gets inserted into the sidebar immediately
+    // from the data already in this footer (no extra round-trip). A
+    // fetchSidebarList()-only refresh has a visible network delay before
+    // the sidebar catches up, which read as "not saving" when tested live
+    // even though the save worked fine. This way the first save appears
+    // in the sidebar the instant the reply finishes, matching every
+    // subsequent turn's already-populated sidebar.
     function handleConversationStatus(status) {
         if (status.saved && status.conversation_id) {
             const isNewlySaved = currentConversationId === null;
@@ -925,12 +913,11 @@
                 );
             } else if (sidebarList) {
                 // Continuing an already-saved conversation still bumps its
-                // updated_at (and therefore its sort position, per
-                // SavedConversation.Meta.ordering) server-side - refresh
-                // the list so the sidebar reflects that instead of
-                // silently going stale until some unrelated action (new
-                // conversation, delete, loading a different thread)
-                // happens to trigger a refresh (2026-09-02 review).
+                // updated_at server-side (and therefore its sort position,
+                // per SavedConversation.Meta.ordering) - refresh the list
+                // so the sidebar reflects that instead of going stale
+                // until some unrelated action happens to trigger a
+                // refresh.
                 fetchSidebarList();
             }
         }
@@ -942,9 +929,8 @@
             }
         } else if (status.reason === "size_limit_exceeded") {
             // The indicator needs to reflect this too, not just the
-            // one-time modal (2026-09-02 review) - otherwise it silently
-            // keeps reading "will save" for every later message in this
-            // now-full conversation.
+            // one-time modal - otherwise it keeps reading "will save" for
+            // every later message in this now-full conversation.
             currentConversationIsFull = true;
             updateSaveStatusIndicator();
             if (conversationSizeLimitModal) {
@@ -953,10 +939,9 @@
         }
     }
 
-    // Mobile sidebar toggle - same is-open/aria-expanded pattern already
-    // used by static/js/main.js's site nav toggle, scoped to this
-    // component instead of reusing that exact code (different element
-    // ids, and this only exists on the chat page).
+    // Mobile sidebar toggle - same is-open/aria-expanded pattern as
+    // static/js/main.js's site nav toggle, just scoped to this component
+    // (different element ids, and it only exists on the chat page).
     const sidebar = document.getElementById("chat-sidebar");
     const sidebarToggle = document.getElementById("sidebar-toggle");
     const sidebarBackdrop = document.getElementById("chat-sidebar-backdrop");
@@ -989,11 +974,10 @@
         newConversationBtn.addEventListener("click", startNewConversation);
     }
 
-    // Small shared helper for the two saved-conversation notice dialogs -
-    // same "call close() directly from the dismiss path, don't rely
-    // solely on the dialog's own close event" pattern already established
-    // for the login prompt modal below (a script-driven .close() doesn't
-    // reliably fire "close" in every environment).
+    // Shared helper for the two saved-conversation notice dialogs - calls
+    // close() directly from the dismiss path rather than relying only on
+    // the dialog's own close event, since a script-driven .close() doesn't
+    // reliably fire "close" in every environment.
     function setupSimpleModal(modal, dismissButtonId) {
         if (!modal) {
             return null;
@@ -1032,10 +1016,10 @@
     fetchSidebarList();
 
     async function sendMessage(message, options) {
-        // options.focusDestinationSlug (2026-09-08, "Choose this trip"):
-        // set only by addRecommendationCards' choose button, which already
-        // knows the exact destination - forwarded as-is, the server does
-        // its own lookup/validation (see ai/views.py::recommendations_stream).
+        // options.focusDestinationSlug ("Choose this trip"): set only by
+        // addRecommendationCards' choose button, which already knows the
+        // exact destination - forwarded as-is, the server does its own
+        // lookup/validation (see ai/views.py::recommendations_stream).
         const focusDestinationSlug = (options && options.focusDestinationSlug) || "";
         if (emptyState && emptyState.parentNode) {
             emptyState.remove();
@@ -1104,14 +1088,14 @@
             try {
                 addRecommendationCards(JSON.parse(footers.recommendationsJson));
             } catch (parseError) {
-                // No usable recommendations footer - not an error the user needs to see.
+                // No usable recommendations footer - nothing the user needs to see.
             }
         }
         if (footers.conversationJson) {
             try {
                 handleConversationStatus(JSON.parse(footers.conversationJson));
             } catch (parseError) {
-                // No usable conversation-status footer - not an error the user needs to see.
+                // No usable conversation-status footer either - not worth surfacing.
             }
         }
 
@@ -1129,10 +1113,9 @@
         sendMessage(message);
     });
 
-    // Empty-state suggestion chips (2026-09-01 second UX pass, §5/§11 -
-    // a real, functional starting point instead of a blank void) - fill
-    // the input and let the traveler send it (or edit it first), rather
-    // than auto-sending on click.
+    // Empty-state suggestion chips - a real, functional starting point
+    // instead of a blank void. Fill the input and let the traveler send
+    // it (or edit it first) rather than auto-sending on click.
     document.querySelectorAll(".chat-suggestion-chip").forEach(function (chip) {
         chip.addEventListener("click", function () {
             input.value = chip.textContent;

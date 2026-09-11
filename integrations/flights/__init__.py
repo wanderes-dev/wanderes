@@ -11,14 +11,13 @@ __all__ = [
     "get_flight_provider",
 ]
 
-# Maps a short settings.FLIGHT_PROVIDER key to the adapter that implements
-# it, so switching (or eventually adding) a provider is a settings change,
-# not an application-code change (10_EXTERNAL_INTEGRATIONS.md §13.1 - same
-# pattern as integrations.climate.get_climate_provider() and
-# ai.provider.get_ai_provider()). "kayak" is registered against a
-# deliberate skeleton (see integrations/flights/kayak.py) rather than a
-# working adapter - there is no real KAYAK API access to implement against
-# yet (DECISIONS_PENDING.md §4).
+# Maps a settings.FLIGHT_PROVIDER key to the adapter that implements it,
+# so switching (or adding) a provider is a settings change, not an
+# application-code change (§13.1 - same pattern as get_climate_provider()
+# and ai.provider.get_ai_provider()). "kayak" points at a deliberate
+# skeleton (integrations/flights/kayak.py), not a working adapter - there
+# is no real KAYAK API access to build against yet (DECISIONS_PENDING.md
+# §4).
 _PROVIDER_REGISTRY = {
     "kayak": "integrations.flights.kayak.KayakFlightProvider",
 }

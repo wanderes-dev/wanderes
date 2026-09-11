@@ -2,11 +2,9 @@
     const navToggle = document.getElementById("nav-toggle");
     const siteNav = document.getElementById("site-nav");
 
-    // Looked up fresh on every call, rather than captured once at the top
-    // alongside navToggle/siteNav - the backdrop element is a plain,
-    // static part of the page (not conditionally rendered), so this is
-    // purely defensive, but avoids depending on this closure's reference
-    // staying valid for the whole page lifetime.
+    // Looked up fresh each call instead of cached with navToggle/siteNav
+    // above - the backdrop is a static part of the page, not
+    // conditionally rendered, so this is mostly defensive.
     function getSiteNavBackdrop() {
         return document.getElementById("site-nav-backdrop");
     }
@@ -47,15 +45,11 @@
         message.appendChild(closeButton);
     });
 
-    // Language suggestion banner (2026-09-04, automatic language
-    // detection). Starts [hidden] server-side (templates/base.html) so
-    // there's never a flash of it before this runs - only revealed here,
-    // and only once, if it wasn't already dismissed this browser session.
-    // "Not now" is deliberately session-scoped (sessionStorage, not
-    // localStorage) per the original request ("avoid repeatedly showing
-    // the same suggestion during the same session") - it's expected and
-    // fine to ask again in a later session if the browser/active-language
-    // mismatch still holds then.
+    // Starts [hidden] server-side (base.html) so there's never a flash of
+    // it before this runs - revealed here only if it wasn't already
+    // dismissed this browser session. "Not now" uses sessionStorage, not
+    // localStorage, on purpose: it's fine to ask again next session if
+    // the browser/active-language mismatch still holds.
     const languageSuggestion = document.getElementById("language-suggestion");
     if (languageSuggestion) {
         const suggestedCode = languageSuggestion.dataset.languageCode;
@@ -65,9 +59,9 @@
         try {
             alreadyDismissed = window.sessionStorage.getItem(dismissKey) === "1";
         } catch (e) {
-            // sessionStorage can throw (private browsing, embedded contexts,
-            // storage disabled) - fail open (show the suggestion) rather
-            // than crash the rest of the page's JS.
+            // sessionStorage can throw in private browsing or embedded
+            // contexts - fail open (show the suggestion) instead of
+            // breaking the rest of the page's JS.
         }
 
         if (!alreadyDismissed) {
@@ -81,8 +75,8 @@
                 try {
                     window.sessionStorage.setItem(dismissKey, "1");
                 } catch (e) {
-                    // Same as above - dismissal for this page view still
-                    // works even if it can't be remembered for next time.
+                    // Same deal - dismissal still works for this page view
+                    // even if it can't be remembered for next time.
                 }
             });
         }
@@ -92,12 +86,11 @@
         const switcherSelect = document.getElementById("lang-switcher-select");
         if (switchButton && switcherForm && switcherSelect) {
             switchButton.addEventListener("click", function () {
-                // Reuses the real header language-switcher form (same
-                // endpoint, same CSRF token, same cookie/account
-                // persistence - core.views.set_language) instead of
-                // building a second one - applying and persisting the
-                // choice is then identical to using the switcher directly,
-                // with nothing duplicated here.
+                // Reuses the header's own language-switcher form (same
+                // endpoint, CSRF token, cookie/account persistence via
+                // core.views.set_language) rather than building a second
+                // one - so this behaves exactly like using the switcher
+                // directly.
                 switcherSelect.value = suggestedCode;
                 switcherForm.submit();
             });

@@ -86,11 +86,10 @@ class RecordEventTests(TestCase):
 
 
 class OperationalEventTests(TestCase):
-    """2026-09-09: llm_request_completed/provider_request_completed are
-    system telemetry about the AI/provider layers, not user behavior - they
-    must record successfully with neither a user nor a request/IP, unlike
-    every other event type (RecordEventTests above confirms those still
-    require one or the other, unchanged)."""
+    """llm_request_completed/provider_request_completed are system
+    telemetry about the AI/provider layers, not user behavior - they must
+    record successfully with neither a user nor a request/IP, unlike every
+    other event type (RecordEventTests above covers those)."""
 
     def test_operational_event_requires_no_actor(self):
         record_event(
@@ -104,9 +103,9 @@ class OperationalEventTests(TestCase):
         self.assertEqual(event.metadata["operation"], "extract_intent")
 
     def test_operational_event_ignores_a_passed_request(self):
-        # Even if a caller had a request handy and passed it along, an
-        # operational event must never resolve/store an IP - attribution
-        # isn't its purpose, and doing so would blur the "no actor" contract.
+        # Even with a request handy, an operational event must never
+        # resolve/store an IP - attribution isn't the point here, and
+        # doing so would blur the "no actor" contract.
         factory = RequestFactory()
         request = factory.post("/api/v1/recommendations/")
         request.META["REMOTE_ADDR"] = "203.0.113.42"
