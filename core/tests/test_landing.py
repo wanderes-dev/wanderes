@@ -13,6 +13,16 @@ class LandingPageTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "core/landing.html")
 
+    def test_beta_banner_shows_on_every_page(self):
+        # 2026-09-11, direct user request: an honest "we're in beta"
+        # notice, site-wide via base.html - not premium/trial-related,
+        # since Premium doesn't exist yet (see DECISIONS_PENDING.md's
+        # Phase 19 entry) and a public promise this site can't fulfill
+        # was deliberately not built.
+        response = self.client.get("/")
+
+        self.assertContains(response, "Wanderes is in beta")
+
     def test_landing_page_shows_real_destinations_only(self):
         destination = Destination.objects.create(
             slug="test-destination",

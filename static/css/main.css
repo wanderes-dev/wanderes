@@ -305,6 +305,21 @@ a:hover {
     opacity: 1;
 }
 
+/* Beta notice (2026-09-11) - a permanent, non-dismissible informational
+   strip on every page, same reasoning as the "we collect anonymized
+   usage data" footer note: an honest, always-visible disclosure rather
+   than a one-time dismissible banner, since "this product is in beta"
+   stays true for as long as it's shown - dismissing it would just mean
+   most visitors never see it again on their next visit. */
+
+.beta-banner {
+    background: var(--color-info-bg);
+    color: var(--color-info-text);
+    text-align: center;
+    font-size: 0.85rem;
+    padding: 0.45rem 1rem;
+}
+
 /* Language suggestion banner (2026-09-04, automatic language detection) -
    deliberately styled like an info-level .message rather than a modal or
    anything blocking, since it's a soft "want to switch?" nudge, never a
