@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
-from .memory import sanitize_reply_for_context
 from .models import SavedConversation
 from .provider import AIMessage, AIProvider, AIProviderError, get_ai_provider
 
@@ -126,9 +125,10 @@ def _append_turn(
     is_new: bool,
 ) -> SaveResult:
     conversation.messages.append({"role": "user", "content": user_message})
-    conversation.messages.append(
-        {"role": "assistant", "content": sanitize_reply_for_context(assistant_reply)}
-    )
+    # Stored raw, exactly as sent to the traveler - see
+    # ai.memory.sanitize_reply_for_context's docstring for why this isn't
+    # sanitized here (it used to be, and that broke recall).
+    conversation.messages.append({"role": "assistant", "content": assistant_reply})
 
     # True only on the turn that actually pushes us over MAX_CHARS -
     # record_turn() already bailed early for a conversation that was

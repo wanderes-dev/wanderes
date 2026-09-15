@@ -22,6 +22,7 @@ from travel.services import (
     ENTRY_REQUIREMENT_DISCLAIMER,
     find_destination_slugs_by_name,
     get_entry_requirements,
+    is_known_country,
     resolve_country_name,
 )
 from trips.models import FEEDBACK_TAG_CHOICES, Feedback, TravelHistoryEntry, Trip
@@ -257,24 +258,29 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "if no continent/region/country was named or implied, or if what was "
     "named doesn't map to a single continent (e.g. 'somewhere warm', "
     "'anywhere with beaches').\n"
-    "country: set this ONLY when the traveler names or clearly asks for "
-    "ONE specific country (e.g. 'quero ir pra Tailândia', 'somewhere in "
-    "Japan') - always give the country's standard English name (e.g. "
-    "'Alemanha' -> 'Germany', 'Tailândia' -> 'Thailand', 'Japan' stays "
-    "'Japan'), regardless of what language the traveler used, since this "
-    "value is matched against a destination catalog that stores every "
-    "country name in English - any other language's spelling would "
-    "silently match nothing and the traveler would wrongly get zero "
-    "results. This is narrower and more specific than continent: naming "
-    "a single country sets BOTH country and continent together (e.g. "
-    "'Thailand' sets country='Thailand' AND continent='asia'), since a single-"
-    "country request should never quietly return results from OTHER "
-    "countries in the same continent/region. Leave country null for "
-    "anything broader than one country - a multi-country region or "
-    "colloquial regional term ('Europe', 'Eurotrip', 'Southeast Asia', "
-    "'the Caribbean', 'Scandinavia'/'Escandinávia') sets continent only, "
-    "never country, since those genuinely span many countries. Also "
-    "null if no specific country was named at all.\n"
+    "country: whenever the traveler names or clearly implies a place "
+    "narrower than a whole continent - either ONE specific country (e.g. "
+    "'quero ir pra Tailândia', 'somewhere in Japan') OR a multi-country "
+    "region/colloquial term that is still narrower than a full continent "
+    "('Scandinavia', 'the Balkans', 'Benelux', 'Southeast Asia', 'the "
+    "Caribbean') - put exactly that name here, always given as the "
+    "standard English name (e.g. 'Alemanha' -> 'Germany', 'Tailândia' -> "
+    "'Thailand', 'Escandinávia' -> 'Scandinavia'), regardless of what "
+    "language the traveler used, since this value is matched against a "
+    "destination catalog that stores every country name in English - any "
+    "other language's spelling would silently match nothing. Don't try "
+    "to judge here whether the name is 'a single real country' our "
+    "catalog actually has data for - that's resolved downstream against "
+    "the real data, not by you; just capture whatever specific "
+    "place/region term the traveler actually used. Always also set "
+    "continent to match (e.g. 'Thailand' sets country='Thailand' AND "
+    "continent='asia'; 'Scandinavia' sets country='Scandinavia' AND "
+    "continent='europe'), since a request naming something narrower than "
+    "a continent should never quietly return results from unrelated "
+    "parts of that continent. Leave country null ONLY when nothing "
+    "narrower than a whole continent was named at all (e.g. 'Europe', "
+    "'Eurotrip', 'somewhere in Asia' with no further specifics) - "
+    "continent alone still applies in that case.\n"
     "If the user asks to avoid or exclude specific places, countries, or "
     "regions, list the place/country names they mentioned in "
     "excluded_place_names (e.g. ['Marrakech', 'Morocco']). Leave it as an "
@@ -834,6 +840,37 @@ def stream_travel_recommendation(
         )
         return StreamingOrchestrationResult([], confirmation_reply)
 
+    if intent["unmatched_region_name"]:
+        # The extracted country doesn't match anything real in the
+        # catalog - almost always a multi-country region name
+        # ("Scandinavia") that isn't stored as a single country. Falling
+        # back to continent alone here would be too broad (climate/budget
+        # scoring across an entire continent, diluting out whatever the
+        # traveler actually asked about) and the AI would have no signal
+        # left to even notice the mismatch. Route it the same way as a
+        # genuine zero-match search instead - _build_no_matches_messages
+        # already knows to lean on general knowledge for a named region
+        # rather than silently substituting unrelated destinations. Logged
+        # here not to solve this particular term, but so real usage shows
+        # which regions come up often enough to be worth real data later.
+        logger.info(
+            "Extracted country did not match any real catalog country - treating as an "
+            "unmatched region/place name and falling back to a general-knowledge reply. "
+            "message=%r unmatched_region_name=%r continent=%s",
+            message,
+            intent["unmatched_region_name"],
+            intent["continent"],
+        )
+        no_match_messages = _build_no_matches_messages(message, intent, history, profile)
+        no_match_reply = _stream_ai_reply(
+            no_match_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
+        )
+        return StreamingOrchestrationResult([], no_match_reply)
+
     request = RecommendationRequest(
         month=intent["month"],
         min_temp_c=intent["min_temp_c"],
@@ -1117,9 +1154,23 @@ def _localize_reply(
                 "just added this moment, your phrasing must make that "
                 "clear too - 2026-09-03 QA finding: a paraphrase that "
                 "dropped this distinction read like a brand new addition "
-                "instead of a reminder that it was already there) - "
-                "this applies just as much to English as to any other "
-                f"language: {fact}"
+                "instead of a reminder that it was already there). This is "
+                "NOT an invitation to have a normal back-and-forth about "
+                "their trip - do not ask a follow-up question, do not just "
+                "react with excitement, and do not let your reply become a "
+                "paraphrase of what the traveler themselves said instead of "
+                "the fact below (2026-09-15 QA finding: for an anonymous "
+                "traveler, this produced replies like 'You want to go to "
+                "Iceland to see the northern lights! When are you thinking "
+                "of going?' - conversational and plausible-sounding, but it "
+                "never actually told them they needed to log in to save "
+                "it, which was the entire point of this call). If a "
+                "condition or requirement (like needing to log in) is part "
+                "of the fact, it must be clearly present in your reply - a "
+                "reply that reads naturally but omits it has failed this "
+                "task - this applies just as much to English as to any "
+                "other language: "
+                f"{fact}"
             ),
         )
     )
@@ -1303,6 +1354,27 @@ def _history_messages(history: list[dict] | None) -> list[AIMessage]:
     return [AIMessage(role=turn["role"], content=turn["content"]) for turn in history or []]
 
 
+def _sanitized_history_messages(history: list[dict] | None) -> list[AIMessage]:
+    """Same as _history_messages, but strips literal temperature/cost-tier
+    figures out of assistant turns first (memory.sanitize_reply_for_context)
+    - used only by _extract_intent, which is the one caller that needs
+    protection from misreading the AI's own stated numbers as something the
+    traveler said. Everything else (recall, activity follow-ups, saved-
+    conversation titles) needs the real, unedited reply - see that
+    function's docstring."""
+    return [
+        AIMessage(
+            role=turn["role"],
+            content=(
+                memory.sanitize_reply_for_context(turn["content"])
+                if turn["role"] == "assistant"
+                else turn["content"]
+            ),
+        )
+        for turn in history or []
+    ]
+
+
 def _traveler_profile(user) -> TravelerProfile | None:
     """The signed-in traveler's profile, or None for anonymous/no-profile-
     yet - a cheap lookup shared by every prompt builder that wants
@@ -1460,7 +1532,7 @@ def _extract_intent(
     message: str, *, ai_provider: AIProvider, history: list[dict] | None = None
 ) -> dict:
     messages = [AIMessage(role="system", content=INTENT_EXTRACTION_SYSTEM_PROMPT)]
-    messages.extend(_history_messages(history))
+    messages.extend(_sanitized_history_messages(history))
     messages.append(AIMessage(role="user", content=message))
     # temperature=0 - this feeds straight into deterministic logic (which
     # branch runs, what gets queried), so it needs to be consistent, not
@@ -1555,7 +1627,21 @@ def _validate_intent(data: dict) -> dict:
         data["trip_type"] = None
 
     country = data.get("country")
-    data["country"] = country if isinstance(country, str) and country.strip() else None
+    country = country.strip() if isinstance(country, str) and country.strip() else None
+    # The extraction prompt now captures any place narrower than a
+    # continent into `country`, multi-country regions included, rather
+    # than deciding in the prompt itself whether a name is "a real single
+    # country." Check that here against the actual catalog: a value that
+    # isn't a real country never becomes a doomed exact-match filter -
+    # it's nulled out and kept as unmatched_region_name so the caller can
+    # fall back to a general-knowledge answer and log the term. Deliberately
+    # not a hardcoded region dictionary, so it generalizes to any such term.
+    if country is not None and not is_known_country(country):
+        data["unmatched_region_name"] = country
+        country = None
+    else:
+        data["unmatched_region_name"] = None
+    data["country"] = country
 
     data["excluded_place_names"] = _clean_string_list(data.get("excluded_place_names"))
 

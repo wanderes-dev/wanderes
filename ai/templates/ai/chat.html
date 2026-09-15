@@ -41,6 +41,9 @@
         box-sizing: border-box;
     }
     .chat-header {
+        /* Lives inside #chat-messages now (see the HTML below), so
+           flex-shrink keeps it from getting squeezed by the scrollable
+           list it's the first child of. */
         flex-shrink: 0;
         transition: opacity 0.2s ease;
     }
@@ -390,12 +393,16 @@
     </aside>
 
     <div class="chat-page chat-empty" id="chat-page">
-        <div class="chat-header">
-            <h1>{% trans "Chat with Wander" %}<span id="save-status-indicator" class="save-status-indicator"></span></h1>
-            <p>{% trans "Tell me what kind of trip you're thinking about - dates, budget, climate, anything." %}</p>
-        </div>
-
         <div id="chat-messages" class="chat-messages">
+            <!-- Lives inside the scrollable message list, not above it, so
+                 it scrolls away with the rest of the conversation once
+                 there's something to scroll - see the JS re-append in
+                 loadConversation()/startNewConversation() below, since
+                 clearing #chat-messages would otherwise drop it. -->
+            <div class="chat-header" id="chat-header">
+                <h1>{% trans "Chat with Wander" %}<span id="save-status-indicator" class="save-status-indicator"></span></h1>
+                <p>{% trans "Tell me what kind of trip you're thinking about - dates, budget, climate, anything." %}</p>
+            </div>
             <div id="chat-empty-state" class="chat-empty-state">
                 <p class="chat-empty-hint">{% trans "Where should we send you? A few ideas to get going:" %}</p>
                 <div class="chat-suggestions">
@@ -687,6 +694,7 @@
     }
 
     const emptyState = document.getElementById("chat-empty-state");
+    const chatHeader = document.getElementById("chat-header");
     const chatPage = document.getElementById("chat-page");
     const saveCheckbox = document.getElementById("save-conversation-checkbox");
     const saveStatusIndicator = document.getElementById("save-status-indicator");
@@ -828,6 +836,9 @@
                 }
                 updateSaveStatusIndicator();
                 messages.innerHTML = "";
+                if (chatHeader) {
+                    messages.appendChild(chatHeader);
+                }
                 chatPage.classList.remove("chat-empty");
                 data.messages.forEach(function (turn) {
                     if (turn.role === "user") {
@@ -872,6 +883,9 @@
         }
         updateSaveStatusIndicator();
         messages.innerHTML = "";
+        if (chatHeader) {
+            messages.appendChild(chatHeader);
+        }
         if (emptyState) {
             // .remove() only detaches emptyState from the DOM - the
             // reference (and its suggestion-chip listeners from page

@@ -8,6 +8,7 @@ from ai.orchestration import (
     MAX_RECOMMENDATIONS,
     NEEDS_LOGIN_REPLY,
     _extract_climate_budget_signal,
+    _sanitized_history_messages,
     _validate_climate_budget,
     get_travel_recommendation,
     stream_travel_recommendation,
@@ -1035,6 +1036,83 @@ class CountryTests(TestCase):
 
         slugs = {r.destination.slug for r in result.recommendations}
         self.assertEqual(slugs, {"bangkok"})
+
+
+class UnmatchedRegionNameTests(TestCase):
+    """Real production bug found via manual QA: "Quero ir pra Escandinavia
+    em agosto" fell back to continent='europe' alone (no way to narrow
+    further), so climate/budget-matched destinations from entirely
+    unrelated European countries (Greece, Croatia, France) stood in for
+    the Nordic countries the traveler actually named - zero results from
+    Norway/Sweden/Denmark despite real destinations existing for all
+    three. The extraction prompt now captures any place narrower than a
+    continent into `country`, multi-country regions included; validation
+    checks it against the real catalog and, when it isn't an actual
+    country we have data for, routes to the same honest general-
+    knowledge fallback as a genuine zero-match search instead of
+    silently returning unrelated destinations from the rest of the
+    continent."""
+
+    def setUp(self):
+        self.oslo = _make_destination(
+            "oslo", lat=59.91, lon=10.75, trip_type="city", country="Norway"
+        )
+        self.athens = _make_destination(
+            "athens", lat=37.98, lon=23.73, trip_type="city", country="Greece"
+        )
+        self.climate = StubClimateProvider(
+            {
+                (59.91, 10.75): MonthlyClimateSummary(2025, 8, 22.0, 14.0, 5.0),
+                (37.98, 23.73): MonthlyClimateSummary(2025, 8, 33.0, 25.0, 1.0),
+            }
+        )
+
+    def test_unrecognized_region_skips_the_continent_wide_fallback(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=8, continent="europe", country="Scandinavia"),
+            reply_text="Here's a general overview of Scandinavia.",
+        )
+
+        result = get_travel_recommendation(
+            "Quero ir pra Escandinavia em agosto",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        # Never silently substitutes Athens (a real continent='europe'
+        # match) for a request that specifically named Scandinavia.
+        self.assertEqual(result.recommendations, [])
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_a_real_recognized_country_still_filters_normally(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=8, continent="europe", country="Norway")
+        )
+
+        result = get_travel_recommendation(
+            "Quero ir pra Noruega em agosto",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"oslo"})
+
+    def test_logs_the_unmatched_region_name(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=8, continent="europe", country="Scandinavia")
+        )
+
+        with self.assertLogs("ai.orchestration", level="INFO") as logs:
+            get_travel_recommendation(
+                "Quero ir pra Escandinavia em agosto",
+                ai_provider=ai_provider,
+                climate_provider=self.climate,
+            )
+
+        self.assertTrue(
+            any("unmatched_region_name='Scandinavia'" in message for message in logs.output)
+        )
 
 
 class RecommendationCapTests(TestCase):
@@ -2388,6 +2466,73 @@ class ConversationMemoryTests(TestCase):
         key = memory.conversation_key(user=None, session_key="session-stream")
         history = memory.get_history(key)
         self.assertEqual(history[-1], {"role": "assistant", "content": full_reply})
+
+    def test_intent_extraction_history_strips_figures_but_storage_stays_raw(self):
+        # Temperature/cost-tier figures the AI itself stated (never the
+        # traveler) used to get read back by a later turn's intent
+        # extraction and misattributed as the traveler's own preference.
+        # Stripping them at storage time fixed that but broke genuine
+        # recall ("what did you suggest?") - the real figures were gone
+        # before they were ever saved. The fix now lives only in
+        # ai.orchestration._sanitized_history_messages, used only by
+        # _extract_intent - this locks in both halves: the intent-
+        # extraction call doesn't see the raw figures, but what's actually
+        # persisted (and everything else that reads history) does.
+        first_provider = StubAIProvider(
+            structured_response=_intent(message_type="recommendation", min_temp_c=22.0),
+            reply_text="Santorini (18-20°C, custo 4/5) e Phuket (31°C, custo 4/5).",
+        )
+        get_travel_recommendation(
+            "quero uma praia mais refinada para dezembro",
+            session_key="session-sanitize",
+            ai_provider=first_provider,
+            climate_provider=self.climate,
+        )
+
+        second_provider = StubAIProvider(structured_response=_intent(message_type="off_topic"))
+        get_travel_recommendation(
+            "e mais alguma?",
+            session_key="session-sanitize",
+            ai_provider=second_provider,
+            climate_provider=self.climate,
+        )
+
+        sent_to_intent_extraction = " ".join(
+            m.content for m in second_provider.generate_structured_reply_calls[0]
+        )
+        self.assertNotIn("18-20°C", sent_to_intent_extraction)
+        self.assertNotIn("31°C", sent_to_intent_extraction)
+        self.assertNotIn("4/5", sent_to_intent_extraction)
+        self.assertIn("[temp]", sent_to_intent_extraction)
+        self.assertIn("[cost]", sent_to_intent_extraction)
+
+        key = memory.conversation_key(user=None, session_key="session-sanitize")
+        stored_reply = memory.get_history(key)[1]["content"]
+        self.assertIn("31°C", stored_reply)
+        self.assertIn("4/5", stored_reply)
+
+
+class SanitizedHistoryMessagesTests(TestCase):
+    """Direct coverage for ai.orchestration._sanitized_history_messages -
+    complements the integration-level check above by pinning down that
+    only assistant turns get sanitized, never the traveler's own words."""
+
+    def test_sanitizes_assistant_turns_only(self):
+        history = [
+            {"role": "user", "content": "e sobre 31°C ai mesmo?"},
+            {"role": "assistant", "content": "Santorini (18-20°C, custo 4/5)."},
+        ]
+
+        messages = _sanitized_history_messages(history)
+
+        self.assertEqual(messages[0].content, "e sobre 31°C ai mesmo?")
+        self.assertNotIn("18-20°C", messages[1].content)
+        self.assertNotIn("4/5", messages[1].content)
+        self.assertIn("[temp]", messages[1].content)
+        self.assertIn("[cost]", messages[1].content)
+
+    def test_handles_none_history(self):
+        self.assertEqual(_sanitized_history_messages(None), [])
 
 
 class ClimateBudgetSignalTests(TestCase):

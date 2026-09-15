@@ -62,11 +62,15 @@ class HistoryStorageTests(TestCase):
         # The oldest turns should have been dropped, keeping the most recent.
         self.assertEqual(history[-1], {"role": "assistant", "content": "reply 9"})
 
-    def test_append_turn_strips_temperature_and_cost_tier_from_assistant_reply(self):
+    def test_append_turn_stores_the_raw_unsanitized_assistant_reply(self):
         # These exact figures, stated only by the AI (never the
         # traveler), were getting read back by a later turn's intent
         # extraction and misattributed as the traveler's own stated
-        # climate/budget preference.
+        # climate/budget preference - that used to get fixed by stripping
+        # them here, at storage time, which broke genuine recall ("what did
+        # you suggest?") since the real figures were gone before they were
+        # ever saved. The fix now lives only in ai.orchestration.
+        # _sanitized_history_messages; storage always keeps the raw reply.
         key = "chat-history:session:test4"
 
         memory.append_turn(
@@ -80,11 +84,9 @@ class HistoryStorageTests(TestCase):
 
         history = memory.get_history(key)
         stored_reply = history[1]["content"]
-        self.assertNotIn("18-20°C", stored_reply)
-        self.assertNotIn("31°C", stored_reply)
-        self.assertNotIn("4/5", stored_reply)
-        self.assertIn("[temp]", stored_reply)
-        self.assertIn("[cost]", stored_reply)
+        self.assertIn("18-20°C", stored_reply)
+        self.assertIn("31°C", stored_reply)
+        self.assertIn("4/5", stored_reply)
 
     def test_append_turn_leaves_ordinary_replies_unchanged(self):
         key = "chat-history:session:test5"

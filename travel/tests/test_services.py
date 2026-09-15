@@ -4,6 +4,7 @@ from travel.models import CountryEntryRequirement, Destination
 from travel.services import (
     find_destination_slugs_by_name,
     get_entry_requirements,
+    is_known_country,
     resolve_country_name,
 )
 
@@ -120,3 +121,39 @@ class ResolveCountryNameTests(TestCase):
     def test_empty_input_returns_none(self):
         self.assertIsNone(resolve_country_name(""))
         self.assertIsNone(resolve_country_name("   "))
+
+
+class IsKnownCountryTests(TestCase):
+    """ai.orchestration._validate_intent uses this to catch a multi-country
+    region ("Scandinavia") the extraction prompt captured into `country`
+    as if it were one real country - see that function's comment."""
+
+    def setUp(self):
+        Destination.objects.create(
+            slug="oslo-no",
+            name="Oslo",
+            country="Norway",
+            latitude=59.91,
+            longitude=10.75,
+            trip_type="city",
+            cost_of_living=4,
+            best_season="Jun-Aug",
+            worst_season="Dec-Feb",
+            short_description="A fjord-side capital.",
+            points_of_interest=[],
+        )
+
+    def test_true_for_a_real_country_in_the_catalog(self):
+        self.assertTrue(is_known_country("Norway"))
+
+    def test_is_case_insensitive(self):
+        self.assertTrue(is_known_country("norway"))
+
+    def test_strips_whitespace(self):
+        self.assertTrue(is_known_country("  Norway  "))
+
+    def test_false_for_a_multi_country_region_name(self):
+        self.assertFalse(is_known_country("Scandinavia"))
+
+    def test_false_for_an_unrelated_string(self):
+        self.assertFalse(is_known_country("Nowhereland"))
