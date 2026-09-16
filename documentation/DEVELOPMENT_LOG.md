@@ -2470,3 +2470,14 @@ Fix, in two parts. (1) The `country` field's extraction instructions now capture
 **No regressions found** across everything re-tested: single-country filtering (Vietnam, 7/7 genuine), the "Choose this trip" → grounded-detail → "Save this trip" flow (Hoi An - real points of interest, climate matching the catalog, no fabrication), family-with-kids no longer forcing `trip_type='city'`, exclusions (Bali/Thailand, 0/10), an honest visa answer (New Zealand/NZeTA), booking refusal, the off-topic scope guard, a 3-turn multi-turn combine (trip_type → continent → budget, 10/10 correct), German end-to-end (Portugal, 6/6 genuine destinations, no language leakage), and a contradictory request ("neve em Dubai") still handled the same care-first way as the 2026-09-08 fix intended.
 
 No code changed this entry - purely a verification pass plus one new documentation file (`testes/2026-09-16.md`).
+
+
+---
+
+## 2026-09-16 — Same day: Tenerife's coordinate fix reloaded into production; all 4 QA-battery bugs now confirmed live
+
+**Direct follow-up**: the user ran `python manage.py load_destinations` via Render Shell against `wanderes-web` (the exact command given, same process as 2026-09-08's data refresh) to apply the 2026-09-15 Tenerife coordinate fix that the QA battery above found was still missing from production's database.
+
+**Live-verified via the Browser tool**: "Recommend destinations in Spain for spring, medium budget" now shows "Tenerife (Canary Islands)" at 22.5°C (card badge: 23°C méd.) - not the old 9°C. All 4 bugs found in the 2026-09-15 QA battery are now confirmed fixed in production, not just in code.
+
+No code changed - a data reload plus verification.
