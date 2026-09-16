@@ -197,144 +197,128 @@ msgstr "Une erreur s'est produite de notre côté. Veuillez réessayer."
 
 #: analytics/templates/analytics/dashboard.html:9
 msgid "Analytics"
-msgstr ""
+msgstr "Statistiques"
 
 #: analytics/templates/analytics/dashboard.html:13
 msgid ""
 "The daily metrics haven't refreshed in over 26 hours - the scheduled job may "
 "have stalled."
-msgstr ""
+msgstr "Les indicateurs quotidiens n'ont pas été actualisés depuis plus de 26 heures - la tâche planifiée s'est peut-être bloquée."
 
 #: analytics/templates/analytics/dashboard.html:16
 msgid ""
 "No daily metrics yet - the nightly refresh job hasn't run. Real numbers will "
 "appear here once there's real chat activity and the job has run at least "
 "once."
-msgstr ""
+msgstr "Pas encore d'indicateurs quotidiens - la tâche d'actualisation nocturne ne s'est pas encore exécutée. De vrais chiffres apparaîtront ici dès qu'il y aura une réelle activité de chat et que la tâche se sera exécutée au moins une fois."
 
 #: analytics/templates/analytics/dashboard.html:20
 #, python-format
 msgid "Last %(lookback_days)s days"
-msgstr ""
+msgstr "%(lookback_days)s derniers jours"
 
 #: analytics/templates/analytics/dashboard.html:26
 msgid "Date"
-msgstr ""
+msgstr "Date"
 
 #: analytics/templates/analytics/dashboard.html:27
-#, fuzzy
-#| msgid "New conversation"
 msgid "Conversations"
-msgstr "Nouvelle conversation"
+msgstr "Conversations"
 
 #: analytics/templates/analytics/dashboard.html:28
-#, fuzzy
-#| msgid "Message"
 msgid "Messages"
-msgstr "Message"
+msgstr "Messages"
 
 #: analytics/templates/analytics/dashboard.html:29
 msgid "Reached rec."
-msgstr ""
+msgstr "A atteint la recom."
 
 #: analytics/templates/analytics/dashboard.html:30
 #: analytics/templates/analytics/dashboard.html:72
 msgid "Selected"
-msgstr ""
+msgstr "Sélectionné"
 
 #: analytics/templates/analytics/dashboard.html:31
 #: analytics/templates/analytics/dashboard.html:73
-#, fuzzy
-#| msgid "Save"
 msgid "Saved"
-msgstr "Enregistrer"
+msgstr "Enregistré"
 
 #: analytics/templates/analytics/dashboard.html:32
 msgid "Signups"
-msgstr ""
+msgstr "Inscriptions"
 
 #: analytics/templates/analytics/dashboard.html:33
 msgid "AI failures"
-msgstr ""
+msgstr "Échecs IA"
 
 #: analytics/templates/analytics/dashboard.html:34
 msgid "AI p95 (ms)"
-msgstr ""
+msgstr "IA p95 (ms)"
 
 #: analytics/templates/analytics/dashboard.html:55
 #: analytics/templates/analytics/dashboard.html:90
 #: analytics/templates/analytics/dashboard.html:126
 #: analytics/templates/analytics/dashboard.html:142
-#, fuzzy
-#| msgid "No saved conversations yet."
 msgid "No data yet."
-msgstr "Aucune conversation enregistrée pour l'instant."
+msgstr "Pas encore de données."
 
 #: analytics/templates/analytics/dashboard.html:60
 msgid "Destination performance"
-msgstr ""
+msgstr "Performance par destination"
 
 #: analytics/templates/analytics/dashboard.html:62
 msgid ""
 "Which destinations get recommended, chosen, and saved - approximate, session-"
 "based correlation (see documentation)."
-msgstr ""
+msgstr "Quelles destinations sont recommandées, choisies et enregistrées - corrélation approximative, basée sur la session (voir la documentation)."
 
 #: analytics/templates/analytics/dashboard.html:69
-#, fuzzy
-#| msgid "destination"
 msgid "Destination"
-msgstr "destination"
+msgstr "Destination"
 
 #: analytics/templates/analytics/dashboard.html:70
-#, fuzzy
-#| msgid "Account"
 msgid "Country"
-msgstr "Compte"
+msgstr "Pays"
 
 #: analytics/templates/analytics/dashboard.html:71
-#, fuzzy
-#| msgid "comment"
 msgid "Recommended"
-msgstr "commentaire"
+msgstr "Recommandé"
 
 #: analytics/templates/analytics/dashboard.html:95
 msgid "AI operational health"
-msgstr ""
+msgstr "Santé opérationnelle de l'IA"
 
 #: analytics/templates/analytics/dashboard.html:101
-#, fuzzy
-#| msgid "rating"
 msgid "Operation"
-msgstr "note"
+msgstr "Opération"
 
 #: analytics/templates/analytics/dashboard.html:102
 msgid "Type"
-msgstr ""
+msgstr "Type"
 
 #: analytics/templates/analytics/dashboard.html:103
 msgid "Total"
-msgstr ""
+msgstr "Total"
 
 #: analytics/templates/analytics/dashboard.html:104
 msgid "Failed"
-msgstr ""
+msgstr "Échoué"
 
 #: analytics/templates/analytics/dashboard.html:105
 msgid "p50 (ms)"
-msgstr ""
+msgstr "p50 (ms)"
 
 #: analytics/templates/analytics/dashboard.html:106
 msgid "p95 (ms)"
-msgstr ""
+msgstr "p95 (ms)"
 
 #: analytics/templates/analytics/dashboard.html:107
 msgid "p99 (ms)"
-msgstr ""
+msgstr "p99 (ms)"
 
 #: analytics/templates/analytics/dashboard.html:131
 msgid "Locales"
-msgstr ""
+msgstr "Langues"
 
 #: core/context_processors.py:107
 msgid ""
@@ -593,21 +577,17 @@ msgstr "Culture"
 
 #: travel/templates/travel/country_admin_form.html:4
 #: travel/templates/travel/country_admin_form.html:8
-#, fuzzy
-#| msgid "Edit trip"
 msgid "Edit country"
-msgstr "Modifier le voyage"
+msgstr "Modifier le pays"
 
 #: travel/templates/travel/country_admin_form.html:4
-#, fuzzy
-#| msgid "Account"
 msgid "Add country"
-msgstr "Compte"
+msgstr "Ajouter un pays"
 
 #: travel/templates/travel/country_admin_form.html:8
 #: travel/templates/travel/country_admin_list.html:11
 msgid "Add a new country"
-msgstr ""
+msgstr "Ajouter un nouveau pays"
 
 #: travel/templates/travel/country_admin_form.html:13
 #: trips/templates/trips/travel_history_form.html:12
@@ -618,7 +598,7 @@ msgstr "Enregistrer"
 
 #: travel/templates/travel/country_admin_form.html:18
 msgid "Videos"
-msgstr ""
+msgstr "Vidéos"
 
 #: travel/templates/travel/country_admin_form.html:29
 #: trips/templates/trips/travel_history_confirm_delete.html:12
@@ -626,43 +606,35 @@ msgid "Remove"
 msgstr "Retirer"
 
 #: travel/templates/travel/country_admin_form.html:36
-#, fuzzy
-#| msgid "No saved conversations yet."
 msgid "No videos yet."
-msgstr "Aucune conversation enregistrée pour l'instant."
+msgstr "Pas encore de vidéos."
 
 #: travel/templates/travel/country_admin_form.html:39
-#, fuzzy
-#| msgid "Add a visited destination"
 msgid "Add a video"
-msgstr "Ajouter une destination visitée"
+msgstr "Ajouter une vidéo"
 
 #: travel/templates/travel/country_admin_form.html:43
 msgid "Add video"
-msgstr ""
+msgstr "Ajouter la vidéo"
 
 #: travel/templates/travel/country_admin_form.html:48
-#, fuzzy
-#| msgid "Back to trip"
 msgid "Back to countries"
-msgstr "Retour au voyage"
+msgstr "Retour aux pays"
 
 #: travel/templates/travel/country_admin_list.html:8
 msgid "Countries"
-msgstr ""
+msgstr "Pays"
 
 #: travel/templates/travel/country_admin_list.html:19
 #, python-format
 msgid "%(counter)s video"
 msgid_plural "%(counter)s videos"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "%(counter)s vidéo"
+msgstr[1] "%(counter)s vidéos"
 
 #: travel/templates/travel/country_admin_list.html:25
-#, fuzzy
-#| msgid "No saved conversations yet."
 msgid "No countries yet."
-msgstr "Aucune conversation enregistrée pour l'instant."
+msgstr "Pas encore de pays."
 
 #: travel/views.py:29
 msgid "Country created."
