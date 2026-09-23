@@ -387,7 +387,31 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "this message if named there, otherwise the most recently discussed "
     "specific place from the conversation above (your prior reply or "
     "the traveler's). Null if is_activity_question is false, or if it's "
-    "true but no specific place can be identified either way."
+    "true but no specific place can be identified either way.\n\n"
+    "--- is_accommodation_request (independent of message_type) ---\n"
+    "true when the traveler wants accommodation/hotel/stay suggestions "
+    "for ONE specific place already established in this conversation - "
+    "named by them just now, or the place most recently discussed - NOT "
+    "asking to book/reserve one (that's is_booking_request above), just "
+    "wanting to know about places to stay there. Examples: 'quero "
+    "hospedagens em Tóquio', 'me sugira hotéis em Lisboa', 'where should "
+    "I stay in Rome?', 'any hotel recommendations for Bali?', or (after "
+    "already discussing Tokyo) simply 'só quero hospedagens'/'just show "
+    "me places to stay'. False when the traveler is instead asking for "
+    "NEW destination suggestions, even ones filtered by budget, climate, "
+    "or trip type - that's the normal recommendation flow, not this: "
+    "e.g. 'accommodations for a warm beach trip' with no specific place "
+    "named or previously established is false, since there's no single "
+    "place yet to search stays for. Also false when only a whole "
+    "country/region was named or established, with no single specific "
+    "city/destination - a country has many possible places to stay, so "
+    "this only fires for one specific destination.\n"
+    "accommodation_place_name: the specific place being asked about, as "
+    "written in this message if named there, otherwise the most "
+    "recently discussed specific place from the conversation above "
+    "(your prior reply or the traveler's). Null if is_accommodation_"
+    "request is false, or if it's true but no specific place can be "
+    "identified either way."
 )
 
 INTENT_SCHEMA = {
@@ -428,6 +452,8 @@ INTENT_SCHEMA = {
             "video_place_name": {"type": ["string", "null"]},
             "is_activity_question": {"type": "boolean"},
             "activity_place_name": {"type": ["string", "null"]},
+            "is_accommodation_request": {"type": "boolean"},
+            "accommodation_place_name": {"type": ["string", "null"]},
         },
         "required": [
             "message_type",
@@ -453,6 +479,8 @@ INTENT_SCHEMA = {
             "is_booking_request",
             "is_activity_question",
             "activity_place_name",
+            "is_accommodation_request",
+            "accommodation_place_name",
         ],
         "additionalProperties": False,
     },
@@ -676,6 +704,52 @@ def stream_travel_recommendation(
             conversation_key=conv_key,
         )
         return StreamingOrchestrationResult([], booking_reply)
+
+    # A traveler who already named/settled on one specific destination and
+    # now just wants accommodation suggestions for it (not new destination
+    # options) needs to land on the same single-destination detail path
+    # "Choose this trip" produces - that's the only reply that carries the
+    # real "Search stays" link (ai/views.py only attaches
+    # accommodation_search_url to a detail_shown card). Without this
+    # branch, a typed follow-up like "só quero hospedagens" after naming
+    # Tokyo fell through to generate_recommendations() with whatever
+    # broader country/continent constraint got extracted, silently
+    # re-litigating "which Japan destination" instead of answering the
+    # actual question about the one already chosen (2026-09-23, direct
+    # user report).
+    if intent["is_accommodation_request"]:
+        accommodation_place_name = intent["accommodation_place_name"]
+        if accommodation_place_name:
+            accommodation_destination = _resolve_destination(accommodation_place_name)
+            if accommodation_destination is not None:
+                return _handle_focus_destination(
+                    message,
+                    accommodation_destination,
+                    profile=profile,
+                    history=history,
+                    ai_provider=ai_provider,
+                    climate_provider=climate_provider,
+                    remember=_remember,
+                    conversation_key=conv_key,
+                    accommodation_focus=True,
+                )
+            unrecognized_accommodation_messages = (
+                _build_unrecognized_accommodation_destination_messages(
+                    message, accommodation_place_name, history
+                )
+            )
+            unrecognized_accommodation_reply = _stream_ai_reply(
+                unrecognized_accommodation_messages,
+                message,
+                ai_provider=ai_provider,
+                remember=_remember,
+                conversation_key=conv_key,
+            )
+            return StreamingOrchestrationResult([], unrecognized_accommodation_reply)
+        # else: flagged as an accommodation request but no place could be
+        # identified either way (shouldn't happen per the prompt's own
+        # contract, but never trust it blindly) - fall through to normal
+        # message_type handling below rather than dead-ending here.
 
     # Same pattern again for video requests/offers - real data only, no
     # live search fallback when nothing's on file. A guessed video link
@@ -964,6 +1038,7 @@ def _handle_focus_destination(
     climate_provider,
     remember,
     conversation_key: str | None = None,
+    accommodation_focus: bool = False,
 ) -> StreamingOrchestrationResult:
     """The "choose this trip" detail path: the traveler already picked one
     destination from a browse-stage card, so there's nothing left to
@@ -971,7 +1046,15 @@ def _handle_focus_destination(
     place, using fields (best_season/short_description/points_of_interest)
     the generic explanation path never sends. "Save this trip" only shows
     up once this reply comes back (ai/views.py checks
-    is_destination_detail) - deterministic, not an AI judgment call."""
+    is_destination_detail) - deterministic, not an AI judgment call.
+
+    `accommodation_focus` is set by the is_accommodation_request branch
+    (a typed "hospedagens em Tóquio", not a button click) reusing this
+    same path for its one real payoff: the "Search stays" link only ever
+    attaches to a detail_shown card. Threaded through so the prompt can
+    say what actually happened instead of falsely claiming a button
+    click, and nudge the reply toward what's useful for choosing where
+    to stay."""
     climate_provider = climate_provider or get_climate_provider()
     try:
         summary = climate_provider.get_monthly_climate(
@@ -994,7 +1077,12 @@ def _handle_focus_destination(
         score=0,
     )
     messages = _build_destination_detail_messages(
-        message, destination, avg_high_c=avg_high_c, profile=profile, history=history
+        message,
+        destination,
+        avg_high_c=avg_high_c,
+        profile=profile,
+        history=history,
+        accommodation_focus=accommodation_focus,
     )
     reply = _stream_ai_reply(
         messages,
@@ -1013,6 +1101,7 @@ def _build_destination_detail_messages(
     avg_high_c: float | None,
     profile: TravelerProfile | None,
     history: list[dict] | None,
+    accommodation_focus: bool = False,
 ) -> list[AIMessage]:
     poi = ", ".join(destination.points_of_interest) if destination.points_of_interest else ""
     climate_line = f"\n- Current typical avg high: {avg_high_c}C" if avg_high_c is not None else ""
@@ -1020,14 +1109,40 @@ def _build_destination_detail_messages(
     entry_requirements_note = _entry_requirements_note(profile, [destination])
     video_note = _video_availability_note([destination])
 
+    if accommodation_focus:
+        context_line = (
+            f"The traveler asked about places to stay in {destination.name}, "
+            f"{destination.country}. "
+        )
+        message_line = f'Their message was: "{message}"\n\n'
+        conversation_note = (
+            "Focus your reply on what's genuinely useful for choosing where "
+            "to stay there - good areas/neighborhoods, what kind of "
+            "accommodation fits this destination's character, practical "
+            "tips - grounded only in the real facts listed below, never a "
+            "specific hotel name, price, or availability claim you can't "
+            "verify. Still ground it in a real, detailed sense of the place "
+            "(the description and points of interest below), the way a "
+        )
+    else:
+        context_line = (
+            f"The traveler chose to hear more about {destination.name}, "
+            f'{destination.country} (they clicked "Choose this trip" on it). '
+        )
+        message_line = f'Their message alongside choosing it was: "{message}"\n\n'
+        conversation_note = (
+            "Have a genuine, detailed conversation about this one place - "
+            "bring the description and points of interest to life, answer "
+            "naturally, and invite a real follow-up question, the way a "
+        )
+
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
     messages.append(
         AIMessage(
             role="user",
             content=(
-                f"The traveler chose to hear more about {destination.name}, "
-                f'{destination.country} (they clicked "Choose this trip" on it). '
+                f"{context_line}"
                 "Here is everything real we know about it - do not invent any "
                 "other facts beyond what is listed here:\n"
                 f"- Trip type: {destination.get_trip_type_display()}\n"
@@ -1040,10 +1155,8 @@ def _build_destination_detail_messages(
                 f"{traveler_note}"
                 f"{entry_requirements_note}"
                 f"{video_note}\n\n"
-                f'Their message alongside choosing it was: "{message}"\n\n'
-                "Have a genuine, detailed conversation about this one place - "
-                "bring the description and points of interest to life, answer "
-                "naturally, and invite a real follow-up question, the way a "
+                f"{message_line}"
+                f"{conversation_note}"
                 "thoughtful travel consultant would once a client has settled "
                 "on somewhere to talk through in depth. If a real video is "
                 "noted as being on file above, you may offer to show it - "
@@ -1684,6 +1797,14 @@ def _validate_intent(data: dict) -> dict:
     data["activity_place_name"] = (
         activity_place_name
         if isinstance(activity_place_name, str) and activity_place_name.strip()
+        else None
+    )
+
+    data["is_accommodation_request"] = bool(data.get("is_accommodation_request"))
+    accommodation_place_name = data.get("accommodation_place_name")
+    data["accommodation_place_name"] = (
+        accommodation_place_name
+        if isinstance(accommodation_place_name, str) and accommodation_place_name.strip()
         else None
     )
 
@@ -2459,6 +2580,42 @@ def _build_unrecognized_feedback_destination_messages(
                 "Reply in the same language the traveler has been using in this "
                 "conversation (check the history above, not just this message) - this "
                 "applies just as much to English as to any other language."
+            ),
+        )
+    )
+    return messages
+
+
+def _build_unrecognized_accommodation_destination_messages(
+    message: str, destination_name: str, history: list[dict] | None = None
+) -> list[AIMessage]:
+    """Built when an accommodation request names a real place our curated
+    catalog doesn't have - same "use AI general knowledge instead of a
+    canned dead-end" pattern as the future_intent/feedback cases above,
+    for the identical underlying situation. No real "Search stays" link
+    can be built for this either (integrations.accommodations needs a
+    real Destination for its country field) - the reply says so honestly
+    in passing, without dwelling on it as an apology."""
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler just said: "{message}" - asking about places to stay in '
+                f"{destination_name}. This destination isn't in our curated catalog, so "
+                "there's no real accommodation search link to offer for it the way a "
+                "catalog destination would get. Respond helpfully using your own general "
+                "travel knowledge about the place (what areas are good to stay in, what "
+                "to expect) the way a knowledgeable travel consultant would, rather than "
+                "just acknowledging the message. Mention in passing, without opening with "
+                "an apology, that you can't pull up a live accommodation search for it "
+                "specifically. Never invent a specific hotel name, price, or booking link "
+                "- keep suggestions general (neighborhoods, types of stay) rather than "
+                "naming a property that may not exist. Reply in the same language the "
+                "traveler has been using in this conversation (check the history above, "
+                "not just this message) - this applies just as much to English as to any "
+                "other language."
             ),
         )
     )

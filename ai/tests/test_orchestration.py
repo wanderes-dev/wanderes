@@ -158,6 +158,8 @@ def _intent(
     video_place_name=None,
     is_activity_question=False,
     activity_place_name=None,
+    is_accommodation_request=False,
+    accommodation_place_name=None,
 ):
     return {
         "message_type": message_type,
@@ -183,6 +185,8 @@ def _intent(
         "video_place_name": video_place_name,
         "is_activity_question": is_activity_question,
         "activity_place_name": activity_place_name,
+        "is_accommodation_request": is_accommodation_request,
+        "accommodation_place_name": accommodation_place_name,
     }
 
 
@@ -1874,6 +1878,155 @@ class ActivityQuestionTests(TestCase):
         )
 
         self.assertEqual(len(result.recommendations), 1)
+
+
+class AccommodationRequestTests(TestCase):
+    """Direct user report (2026-09-23): after naming Tokyo specifically and
+    then typing "só quero que me sugira hospedagens" (just suggest
+    accommodations), the reply re-ran a broad Japan-wide search and showed
+    OTHER destinations (Osaka, Kyoto, ...) instead of answering about
+    Tokyo. Root cause: a specific city name gets folded into the broader
+    `country` filter during intent extraction, with nothing to recover
+    "the traveler meant this one place specifically." This flag reuses
+    the exact same single-destination detail path "Choose this trip"
+    produces - the only reply that carries the real "Search stays" link
+    (ai/views.py only attaches accommodation_search_url to a
+    detail_shown card)."""
+
+    def setUp(self):
+        self.destination = Destination.objects.create(
+            slug="tokyo-jp",
+            name="Tokyo",
+            country="Japan",
+            latitude=35.68,
+            longitude=139.69,
+            trip_type="city",
+            cost_of_living=4,
+            best_season="Mar-May",
+            worst_season="Jun-Aug",
+            short_description="A vast, vibrant capital blending tradition and neon.",
+            points_of_interest=["Shibuya Crossing", "Senso-ji Temple"],
+        )
+        self.climate = StubClimateProvider(
+            {(35.68, 139.69): MonthlyClimateSummary(2025, 10, 21.5, 14.0, 5.0)}
+        )
+
+    def test_resolves_to_the_named_destination_not_a_new_search(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_accommodation_request=True, accommodation_place_name="Tokyo"
+            ),
+            reply_text="Here's what's good to know about staying in Tokyo.",
+        )
+
+        result = stream_travel_recommendation(
+            "so quero que me sugira hospedagens",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+        list(result.reply_chunks)
+
+        self.assertEqual(len(result.recommendations), 1)
+        self.assertEqual(result.recommendations[0].destination, self.destination)
+        self.assertTrue(result.is_destination_detail)
+        # Never the multi-destination search path - one reply stream only,
+        # no second AI call for a fresh scoring/explanation pass.
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+
+    def test_takes_priority_over_message_type(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="recommendation",
+                country="Japan",
+                is_accommodation_request=True,
+                accommodation_place_name="Tokyo",
+            ),
+            reply_text="Here's what's good to know about staying in Tokyo.",
+        )
+
+        result = get_travel_recommendation(
+            "so quero que me sugira hospedagens",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(len(result.recommendations), 1)
+        self.assertEqual(result.recommendations[0].destination, self.destination)
+
+    def test_prompt_reflects_the_real_message_not_a_fake_button_click(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_accommodation_request=True, accommodation_place_name="Tokyo"
+            ),
+            reply_text="Here's what's good to know about staying in Tokyo.",
+        )
+
+        get_travel_recommendation(
+            "so quero que me sugira hospedagens",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("asked about places to stay in Tokyo", prompt)
+        self.assertNotIn('they clicked "Choose this trip"', prompt)
+        self.assertIn("never a specific hotel name, price, or availability claim", prompt)
+
+    def test_unresolved_destination_gets_an_honest_reply_no_cards(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_accommodation_request=True, accommodation_place_name="Bruges"
+            ),
+            reply_text="Bruges is a lovely canal city - I can't pull up a live search for it.",
+        )
+
+        result = get_travel_recommendation(
+            "hospedagens em Bruges", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        self.assertEqual(result.recommendations, [])
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("Bruges", prompt)
+        self.assertIn("isn't in our curated catalog", prompt)
+
+    def test_no_place_identified_falls_through_to_normal_handling(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                message_type="recommendation",
+                month=10,
+                min_temp_c=20.0,
+                is_accommodation_request=True,
+                accommodation_place_name=None,
+            ),
+            reply_text="Here you go!",
+        )
+
+        result = stream_travel_recommendation(
+            "quero hospedagens", ai_provider=ai_provider, climate_provider=self.climate
+        )
+        list(result.reply_chunks)
+
+        # Falls through to the normal recommendation search rather than
+        # dead-ending - this destination matches month/temp, so it's found
+        # by the regular scoring path, not the accommodation-detail path.
+        self.assertEqual(len(result.recommendations), 1)
+        self.assertFalse(result.is_destination_detail)
+
+    def test_not_an_accommodation_request_still_searches_normally(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                month=10, min_temp_c=20.0, is_accommodation_request=False
+            ),
+            reply_text="Here you go!",
+        )
+
+        result = stream_travel_recommendation(
+            "somewhere warm in October", ai_provider=ai_provider, climate_provider=self.climate
+        )
+        list(result.reply_chunks)
+
+        self.assertEqual(len(result.recommendations), 1)
+        self.assertFalse(result.is_destination_detail)
 
 
 class PromptReinforcementTests(TestCase):
