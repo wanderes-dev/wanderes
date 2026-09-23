@@ -2608,3 +2608,17 @@ No code changed - a data reload plus verification.
 **Verification**: 521/521 tests passing (1 new), `ruff check .` clean, no new migration file.
 
 **Files changed**: `analytics/warehouse/sql/fact_recommendations.sql`, `analytics/warehouse/tests/test_views.py`. Documentation: `documentation/16_ANALYTICS_ARCHITECTURE.md` §16.
+
+## 2026-09-23 — Same day: wired accommodation-click data into the analytics dashboard, and caught an untranslated string from the original PR
+
+**Direct request**: "check the dashboard reflects the new click data." It didn't - the dashboard was deliberately left untouched in the original implementation (out of scope at the time), so `/analytics/dashboard/`'s "Destination performance" table only ever showed Recommended/Selected/Saved, nothing about accommodation clicks.
+
+**Added**: a "Stays clicked" column - `analytics/views.py`'s existing `destination_performance` query gained `COUNT(*) FILTER (WHERE r.was_accommodation_clicked)`, same pattern as its two existing FILTER clauses, no new query or table. Verified live in an isolated Docker stack, logged in as a throwaway staff user: seeded one real recommendation + click pair, confirmed the dashboard shows "Bali ... 1" in the new column.
+
+**Caught while running `makemessages`**: "Search stays in {name}" - the CTA string from the earlier same-day PR - had shipped with an empty `msgstr ""` in all 5 non-English locales. It was correctly wrapped in `_()` at write time, but `makemessages`/`compilemessages` were never run for it before that PR merged - a real gap, not a false alarm (confirmed by grepping every locale's `.po` file for blank translations before and after). Translated both that string and the new "Stays clicked" into all 5 locales (pt/es/de/it/fr), matching the existing terse, past-participle style already used for the dashboard's other short headers ("Selected"/"Saved"). Confirmed live via `gettext()` under each locale, and in the browser in Portuguese.
+
+**Also caught and avoided**: a first `makemessages -a` pass was run with `--no-location`, which strips file:line location comments from every existing entry across all 5 catalogs, not just the new strings - a ~1600-line unrelated diff. Reverted (`git checkout -- locale/`) and re-ran without that flag before writing anything.
+
+**Verification**: 522/522 tests passing (1 new), `ruff check .` clean, no migrations.
+
+**Files changed**: `analytics/views.py`, `analytics/templates/analytics/dashboard.html`, `analytics/tests/test_dashboard.py`, `locale/{pt,es,de,it,fr}/LC_MESSAGES/django.{po,mo}`.

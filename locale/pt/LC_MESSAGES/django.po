@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-18 12:07+0000\n"
+"POT-Creation-Date: 2026-09-23 14:11+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -72,7 +72,7 @@ msgstr ""
 msgid "History"
 msgstr "Histórico"
 
-#: ai/templates/ai/chat.html:378 ai/views.py:64
+#: ai/templates/ai/chat.html:378 ai/views.py:70
 msgid "New conversation"
 msgstr "Nova conversa"
 
@@ -80,7 +80,7 @@ msgstr "Nova conversa"
 msgid "Save this conversation"
 msgstr "Salvar esta conversa"
 
-#: ai/templates/ai/chat.html:385 ai/views.py:62
+#: ai/templates/ai/chat.html:385 ai/views.py:68
 msgid "No saved conversations yet."
 msgstr "Nenhuma conversa salva ainda."
 
@@ -135,62 +135,67 @@ msgstr "Mensagem"
 msgid "Send"
 msgstr "Enviar"
 
-#: ai/views.py:48
+#: ai/views.py:51
 msgid "Finding destinations that fit your preferences..."
 msgstr "Encontrando destinos que combinam com suas preferências..."
 
-#: ai/views.py:49
+#: ai/views.py:52
 msgid "Thinking about the best options for your trip..."
 msgstr "Pensando nas melhores opções para sua viagem..."
 
-#: ai/views.py:50
+#: ai/views.py:53
 msgid "Comparing possibilities..."
 msgstr "Comparando possibilidades..."
 
-#: ai/views.py:51
+#: ai/views.py:54
 msgid "Looking at climate and costs for you..."
 msgstr "Verificando clima e custos para você..."
 
-#: ai/views.py:53 core/templates/core/landing.html:45
+#: ai/views.py:56 core/templates/core/landing.html:45
 msgid "Why this fits you"
 msgstr "Por que isso combina com você"
 
-#: ai/views.py:54
+#: ai/views.py:57
 msgid "avg"
 msgstr "méd."
 
-#: ai/views.py:55 core/templates/core/landing.html:56
+#: ai/views.py:58 core/templates/core/landing.html:56
 msgid "Save this trip"
 msgstr "Salvar esta viagem"
 
-#: ai/views.py:56
+#: ai/views.py:59
 msgid "Choose this trip"
 msgstr "Escolher esta viagem"
 
-#: ai/views.py:59
+#: ai/views.py:62
+#, python-brace-format
+msgid "Search stays in {name}"
+msgstr "Buscar hospedagens em {name}"
+
+#: ai/views.py:65
 #, python-brace-format
 msgid "Tell me more about {name}"
 msgstr "Conte-me mais sobre {name}"
 
-#: ai/views.py:60
+#: ai/views.py:66
 msgid "(not saving)"
 msgstr "(não salvando)"
 
-#: ai/views.py:61
+#: ai/views.py:67
 msgid "Delete conversation"
 msgstr "Excluir conversa"
 
-#: ai/views.py:63
+#: ai/views.py:69
 msgid "Couldn't load that conversation."
 msgstr "Não foi possível carregar essa conversa."
 
-#: ai/views.py:66
+#: ai/views.py:72
 msgid "Couldn't reach the server. Check your connection and try again."
 msgstr ""
 "Não foi possível conectar ao servidor. Verifique sua conexão e tente "
 "novamente."
 
-#: ai/views.py:68
+#: ai/views.py:74
 msgid "Something went wrong on our end. Please try again."
 msgstr "Algo deu errado do nosso lado. Por favor, tente novamente."
 
@@ -260,9 +265,9 @@ msgid "AI p95 (ms)"
 msgstr "IA p95 (ms)"
 
 #: analytics/templates/analytics/dashboard.html:55
-#: analytics/templates/analytics/dashboard.html:90
-#: analytics/templates/analytics/dashboard.html:126
-#: analytics/templates/analytics/dashboard.html:142
+#: analytics/templates/analytics/dashboard.html:92
+#: analytics/templates/analytics/dashboard.html:128
+#: analytics/templates/analytics/dashboard.html:144
 msgid "No data yet."
 msgstr "Nenhum dado ainda."
 
@@ -290,39 +295,43 @@ msgstr "País"
 msgid "Recommended"
 msgstr "Recomendado"
 
-#: analytics/templates/analytics/dashboard.html:95
+#: analytics/templates/analytics/dashboard.html:74
+msgid "Stays clicked"
+msgstr "Estadias clicadas"
+
+#: analytics/templates/analytics/dashboard.html:97
 msgid "AI operational health"
 msgstr "Saúde operacional da IA"
 
-#: analytics/templates/analytics/dashboard.html:101
+#: analytics/templates/analytics/dashboard.html:103
 msgid "Operation"
 msgstr "Operação"
 
-#: analytics/templates/analytics/dashboard.html:102
+#: analytics/templates/analytics/dashboard.html:104
 msgid "Type"
 msgstr "Tipo"
 
-#: analytics/templates/analytics/dashboard.html:103
+#: analytics/templates/analytics/dashboard.html:105
 msgid "Total"
 msgstr "Total"
 
-#: analytics/templates/analytics/dashboard.html:104
+#: analytics/templates/analytics/dashboard.html:106
 msgid "Failed"
 msgstr "Falhou"
 
-#: analytics/templates/analytics/dashboard.html:105
+#: analytics/templates/analytics/dashboard.html:107
 msgid "p50 (ms)"
 msgstr "p50 (ms)"
 
-#: analytics/templates/analytics/dashboard.html:106
+#: analytics/templates/analytics/dashboard.html:108
 msgid "p95 (ms)"
 msgstr "p95 (ms)"
 
-#: analytics/templates/analytics/dashboard.html:107
+#: analytics/templates/analytics/dashboard.html:109
 msgid "p99 (ms)"
 msgstr "p99 (ms)"
 
-#: analytics/templates/analytics/dashboard.html:131
+#: analytics/templates/analytics/dashboard.html:133
 msgid "Locales"
 msgstr "Idiomas"
 
@@ -339,7 +348,10 @@ msgid ""
 "Wanderes is an AI travel advisor: tell it your budget, climate preferences, "
 "and travel style, and it recommends real travel destinations that fit, with "
 "an explanation for every suggestion."
-msgstr "A Wanderes é uma consultora de viagens com IA: diga seu orçamento, preferências de clima e estilo de viagem, e ela recomenda destinos de viagem reais que combinam, com uma explicação para cada sugestão."
+msgstr ""
+"A Wanderes é uma consultora de viagens com IA: diga seu orçamento, "
+"preferências de clima e estilo de viagem, e ela recomenda destinos de viagem "
+"reais que combinam, com uma explicação para cada sugestão."
 
 #: core/templates/core/landing.html:6 core/templates/core/landing.html:8
 #: core/templates/core/landing.html:10
@@ -347,7 +359,11 @@ msgid ""
 "Wanderes is an AI travel advisor that finds travel destinations based on "
 "your budget, climate, and travel style - then explains exactly why each one "
 "fits. No account needed to get started."
-msgstr "A Wanderes é uma consultora de viagens com IA que encontra destinos de viagem com base no seu orçamento, clima e estilo de viagem - e explica exatamente por que cada um combina com você. Não é preciso criar conta para começar."
+msgstr ""
+"A Wanderes é uma consultora de viagens com IA que encontra destinos de "
+"viagem com base no seu orçamento, clima e estilo de viagem - e explica "
+"exatamente por que cada um combina com você. Não é preciso criar conta para "
+"começar."
 
 #: core/templates/core/landing.html:9
 msgid "Wanderes — AI Travel Advisor & Destination Finder"

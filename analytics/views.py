@@ -24,7 +24,8 @@ def dashboard(request):
             d.country,
             COUNT(*) AS times_recommended,
             COUNT(*) FILTER (WHERE r.was_selected) AS times_selected,
-            COUNT(*) FILTER (WHERE r.was_saved) AS times_saved
+            COUNT(*) FILTER (WHERE r.was_saved) AS times_saved,
+            COUNT(*) FILTER (WHERE r.was_accommodation_clicked) AS times_accommodation_clicked
         FROM fact_recommendations r
         JOIN dim_destinations d ON d.slug = r.destination_slug
         WHERE r.recommended_at >= %(since)s
