@@ -179,6 +179,10 @@ def site_meta(request):
         # anyone can see, so the "Forgot your password?" link stays
         # hidden until then.
         "email_configured": settings.EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend",
+        # None (not "") when unset, so {% if %} in the template is the
+        # same true/false check regardless of which falsy value settings
+        # ends up with - see CJ_DEEPLINK_SCRIPT_URL's own comment.
+        "cj_deeplink_script_url": settings.CJ_DEEPLINK_SCRIPT_URL or None,
         "og_locale": OG_LOCALE_BY_LANGUAGE.get(get_language(), "en_US"),
         # Raw settings.LANGUAGES, deliberately not Django's own
         # {% get_available_languages %} template tag - that tag runs each

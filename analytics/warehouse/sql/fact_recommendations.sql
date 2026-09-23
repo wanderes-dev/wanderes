@@ -16,6 +16,11 @@
 --   trip" chat link (source=chat_recommendation) and the conversational
 --   future-intent capture path (source=chat), since both represent a
 --   real positive outcome for this specific recommended destination.
+--   was_accommodation_clicked = the traveler clicked the "Search stays"
+--   Booking.com link on it later in the same episode - same EXISTS
+--   correlation as the other two, so grouping by destination_slug here
+--   (impressions = COUNT(*), clicks = SUM(was_accommodation_clicked))
+--   already gives click-through rate with no separate impression table.
 --
 -- Deliberately an APPROXIMATE, session-based correlation, not a hard
 -- foreign key: minting a real recommendation_id and threading it through
@@ -59,5 +64,13 @@ SELECT
           AND e.event_type = 'trip_created'
           AND e.metadata ->> 'destination_slug' = r.destination_slug
           AND e.created_at > r.created_at
-    ) AS was_saved
+    ) AS was_saved,
+    EXISTS (
+        SELECT 1 FROM int_event_episodes e
+        WHERE e.conversation_key = r.conversation_key
+          AND e.episode_number = r.episode_number
+          AND e.event_type = 'accommodation_outbound_click'
+          AND e.metadata ->> 'destination_slug' = r.destination_slug
+          AND e.created_at > r.created_at
+    ) AS was_accommodation_clicked
 FROM recommended r;

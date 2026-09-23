@@ -49,6 +49,14 @@ TEMPERATURE_FIT_CAP_C = 10.0
 # a much worse unbounded hang.
 CLIMATE_LOOKUP_TIME_BUDGET_SECONDS = 15.0
 
+# Ranking independence: nothing in this module ever reads affiliate,
+# click-through, or commission data (analytics.queries, fact_recommend-
+# ations' was_accommodation_clicked) to influence a score. Destinations
+# rank on genuine fit only - a destination that converts well on outbound
+# accommodation clicks earns no boost here, and one that converts poorly
+# earns no penalty. Keep it that way; wiring affiliate performance into
+# scoring is a monetization-philosophy call, not a technical one.
+
 
 @dataclass(frozen=True)
 class RecommendationRequest:

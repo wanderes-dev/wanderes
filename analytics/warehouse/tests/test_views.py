@@ -177,6 +177,31 @@ class FactRecommendationsTests(TestCase):
         self.assertFalse(lisbon.was_selected)
         self.assertFalse(lisbon.was_saved)
 
+    def test_accommodation_clicked_is_computed_correctly(self):
+        _event_at(
+            "recommendation_generated",
+            offset_minutes=0,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"destination_slugs": ["bali-id", "lisbon-pt"]},
+        )
+        _event_at(
+            "accommodation_outbound_click",
+            offset_minutes=1,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"destination_slug": "bali-id", "provider": "booking_com"},
+        )
+
+        bali = FactRecommendation.objects.get(conversation_key=self.key, destination_slug="bali-id")
+        lisbon = FactRecommendation.objects.get(
+            conversation_key=self.key, destination_slug="lisbon-pt"
+        )
+        self.assertTrue(bali.was_accommodation_clicked)
+        self.assertFalse(lisbon.was_accommodation_clicked)
+
     def test_a_selection_before_the_recommendation_does_not_count(self):
         # Correlation only looks forward within the same episode - an
         # earlier, unrelated destination_selected for the same slug must

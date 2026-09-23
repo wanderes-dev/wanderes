@@ -649,6 +649,34 @@
                     "&source=chat_recommendation";
                 link.textContent = CHAT_I18N.saveThisTrip;
                 card.appendChild(link);
+
+                if (destination.accommodation_search_url) {
+                    const stayLink = document.createElement("a");
+                    stayLink.className = "btn btn-secondary";
+                    stayLink.href = destination.accommodation_search_url;
+                    stayLink.target = "_blank";
+                    stayLink.rel = "noopener noreferrer";
+                    stayLink.textContent = CHAT_I18N.searchStaysIn.replace("{name}", destination.name);
+                    // Never preventDefault/stopPropagation here - CJ's own
+                    // Deep Link Automation script (templates/base.html)
+                    // needs this click to reach the link normally to do
+                    // its own attribution. This is a passive, best-effort
+                    // side record on top of that, not a gate in front of
+                    // it - keepalive keeps the request alive past the
+                    // navigation this link is about to cause, and nothing
+                    // here waits for or reacts to its result.
+                    stayLink.addEventListener("click", function () {
+                        const body = new FormData();
+                        body.append("destination_slug", destination.slug);
+                        body.append("csrfmiddlewaretoken", csrfToken);
+                        fetch("/api/v1/accommodation-click/", {
+                            method: "POST",
+                            body: body,
+                            keepalive: true,
+                        }).catch(function () {});
+                    });
+                    card.appendChild(stayLink);
+                }
             } else {
                 const chooseButton = document.createElement("button");
                 chooseButton.type = "button";

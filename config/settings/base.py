@@ -313,6 +313,27 @@ CJ_WEBSITE_ID = env("CJ_WEBSITE_ID", default="")
 # API, don't assume this unlocks live hotel search.
 AFFILIATE_PROVIDER = env("AFFILIATE_PROVIDER", default="")
 
+# Picks the adapter behind
+# integrations.accommodations.get_accommodation_search_link_provider() -
+# unlike HOTEL_PROVIDER above, this isn't an inventory search (Wanderes has
+# no accommodation inventory access from anyone); it only builds an
+# outbound search-results URL the traveler is sent to. Booking.com by
+# default since it's the one validated in production.
+ACCOMMODATION_SEARCH_PROVIDER = env("ACCOMMODATION_SEARCH_PROVIDER", default="booking_com")
+
+# CJ Affiliate's Deep Link Automation script - detects plain outbound
+# links to known advertiser domains (Booking.com) already on the page and
+# rewrites them for attribution at click time, entirely client-side. This
+# is NOT the same CJ product as CJ_API_TOKEN/CJ_WEBSITE_ID above (that's
+# the Link Search API) and needs neither of those credentials. Blank
+# disables it - templates/base.html only renders the script tag when this
+# is set. Validated against a real Booking.com search URL in production
+# 2026-09-23.
+CJ_DEEPLINK_SCRIPT_URL = env(
+    "CJ_DEEPLINK_SCRIPT_URL",
+    default="https://www.anrdoezrs.net/am/101877506/include/allCj/impressions/page/am.js",
+)
+
 # Password-reset email, via Purelymail - EMAIL_HOST/PORT/USE_TLS below
 # default to its real settings (see .env.example). EMAIL_HOST_USER is the
 # actual signal real credentials exist, since EMAIL_HOST alone has a real

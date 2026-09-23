@@ -64,19 +64,6 @@ def landing(request):
     )
 
 
-def test_cj_deeplink(request):
-    """Temporary, throwaway page to validate CJ Affiliate's Deep Link
-    Automation against a real Booking.com search-results URL in
-    production - not part of the product, not linked from anywhere, not
-    in the sitemap. Standalone template (doesn't extend base.html) so
-    nothing about the site's normal chrome/scripts can interfere with the
-    one thing being tested: whether CJ's own am.js correctly detects and
-    rewrites the plain Booking.com link on the page. Remove this view,
-    its URL, and its template once the validation is done - it has no
-    other purpose."""
-    return render(request, "core/test_cj_deeplink.html")
-
-
 def set_language(request):
     """Wraps Django's own django.views.i18n.set_language view to also
     persist an authenticated visitor's explicit choice to their account
@@ -155,9 +142,6 @@ def robots_txt(request):
         "Disallow: /travel/",
         # The staff-only internal analytics dashboard.
         "Disallow: /analytics/",
-        # Temporary CJ Deep Link Automation validation page - not part of
-        # the product, no real content, nothing worth indexing.
-        "Disallow: /test-cj-deeplink/",
         "",
         f"Sitemap: https://{settings.SITE_DOMAIN}{reverse('core:sitemap')}",
     ]
