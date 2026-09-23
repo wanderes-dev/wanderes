@@ -266,6 +266,24 @@ Create the Purelymail account, agree to its terms, or edit `wanderes.com`'s DNS 
 
 ---
 
+## 9. Adaptive/Learning-Based Personalization (popularity weighting, inferred traveler profiles) — ✅ RESOLVED 2026-09-23: observe only, no algorithm change
+
+**Direct request**: give the AI "autonomia para aprender" (autonomy to learn) from real conversations - specifically, destinations chosen more often by users should tend to get suggested more often, and the system should be able to infer traveler-composition patterns on its own (the example given: people traveling with children tend toward open-air attractions) and act on them without a human decision each time.
+
+**Flagged before building anything, not implemented silently**, because this runs into three things this project has already decided:
+
+1. **Recommendation philosophy** (`CLAUDE.md`, decided 2026-08-29): "Don't add new Destination categories or traveler-composition concepts speculatively - that's guessing at product shape without evidence." Inferring "travelers with kids want open-air attractions" without real data behind it is exactly that.
+2. **Popularity-feedback-loop risk**: weighting suggestions by how often a destination was previously chosen creates a classic collaborative-filtering loop - whatever got recommended first (by chance, or by the deterministic model's own bias) gets chosen more, then recommended more, then chosen more - eroding the individually-grounded personalization that's Wanderes's actual premise.
+3. **Privacy/retention policy** (`CLAUDE.md` rule 2): inferring demographic-adjacent traits (household composition, etc.) from behavior, even implicitly, is a privacy-policy decision, not an implementation detail.
+
+**Decision**: observe only, for now. No change to `recommendations/scoring.py` or any autonomous self-adjustment. The existing analytics infrastructure (`documentation/16_ANALYTICS_ARCHITECTURE.md`, `/analytics/dashboard/`, `fact_recommendations`'s `was_selected`/`was_saved` tracking per destination) already captures the real signal needed to observe genuine patterns once there's real traffic (Phase 18 MVP validation, still not started - see `PROJECT_STATE.md`). When real usage data exists, review it and decide explicitly what (if anything) to formalize - the same "the profile should grow organically as the product learns, but a human reads the evidence first" principle already applied to `TravelerProfile` and the recommendation model's own dimensions.
+
+**What Claude Code does in the meantime**: nothing algorithmic. If a future session is asked to revisit this, the three points above are the reasons it was deferred, not just "not gotten to yet" - a change here needs a real decision, the same way the AI provider, pricing, and every other item in this file did.
+
+**Reference:** `CLAUDE.md` rule 2 and its "Recommendation philosophy" note; `documentation/16_ANALYTICS_ARCHITECTURE.md`; `recommendations/scoring.py`.
+
+---
+
 ## How to unblock
 
 Reply with your decision(s) — even a partial one (e.g., "let's start with just a destination dataset and Anthropic Claude, defer flights/hotels") is enough to resume work. Claude Code will then:
