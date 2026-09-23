@@ -1,0 +1,81 @@
+"""Small, DB-aggregated query functions over the warehouse layer - no
+dashboard framework, no in-Python aggregation. Supports the accommodation
+search feature's own reporting needs (top-clicked destinations,
+click-through rate, performance by a real traveler-preference dimension);
+see documentation/16_ANALYTICS_ARCHITECTURE.md for the click-through-rate
+and profile-dimension metric definitions these implement.
+
+Never imported by recommendations.scoring or anything upstream of it -
+this data describes affiliate-link engagement after a recommendation was
+already made, and must never feed back into ranking. See that module's own
+note on this.
+"""
+
+from datetime import date
+
+from django.db.models import Count, Q
+
+from .models import Event
+from .warehouse.models import FactRecommendation
+
+
+def top_clicked_destinations(*, start_date: date, end_date: date, limit: int = 10):
+    """Destinations ranked by accommodation-search-link clicks in the
+    given date range, using fact_recommendations' existing session
+    correlation - no separate click-count table to maintain."""
+    return (
+        FactRecommendation.objects.filter(
+            recommended_at__date__gte=start_date, recommended_at__date__lte=end_date
+        )
+        .values("destination_slug")
+        .annotate(clicks=Count("id", filter=Q(was_accommodation_clicked=True)))
+        .filter(clicks__gt=0)
+        .order_by("-clicks")[:limit]
+    )
+
+
+def accommodation_click_through_rate_by_destination(
+    *, start_date: date, end_date: date, min_impressions: int = 1
+):
+    """CTR = clicks / eligible-recommendation-exposures, per destination.
+    "Impression" here means a row in fact_recommendations - the
+    destination was actually recommended in that conversation episode, not
+    just that it exists in the catalog. min_impressions filters out
+    destinations with too little exposure to draw a meaningful rate from."""
+    return (
+        FactRecommendation.objects.filter(
+            recommended_at__date__gte=start_date, recommended_at__date__lte=end_date
+        )
+        .values("destination_slug")
+        .annotate(
+            impressions=Count("id"),
+            clicks=Count("id", filter=Q(was_accommodation_clicked=True)),
+        )
+        .filter(impressions__gte=min_impressions)
+        .order_by("-clicks")
+    )
+
+
+def top_destinations_by_traveler_trip_type(
+    *, trip_type: str, start_date: date, end_date: date, limit: int = 10
+):
+    """Which destinations get the most accommodation clicks from
+    travelers whose own TravelerProfile.preferred_trip_types includes
+    `trip_type`? Segments on the click event's own profile-dimension
+    snapshot (metadata.traveler_preferred_trip_types, captured at click
+    time), not a live join against TravelerProfile - a traveler's
+    preferences can change after the fact, and this is meant to describe
+    what happened historically, not their current profile. Anonymous
+    clicks (no snapshot) are naturally excluded, same as any other
+    profile-segmented query."""
+    return (
+        Event.objects.filter(
+            event_type="accommodation_outbound_click",
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+            metadata__traveler_preferred_trip_types__contains=[trip_type],
+        )
+        .values("metadata__destination_slug")
+        .annotate(clicks=Count("id"))
+        .order_by("-clicks")[:limit]
+    )

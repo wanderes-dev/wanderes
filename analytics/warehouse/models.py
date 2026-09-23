@@ -75,6 +75,7 @@ class FactRecommendation(models.Model):
     recommended_at = models.DateTimeField()
     was_selected = models.BooleanField()
     was_saved = models.BooleanField()
+    was_accommodation_clicked = models.BooleanField()
 
     class Meta:
         managed = False

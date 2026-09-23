@@ -2,9 +2,15 @@ from django.conf import settings
 from django.db import models
 
 # Only events for features that actually exist in the app - premium_started
-# and affiliate_link_clicked aren't here since there's no monetization or
-# affiliate provider yet to instrument. Add them when those features ship,
-# not speculatively.
+# isn't here since there's no monetization yet. Add it when that ships,
+# not speculatively. accommodation_outbound_click is the one affiliate-
+# adjacent event that IS real: it's Wanderes's own first-party record of
+# "a traveler clicked a Booking.com search link," not anything from CJ -
+# CJ's own attribution (which link, which advertiser, commission) happens
+# entirely client-side via the Deep Link Automation script in
+# templates/base.html and never touches this table. Keeping the two
+# strictly separate is deliberate - see
+# documentation/16_ANALYTICS_ARCHITECTURE.md.
 #
 # llm_request_completed/provider_request_completed are one event per
 # completed attempt, not a started/completed/failed triple - a synchronous
@@ -25,6 +31,7 @@ EVENT_TYPE_CHOICES = [
     ("anonymous_user_authenticated", "Anonymous visitor authenticated"),
     ("llm_request_completed", "LLM request completed"),
     ("provider_request_completed", "External provider request completed"),
+    ("accommodation_outbound_click", "Accommodation search link clicked"),
 ]
 
 # System telemetry about the AI/provider layers, not user behavior - no

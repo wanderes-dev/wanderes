@@ -331,6 +331,92 @@ class RecommendationsStreamViewTests(TestCase):
         parsed = json.loads(json_part)
         self.assertTrue(parsed[0]["detail_shown"])
 
+    @patch("ai.views.stream_travel_recommendation")
+    def test_destination_detail_card_includes_an_accommodation_search_url(self, mock_stream):
+        destination = Destination.objects.create(
+            slug="bali-id",
+            name="Bali",
+            country="Indonesia",
+            latitude="-8.34000",
+            longitude="115.09000",
+            trip_type="beach",
+            cost_of_living=1,
+            best_season="Apr-Oct",
+            worst_season="Dec-Mar",
+            short_description="A tropical island.",
+            points_of_interest=[],
+        )
+        scored = ScoredDestination(
+            destination=destination,
+            avg_high_c=None,
+            avg_low_c=None,
+            preference_fit=0,
+            budget_fit=0,
+            temperature_fit=0,
+            repetition_penalty=0,
+            score=0,
+        )
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[scored],
+            reply_chunks=iter(["Here's more about Bali."]),
+            is_destination_detail=True,
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"),
+            {"message": "tell me more", "focus_destination_slug": "bali-id"},
+        )
+
+        content = b"".join(response.streaming_content).decode()
+        _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
+        parsed = json.loads(json_part)
+        accommodation_url = parsed[0]["accommodation_search_url"]
+        self.assertIn("https://www.booking.com/searchresults.en-gb.html?", accommodation_url)
+        self.assertIn("ss=Bali%2C+Indonesia", accommodation_url)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_browse_stage_cards_have_no_accommodation_search_url(self, mock_stream):
+        # Only the single-destination detail card offers the accommodation
+        # link - matches the one destination CJ's Deep Link Automation was
+        # validated against, and keeps the multi-destination browse cards
+        # uncluttered.
+        destination = Destination.objects.create(
+            slug="lisbon-pt",
+            name="Lisbon",
+            country="Portugal",
+            latitude="38.72000",
+            longitude="-9.14000",
+            trip_type="city",
+            cost_of_living=3,
+            best_season="Mar-Oct",
+            worst_season="Dec-Feb",
+            short_description="A hilly coastal capital.",
+            points_of_interest=[],
+        )
+        scored = ScoredDestination(
+            destination=destination,
+            avg_high_c=24.0,
+            avg_low_c=16.0,
+            preference_fit=0.0,
+            budget_fit=0.0,
+            temperature_fit=0.0,
+            repetition_penalty=0.0,
+            score=0.0,
+        )
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[scored],
+            reply_chunks=iter(["Try Lisbon!"]),
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "somewhere warm"}
+        )
+
+        content = b"".join(response.streaming_content).decode()
+        _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
+        parsed = json.loads(json_part)
+        self.assertNotIn("accommodation_search_url", parsed[0])
+
 
 class RecommendationsStreamAnalyticsTests(TestCase):
     @patch("ai.views.stream_travel_recommendation")
@@ -728,5 +814,91 @@ class ConversationEndpointsTests(TestCase):
 
     def test_reset_works_for_anonymous_users_too(self):
         response = self.client.post(reverse("ai:conversation-reset"))
+        self.assertEqual(response.status_code, 200)
+
+
+class AccommodationClickViewTests(TestCase):
+    def setUp(self):
+        self.destination = Destination.objects.create(
+            slug="bali-id",
+            name="Bali",
+            country="Indonesia",
+            latitude="-8.34000",
+            longitude="115.09000",
+            trip_type="beach",
+            cost_of_living=1,
+            best_season="Apr-Oct",
+            worst_season="Dec-Mar",
+            short_description="A tropical island.",
+            points_of_interest=[],
+        )
+
+    def test_records_an_event_for_an_anonymous_visitor(self):
+        response = self.client.post(
+            reverse("ai:accommodation-click"), {"destination_slug": "bali-id"}
+        )
 
         self.assertEqual(response.status_code, 200)
+        event = Event.objects.get(event_type="accommodation_outbound_click")
+        self.assertIsNone(event.user)
+        self.assertIsNotNone(event.anonymized_ip)
+        self.assertEqual(event.metadata["destination_slug"], "bali-id")
+        self.assertEqual(event.metadata["provider"], "booking_com")
+        self.assertEqual(event.metadata["destination_trip_type"], "beach")
+        self.assertEqual(event.metadata["destination_cost_of_living"], 1)
+        self.assertNotIn("traveler_preferred_trip_types", event.metadata)
+
+    def test_records_the_authenticated_users_traveler_profile_snapshot(self):
+        from users.models import TravelerProfile
+
+        user = User.objects.create_user(email="traveler@example.com", password="testpass123")
+        TravelerProfile.objects.create(
+            user=user, preferred_trip_types=["beach", "nature"], preferred_cost_of_living=2
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("ai:accommodation-click"), {"destination_slug": "bali-id"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        event = Event.objects.get(event_type="accommodation_outbound_click")
+        self.assertEqual(event.user, user)
+        self.assertEqual(event.metadata["traveler_preferred_trip_types"], ["beach", "nature"])
+        self.assertEqual(event.metadata["traveler_preferred_cost_of_living"], 2)
+
+    def test_authenticated_user_with_no_profile_gets_no_snapshot_fields(self):
+        user = User.objects.create_user(email="traveler@example.com", password="testpass123")
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse("ai:accommodation-click"), {"destination_slug": "bali-id"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        event = Event.objects.get(event_type="accommodation_outbound_click")
+        self.assertNotIn("traveler_preferred_trip_types", event.metadata)
+
+    def test_unknown_destination_slug_records_nothing(self):
+        response = self.client.post(
+            reverse("ai:accommodation-click"), {"destination_slug": "not-a-real-place"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Event.objects.filter(event_type="accommodation_outbound_click").exists())
+
+    def test_never_stores_a_cj_tracking_identifier(self):
+        response = self.client.post(
+            reverse("ai:accommodation-click"),
+            {"destination_slug": "bali-id", "cjevent": "should-be-ignored"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        event = Event.objects.get(event_type="accommodation_outbound_click")
+        self.assertNotIn("cjevent", event.metadata)
+        self.assertNotIn("cjevent", json.dumps(event.metadata))
+
+    def test_rejects_get_requests(self):
+        response = self.client.get(reverse("ai:accommodation-click"))
+
+        self.assertEqual(response.status_code, 405)

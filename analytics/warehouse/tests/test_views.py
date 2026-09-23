@@ -177,6 +177,72 @@ class FactRecommendationsTests(TestCase):
         self.assertFalse(lisbon.was_selected)
         self.assertFalse(lisbon.was_saved)
 
+    def test_accommodation_clicked_is_computed_correctly(self):
+        _event_at(
+            "recommendation_generated",
+            offset_minutes=0,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"destination_slugs": ["bali-id", "lisbon-pt"]},
+        )
+        _event_at(
+            "accommodation_outbound_click",
+            offset_minutes=1,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"destination_slug": "bali-id", "provider": "booking_com"},
+        )
+
+        bali = FactRecommendation.objects.get(conversation_key=self.key, destination_slug="bali-id")
+        lisbon = FactRecommendation.objects.get(
+            conversation_key=self.key, destination_slug="lisbon-pt"
+        )
+        self.assertTrue(bali.was_accommodation_clicked)
+        self.assertFalse(lisbon.was_accommodation_clicked)
+
+    def test_a_single_click_only_credits_the_nearest_preceding_recommendation(self):
+        # bali-id recommended twice in the same episode (e.g. the traveler
+        # asked for recommendations again later in the same conversation),
+        # then clicked once. Only the second, more recent recommendation
+        # moment should be credited - crediting both would double-count
+        # this one click in any COUNT(*)-based CTR aggregation.
+        _event_at(
+            "recommendation_generated",
+            offset_minutes=0,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"destination_slugs": ["bali-id"]},
+        )
+        _event_at(
+            "recommendation_generated",
+            offset_minutes=5,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"destination_slugs": ["bali-id"]},
+        )
+        _event_at(
+            "accommodation_outbound_click",
+            offset_minutes=10,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"destination_slug": "bali-id", "provider": "booking_com"},
+        )
+
+        rows = list(
+            FactRecommendation.objects.filter(
+                conversation_key=self.key, destination_slug="bali-id"
+            ).order_by("recommended_at")
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertFalse(rows[0].was_accommodation_clicked)
+        self.assertTrue(rows[1].was_accommodation_clicked)
+        self.assertEqual(sum(1 for r in rows if r.was_accommodation_clicked), 1)
+
     def test_a_selection_before_the_recommendation_does_not_count(self):
         # Correlation only looks forward within the same episode - an
         # earlier, unrelated destination_selected for the same slug must

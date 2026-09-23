@@ -96,5 +96,8 @@
     </footer>
 
     <script src="{% static 'js/main.js' %}" defer></script>
+    {% if cj_deeplink_script_url %}
+    <script src="{{ cj_deeplink_script_url }}"></script>
+    {% endif %}
 </body>
 </html>

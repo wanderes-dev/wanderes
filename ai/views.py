@@ -11,6 +11,9 @@ from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from analytics.services import record_event
+from integrations.accommodations import get_accommodation_search_link_provider
+from travel.models import Destination
+from users.models import TravelerProfile
 
 from . import memory
 from .conversations import record_turn
@@ -54,6 +57,9 @@ def _chat_i18n_json() -> str:
             "avgTempSuffix": _("avg"),
             "saveThisTrip": _("Save this trip"),
             "chooseThisTrip": _("Choose this trip"),
+            # {name} substituted client-side, same convention as
+            # tellMeMoreAbout below.
+            "searchStaysIn": _("Search stays in {name}"),
             # {name} is substituted client-side (JS .replace()), not by
             # Django - translators must keep the literal "{name}" token.
             "tellMeMoreAbout": _("Tell me more about {name}"),
@@ -111,7 +117,10 @@ def _recommendation_card_data(scored_destination, *, detail_shown=False):
     ai.orchestration's single-destination detail path. If so it renders
     the real "Save this trip" link; otherwise "Choose this trip", which
     sends the traveler back into that detail path instead of saving
-    immediately."""
+    immediately. The accommodation search link is only offered here too -
+    matches the one destination CJ's Deep Link Automation was validated
+    against in production, and avoids cluttering the browse-stage,
+    multiple-destinations-at-once cards."""
     destination = scored_destination.destination
     fit_reasons = []
     if scored_destination.preference_fit > 0:
@@ -121,7 +130,7 @@ def _recommendation_card_data(scored_destination, *, detail_shown=False):
     if scored_destination.temperature_fit > 0:
         fit_reasons.append("Great climate match")
 
-    return {
+    data = {
         "slug": destination.slug,
         "name": destination.name,
         "country": destination.country,
@@ -131,6 +140,16 @@ def _recommendation_card_data(scored_destination, *, detail_shown=False):
         "fit_reasons": fit_reasons,
         "detail_shown": detail_shown,
     }
+    if detail_shown:
+        # No dates/party size known at this point in the live chat flow -
+        # the provider degrades to a destination-only search rather than
+        # inventing any of that (integrations.accommodations.base's own
+        # docstring covers this).
+        accommodation_provider = get_accommodation_search_link_provider()
+        data["accommodation_search_url"] = accommodation_provider.build_search_url(
+            destination=destination.name, country=destination.country
+        )
+    return data
 
 
 @require_POST
@@ -275,6 +294,59 @@ def recommendations_stream(request):
             )
 
     return StreamingHttpResponse(_chunks_with_footers(), content_type="text/plain; charset=utf-8")
+
+
+@require_POST
+def accommodation_click(request):
+    """Records a first-party accommodation_outbound_click event when a
+    traveler clicks the "Search stays in {name}" link on a recommendation
+    detail card. Called via fetch(..., keepalive: true) alongside the
+    link's own normal navigation, never blocking or intercepting it (see
+    ai/templates/ai/chat.html) - a slow or failed analytics write can't
+    delay or break the actual outbound click. Entirely separate from CJ's
+    own attribution (the Deep Link Automation script in
+    templates/base.html, triggered independently by the same click) - this
+    never sees or stores a CJ tracking id, cookie, or redirect URL.
+    """
+    destination_slug = request.POST.get("destination_slug", "").strip()
+    destination = Destination.objects.filter(slug=destination_slug).first()
+    if destination is None:
+        # Same "server-resolved, not client-trusted" principle as
+        # focus_destination_slug above - a stale or bogus slug just
+        # doesn't record anything, rather than storing garbage.
+        return JsonResponse({"recorded": False})
+
+    user = request.user if request.user.is_authenticated else None
+    if not request.session.session_key:
+        request.session.save()
+    conversation_key = memory.conversation_key(user=user, session_key=request.session.session_key)
+
+    # destination_* dimensions are always real (the destination exists
+    # regardless of who's asking); traveler_* dimensions only exist for an
+    # authenticated visitor with a saved profile - both are genuine,
+    # already-collected fields (users.TravelerProfile), never an invented
+    # taxonomy.
+    metadata = {
+        "destination_slug": destination.slug,
+        "provider": "booking_com",
+        "destination_trip_type": destination.trip_type,
+        "destination_cost_of_living": destination.cost_of_living,
+    }
+    if user is not None:
+        profile = TravelerProfile.objects.filter(user=user).first()
+        if profile is not None:
+            metadata["traveler_preferred_trip_types"] = profile.preferred_trip_types
+            metadata["traveler_preferred_cost_of_living"] = profile.preferred_cost_of_living
+
+    record_event(
+        "accommodation_outbound_click",
+        user=user,
+        request=request,
+        metadata=metadata,
+        conversation_key=conversation_key,
+        locale=request.LANGUAGE_CODE,
+    )
+    return JsonResponse({"recorded": True})
 
 
 @require_POST
