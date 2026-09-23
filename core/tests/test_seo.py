@@ -18,6 +18,7 @@ class RobotsTxtTests(TestCase):
             "/api/",
             "/travel/",
             "/analytics/",
+            "/test-cj-deeplink/",
         ]:
             self.assertIn(f"Disallow: {path}", content)
 

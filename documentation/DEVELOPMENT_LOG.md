@@ -2554,3 +2554,17 @@ No code changed - a data reload plus verification.
 **Lesson, same one the other session already wrote down for itself on 2026-09-15**: `git fetch`/`git status` against `origin` early in a session, not just when something looks wrong - this diverged silently a second time, across two different sessions, with no error until a routine check caught it.
 
 **Files changed**: none beyond the merge itself (`documentation/DEVELOPMENT_LOG.md`, `documentation/PROJECT_STATE.md` conflict resolution).
+
+## 2026-09-23 — Same day: temporary CJ Deep Link Automation validation page at `/test-cj-deeplink/`
+
+**Direct request, tightly scoped**: a throwaway page to check, in production, whether CJ Affiliate's Deep Link Automation (their client-side `am.js` script) correctly detects a plain Booking.com search-results link on the page and applies its own tracking - not part of the product, not linked from anywhere, no recommendations/provider-architecture changes, no manually-built CJ tracking link.
+
+**Built**: `core.views.test_cj_deeplink` + `core/templates/core/test_cj_deeplink.html`, a standalone page that doesn't extend `base.html` - deliberately, so none of the site's own chrome/scripts can interfere with the one thing being tested. Contains exactly one plain `<a>` to the specified Booking.com URL ("Search stays in Tokyo") and exactly one `<script>` tag (CJ's `anrdoezrs.net/am/101877506/include/allCj/impressions/page/am.js`, verified as a real, documented CJ automated-linking script format before use) placed right before `</body>` - nothing else on the page, no tracking link built by hand anywhere. `noindex, nofollow` plus a new `robots.txt` disallow entry keep it out of search/discovery without needing to touch navigation or the sitemap (neither of which reference it anyway).
+
+**Tests**: 7 new (`core/tests/test_cj_deeplink.py`) - the page loads, the exact link/anchor text and the exact script tag are present, the script sits before `</body>` and nothing after it, no CJ tracking-domain string (`jdoqocy.com`/`dpbolvw.net`/`tkqlhce.com`/`qksrv.net`) appears anywhere in the response, the page is noindexed, and the landing page doesn't link to it. `core/tests/test_seo.py`'s existing `robots.txt` test extended with the new disallow path.
+
+**Verification**: 505/505 tests passing (7 new), `ruff check .` clean, no migrations. Live-checked the rendered DOM in an isolated Docker stack - link and script tag both present exactly as specified, script positioned correctly.
+
+**Not done, per direct instruction**: no further CJ/Booking.com integration, no changes to `recommendations/` or `integrations/`. This page exists solely to be opened once, manually, in production, then removed.
+
+**Files changed**: `core/views.py`, `core/urls.py`. New: `core/templates/core/test_cj_deeplink.html`, `core/tests/test_cj_deeplink.py`. Modified: `core/tests/test_seo.py`.
