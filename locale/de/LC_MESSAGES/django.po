@@ -2,12 +2,12 @@
 # Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
 # This file is distributed under the same license as the PACKAGE package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
-#
+# 
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-11 11:50+0000\n"
+"POT-Creation-Date: 2026-09-18 12:07+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -32,11 +32,11 @@ msgstr ""
 msgid "Chat with Wander - Wanderes"
 msgstr "Chatte mit Wander - Wanderes"
 
-#: ai/templates/ai/chat.html:351
+#: ai/templates/ai/chat.html:350
 msgid "Saved conversation limit reached"
 msgstr "Limit für gespeicherte Unterhaltungen erreicht"
 
-#: ai/templates/ai/chat.html:352
+#: ai/templates/ai/chat.html:351
 #, python-format
 msgid ""
 "You already have %(max_saved_conversations)s saved conversations, the Free "
@@ -50,15 +50,15 @@ msgstr ""
 "Unterhaltung wird dann nicht gespeichert. Premium-Pläne mit mehr Platz "
 "kommen bald."
 
-#: ai/templates/ai/chat.html:354 ai/templates/ai/chat.html:363
+#: ai/templates/ai/chat.html:353 ai/templates/ai/chat.html:362
 msgid "Got it, keep chatting"
 msgstr "Verstanden, weiterchatten"
 
-#: ai/templates/ai/chat.html:360
+#: ai/templates/ai/chat.html:359
 msgid "This conversation reached its saved size limit"
 msgstr "Diese Unterhaltung hat ihr gespeichertes Größenlimit erreicht"
 
-#: ai/templates/ai/chat.html:361
+#: ai/templates/ai/chat.html:360
 msgid ""
 "This conversation hit the Free plan's saved-conversation size limit, so "
 "messages from here on won't be added to it - but you can keep chatting "
@@ -69,140 +69,142 @@ msgstr ""
 "hinzugefügt werden - du kannst aber ganz normal weiterchatten. Premium-Pläne "
 "mit höheren Limits kommen bald."
 
-#: ai/templates/ai/chat.html:375
+#: ai/templates/ai/chat.html:373
 msgid "History"
 msgstr "Verlauf"
 
-#: ai/templates/ai/chat.html:380 ai/views.py:68
+#: ai/templates/ai/chat.html:378 ai/views.py:64
 msgid "New conversation"
 msgstr "Neue Unterhaltung"
 
-#: ai/templates/ai/chat.html:384
+#: ai/templates/ai/chat.html:382
 msgid "Save this conversation"
 msgstr "Diese Unterhaltung speichern"
 
-#: ai/templates/ai/chat.html:387 ai/views.py:66
+#: ai/templates/ai/chat.html:385 ai/views.py:62
 msgid "No saved conversations yet."
 msgstr "Noch keine gespeicherten Unterhaltungen."
 
-#: ai/templates/ai/chat.html:391
+#: ai/templates/ai/chat.html:389
 msgid "Log in and have your conversation history saved here."
 msgstr "Melde dich an und dein Unterhaltungsverlauf wird hier gespeichert."
 
-#: ai/templates/ai/chat.html:392 templates/base.html:50
+#: ai/templates/ai/chat.html:390 templates/base.html:53
 #: users/templates/users/login.html:4 users/templates/users/login.html:16
 #: users/templates/users/password_reset_complete.html:15
-#: users/templates/users/register.html:37
+#: users/templates/users/register.html:34
 msgid "Log in"
 msgstr "Anmelden"
 
-#: ai/templates/ai/chat.html:399
+#: ai/templates/ai/chat.html:403
 msgid "Chat with Wander"
 msgstr "Chatte mit Wander"
 
-#: ai/templates/ai/chat.html:400
+#: ai/templates/ai/chat.html:404
 msgid ""
 "Tell me what kind of trip you're thinking about - dates, budget, climate, "
 "anything."
 msgstr ""
 "Erzähl mir, an welche Art von Reise du denkst - Daten, Budget, Klima, alles."
 
-#: ai/templates/ai/chat.html:405
+#: ai/templates/ai/chat.html:407
 msgid "Where should we send you? A few ideas to get going:"
 msgstr "Wohin sollen wir dich schicken? Ein paar Ideen zum Einstieg:"
 
-#: ai/templates/ai/chat.html:407
+#: ai/templates/ai/chat.html:409
 msgid "Somewhere warm in October, not too expensive"
 msgstr "Irgendwo warm im Oktober, nicht zu teuer"
 
-#: ai/templates/ai/chat.html:408
+#: ai/templates/ai/chat.html:410
 msgid "A relaxing beach trip with great food"
 msgstr "Ein entspannter Strandurlaub mit tollem Essen"
 
-#: ai/templates/ai/chat.html:409
+#: ai/templates/ai/chat.html:411
 msgid "Somewhere I can hike and explore nature"
 msgstr "Irgendwo, wo ich wandern und die Natur erkunden kann"
 
-#: ai/templates/ai/chat.html:418
+#: ai/templates/ai/chat.html:420
 msgid "e.g. Somewhere warm in October, not too expensive"
 msgstr "z. B. Irgendwo warm im Oktober, nicht zu teuer"
 
-#: ai/templates/ai/chat.html:420
+#: ai/templates/ai/chat.html:422
 msgid "Message"
 msgstr "Nachricht"
 
-#: ai/templates/ai/chat.html:423
+#: ai/templates/ai/chat.html:425
 msgid "Send"
 msgstr "Senden"
 
-#: ai/views.py:52
+#: ai/views.py:48
 msgid "Finding destinations that fit your preferences..."
 msgstr "Reiseziele werden gesucht, die zu deinen Vorlieben passen..."
 
-#: ai/views.py:53
+#: ai/views.py:49
 msgid "Thinking about the best options for your trip..."
 msgstr "Die besten Optionen für deine Reise werden durchdacht..."
 
-#: ai/views.py:54
+#: ai/views.py:50
 msgid "Comparing possibilities..."
 msgstr "Möglichkeiten werden verglichen..."
 
-#: ai/views.py:55
+#: ai/views.py:51
 msgid "Looking at climate and costs for you..."
 msgstr "Klima und Kosten werden für dich geprüft..."
 
-#: ai/views.py:57 core/templates/core/landing.html:45
+#: ai/views.py:53 core/templates/core/landing.html:45
 msgid "Why this fits you"
 msgstr "Warum das zu dir passt"
 
-#: ai/views.py:58
+#: ai/views.py:54
 msgid "avg"
 msgstr "Ø"
 
-#: ai/views.py:59 core/templates/core/landing.html:56
+#: ai/views.py:55 core/templates/core/landing.html:56
 msgid "Save this trip"
 msgstr "Diese Reise speichern"
 
-#: ai/views.py:60
+#: ai/views.py:56
 msgid "Choose this trip"
 msgstr "Diese Reise wählen"
 
-#: ai/views.py:63
+#: ai/views.py:59
 #, python-brace-format
 msgid "Tell me more about {name}"
 msgstr "Erzähl mir mehr über {name}"
 
-#: ai/views.py:64
+#: ai/views.py:60
 msgid "(not saving)"
 msgstr "(wird nicht gespeichert)"
 
-#: ai/views.py:65
+#: ai/views.py:61
 msgid "Delete conversation"
 msgstr "Unterhaltung löschen"
 
-#: ai/views.py:67
+#: ai/views.py:63
 msgid "Couldn't load that conversation."
 msgstr "Diese Unterhaltung konnte nicht geladen werden."
 
-#: ai/views.py:70
+#: ai/views.py:66
 msgid "Couldn't reach the server. Check your connection and try again."
 msgstr ""
 "Der Server konnte nicht erreicht werden. Überprüfe deine Verbindung und "
 "versuche es erneut."
 
-#: ai/views.py:72
+#: ai/views.py:68
 msgid "Something went wrong on our end. Please try again."
 msgstr "Auf unserer Seite ist etwas schiefgelaufen. Bitte versuche es erneut."
 
 #: analytics/templates/analytics/dashboard.html:9
 msgid "Analytics"
-msgstr ""
+msgstr "Analysen"
 
 #: analytics/templates/analytics/dashboard.html:13
 msgid ""
 "The daily metrics haven't refreshed in over 26 hours - the scheduled job may "
 "have stalled."
 msgstr ""
+"Die täglichen Kennzahlen wurden seit über 26 Stunden nicht aktualisiert - "
+"der geplante Job könnte hängen geblieben sein."
 
 #: analytics/templates/analytics/dashboard.html:16
 msgid ""
@@ -210,132 +212,121 @@ msgid ""
 "appear here once there's real chat activity and the job has run at least "
 "once."
 msgstr ""
+"Noch keine täglichen Kennzahlen - der nächtliche Aktualisierungs-Job ist "
+"noch nicht gelaufen. Echte Zahlen erscheinen hier, sobald es echte Chat-"
+"Aktivität gibt und der Job mindestens einmal gelaufen ist."
 
 #: analytics/templates/analytics/dashboard.html:20
 #, python-format
 msgid "Last %(lookback_days)s days"
-msgstr ""
+msgstr "Letzte %(lookback_days)s Tage"
 
 #: analytics/templates/analytics/dashboard.html:26
 msgid "Date"
-msgstr ""
+msgstr "Datum"
 
 #: analytics/templates/analytics/dashboard.html:27
-#, fuzzy
-#| msgid "New conversation"
 msgid "Conversations"
-msgstr "Neue Unterhaltung"
+msgstr "Unterhaltungen"
 
 #: analytics/templates/analytics/dashboard.html:28
-#, fuzzy
-#| msgid "Message"
 msgid "Messages"
-msgstr "Nachricht"
+msgstr "Nachrichten"
 
 #: analytics/templates/analytics/dashboard.html:29
 msgid "Reached rec."
-msgstr ""
+msgstr "Empf. erreicht"
 
 #: analytics/templates/analytics/dashboard.html:30
 #: analytics/templates/analytics/dashboard.html:72
 msgid "Selected"
-msgstr ""
+msgstr "Ausgewählt"
 
 #: analytics/templates/analytics/dashboard.html:31
 #: analytics/templates/analytics/dashboard.html:73
-#, fuzzy
-#| msgid "Save"
 msgid "Saved"
-msgstr "Speichern"
+msgstr "Gespeichert"
 
 #: analytics/templates/analytics/dashboard.html:32
 msgid "Signups"
-msgstr ""
+msgstr "Registrierungen"
 
 #: analytics/templates/analytics/dashboard.html:33
 msgid "AI failures"
-msgstr ""
+msgstr "KI-Fehler"
 
 #: analytics/templates/analytics/dashboard.html:34
 msgid "AI p95 (ms)"
-msgstr ""
+msgstr "KI p95 (ms)"
 
 #: analytics/templates/analytics/dashboard.html:55
 #: analytics/templates/analytics/dashboard.html:90
 #: analytics/templates/analytics/dashboard.html:126
 #: analytics/templates/analytics/dashboard.html:142
-#, fuzzy
-#| msgid "No saved conversations yet."
 msgid "No data yet."
-msgstr "Noch keine gespeicherten Unterhaltungen."
+msgstr "Noch keine Daten."
 
 #: analytics/templates/analytics/dashboard.html:60
 msgid "Destination performance"
-msgstr ""
+msgstr "Leistung nach Reiseziel"
 
 #: analytics/templates/analytics/dashboard.html:62
 msgid ""
 "Which destinations get recommended, chosen, and saved - approximate, session-"
 "based correlation (see documentation)."
 msgstr ""
+"Welche Reiseziele empfohlen, ausgewählt und gespeichert werden - ungefähre, "
+"sitzungsbasierte Korrelation (siehe Dokumentation)."
 
 #: analytics/templates/analytics/dashboard.html:69
-#, fuzzy
-#| msgid "destination"
 msgid "Destination"
 msgstr "Reiseziel"
 
 #: analytics/templates/analytics/dashboard.html:70
-#, fuzzy
-#| msgid "Account"
 msgid "Country"
-msgstr "Konto"
+msgstr "Land"
 
 #: analytics/templates/analytics/dashboard.html:71
-#, fuzzy
-#| msgid "comment"
 msgid "Recommended"
-msgstr "Kommentar"
+msgstr "Empfohlen"
 
 #: analytics/templates/analytics/dashboard.html:95
 msgid "AI operational health"
-msgstr ""
+msgstr "Betriebszustand der KI"
 
 #: analytics/templates/analytics/dashboard.html:101
-#, fuzzy
-#| msgid "rating"
 msgid "Operation"
-msgstr "Bewertung"
+msgstr "Vorgang"
 
 #: analytics/templates/analytics/dashboard.html:102
 msgid "Type"
-msgstr ""
+msgstr "Typ"
 
 #: analytics/templates/analytics/dashboard.html:103
 msgid "Total"
-msgstr ""
+msgstr "Gesamt"
 
 #: analytics/templates/analytics/dashboard.html:104
 msgid "Failed"
-msgstr ""
+msgstr "Fehlgeschlagen"
 
 #: analytics/templates/analytics/dashboard.html:105
 msgid "p50 (ms)"
-msgstr ""
+msgstr "p50 (ms)"
 
 #: analytics/templates/analytics/dashboard.html:106
 msgid "p95 (ms)"
-msgstr ""
+msgstr "p95 (ms)"
 
 #: analytics/templates/analytics/dashboard.html:107
 msgid "p99 (ms)"
-msgstr ""
+msgstr "p99 (ms)"
 
 #: analytics/templates/analytics/dashboard.html:131
 msgid "Locales"
-msgstr ""
+msgstr "Sprachen"
 
-#: core/context_processors.py:107
+#: core/context_processors.py:125
 msgid ""
 "Wanderes is an intelligent travel consultant that recommends real "
 "destinations based on what travelers actually want."
@@ -343,20 +334,24 @@ msgstr ""
 "Wanderes ist ein intelligenter Reiseberater, der echte Reiseziele auf Basis "
 "dessen empfiehlt, was Reisende wirklich wollen."
 
+#: core/context_processors.py:143
+msgid ""
+"Wanderes is an AI travel advisor: tell it your budget, climate preferences, "
+"and travel style, and it recommends real travel destinations that fit, with "
+"an explanation for every suggestion."
+msgstr "Wanderes ist ein KI-Reiseberater: Nenne ihm dein Budget, deine Klimavorlieben und deinen Reisestil, und er empfiehlt echte Reiseziele, die passen - mit einer Erklärung für jeden Vorschlag."
+
 #: core/templates/core/landing.html:6 core/templates/core/landing.html:8
 #: core/templates/core/landing.html:10
 msgid ""
-"Wanderes gets to know what you actually want from a trip - budget, climate, "
-"pace, vibe - then recommends real destinations that genuinely fit, and "
-"explains exactly why. No account needed to get started."
-msgstr ""
-"Wanderes findet heraus, was du wirklich von einer Reise willst - Budget, "
-"Klima, Tempo, Stimmung - und empfiehlt dann echte Reiseziele, die wirklich "
-"passen, mit einer genauen Begründung. Kein Konto nötig, um loszulegen."
+"Wanderes is an AI travel advisor that finds travel destinations based on "
+"your budget, climate, and travel style - then explains exactly why each one "
+"fits. No account needed to get started."
+msgstr "Wanderes ist ein KI-Reiseberater, der Reiseziele basierend auf deinem Budget, Klima und Reisestil findet - und genau erklärt, warum jedes davon passt. Kein Konto nötig, um loszulegen."
 
 #: core/templates/core/landing.html:9
-msgid "Wanderes - Your personal travel advisor"
-msgstr "Wanderes - Dein persönlicher Reiseberater"
+msgid "Wanderes — AI Travel Advisor & Destination Finder"
+msgstr "Wanderes — KI-Reiseberater & Reisezielfinder"
 
 #: core/templates/core/landing.html:17
 msgid "Your travel advisor"
@@ -486,15 +481,15 @@ msgstr "Bereit, deine nächste Reise zu finden?"
 msgid "Start planning"
 msgstr "Planung starten"
 
-#: core/tests/test_i18n.py:74 travel/models.py:26
+#: core/tests/test_i18n.py:72 travel/models.py:24
 msgid "Beach"
 msgstr "Strand"
 
-#: core/tests/test_i18n.py:75 travel/models.py:18
+#: core/tests/test_i18n.py:73 travel/models.py:16
 msgid "Very low"
 msgstr "Sehr niedrig"
 
-#: templates/base.html:9 templates/base.html:17 templates/base.html:21
+#: templates/base.html:9 templates/base.html:17 templates/base.html:22
 msgid ""
 "Wanderes is an intelligent travel consultant. Tell it what you want from a "
 "trip and get real destination recommendations, grounded in destination, "
@@ -506,50 +501,52 @@ msgstr ""
 "Reiseziel-, Klima- und Reisekostendaten, mit einer ehrlichen Erklärung für "
 "jeden Vorschlag."
 
-#: templates/base.html:40
+#: templates/base.html:43
 msgid "Chat"
 msgstr "Chat"
 
-#: templates/base.html:42 trips/templates/trips/trip_list.html:4
+#: templates/base.html:45 trips/templates/trips/trip_list.html:4
 #: trips/templates/trips/trip_list.html:8 users/templates/users/account.html:30
 msgid "My trips"
 msgstr "Meine Reisen"
 
-#: templates/base.html:43
+#: templates/base.html:46
 msgid "Profile"
 msgstr "Profil"
 
-#: templates/base.html:44
+#: templates/base.html:47
 msgid "Account"
 msgstr "Konto"
 
-#: templates/base.html:47 users/templates/users/account.html:38
+#: templates/base.html:50 users/templates/users/account.html:38
 msgid "Log out"
 msgstr "Abmelden"
 
-#: templates/base.html:51 users/templates/users/register.html:4
+#: templates/base.html:54 users/templates/users/register.html:4
 #: users/templates/users/register.html:16
 msgid "Register"
 msgstr "Registrieren"
 
-#: templates/base.html:56
+#: templates/base.html:59
 msgid "Language"
 msgstr "Sprache"
 
-#: templates/base.html:67
+#: templates/base.html:70
 msgid "Wanderes is in beta — thanks for trying it out early!"
-msgstr "Wanderes befindet sich in der Beta-Phase — danke, dass du es schon jetzt ausprobierst!"
+msgstr ""
+"Wanderes befindet sich in der Beta-Phase — danke, dass du es schon jetzt "
+"ausprobierst!"
 
-#: templates/base.html:79
+#: templates/base.html:82
 #, python-format
 msgid "Prefer Wanderes in %(language)s?"
 msgstr "Wanderes lieber auf %(language)s anzeigen?"
 
-#: templates/base.html:82
+#: templates/base.html:85
 msgid "Not now"
 msgstr "Nicht jetzt"
 
-#: templates/base.html:92
+#: templates/base.html:95
 msgid ""
 "We collect anonymized usage data (such as which features are used) to "
 "improve our recommendations. We never store your message text or share this "
@@ -559,51 +556,47 @@ msgstr ""
 "werden), um unsere Empfehlungen zu verbessern. Wir speichern niemals deinen "
 "Nachrichtentext und geben diese Daten nicht an Dritte weiter."
 
-#: travel/models.py:19
+#: travel/models.py:17
 msgid "Low"
 msgstr "Niedrig"
 
-#: travel/models.py:20
+#: travel/models.py:18
 msgid "Medium"
 msgstr "Mittel"
 
-#: travel/models.py:21
+#: travel/models.py:19
 msgid "High"
 msgstr "Hoch"
 
-#: travel/models.py:22
+#: travel/models.py:20
 msgid "Very high"
 msgstr "Sehr hoch"
 
-#: travel/models.py:27
+#: travel/models.py:25
 msgid "City"
 msgstr "Stadt"
 
-#: travel/models.py:28
+#: travel/models.py:26
 msgid "Nature"
 msgstr "Natur"
 
-#: travel/models.py:29
+#: travel/models.py:27
 msgid "Culture"
 msgstr "Kultur"
 
 #: travel/templates/travel/country_admin_form.html:4
 #: travel/templates/travel/country_admin_form.html:8
-#, fuzzy
-#| msgid "Edit trip"
 msgid "Edit country"
-msgstr "Reise bearbeiten"
+msgstr "Land bearbeiten"
 
 #: travel/templates/travel/country_admin_form.html:4
-#, fuzzy
-#| msgid "Account"
 msgid "Add country"
-msgstr "Konto"
+msgstr "Land hinzufügen"
 
 #: travel/templates/travel/country_admin_form.html:8
 #: travel/templates/travel/country_admin_list.html:11
 msgid "Add a new country"
-msgstr ""
+msgstr "Neues Land hinzufügen"
 
 #: travel/templates/travel/country_admin_form.html:13
 #: trips/templates/trips/travel_history_form.html:12
@@ -614,7 +607,7 @@ msgstr "Speichern"
 
 #: travel/templates/travel/country_admin_form.html:18
 msgid "Videos"
-msgstr ""
+msgstr "Videos"
 
 #: travel/templates/travel/country_admin_form.html:29
 #: trips/templates/trips/travel_history_confirm_delete.html:12
@@ -622,59 +615,51 @@ msgid "Remove"
 msgstr "Entfernen"
 
 #: travel/templates/travel/country_admin_form.html:36
-#, fuzzy
-#| msgid "No saved conversations yet."
 msgid "No videos yet."
-msgstr "Noch keine gespeicherten Unterhaltungen."
+msgstr "Noch keine Videos."
 
 #: travel/templates/travel/country_admin_form.html:39
-#, fuzzy
-#| msgid "Add a visited destination"
 msgid "Add a video"
-msgstr "Ein besuchtes Reiseziel hinzufügen"
+msgstr "Video hinzufügen"
 
 #: travel/templates/travel/country_admin_form.html:43
 msgid "Add video"
-msgstr ""
+msgstr "Video hinzufügen"
 
 #: travel/templates/travel/country_admin_form.html:48
-#, fuzzy
-#| msgid "Back to trip"
 msgid "Back to countries"
-msgstr "Zurück zur Reise"
+msgstr "Zurück zu den Ländern"
 
 #: travel/templates/travel/country_admin_list.html:8
 msgid "Countries"
-msgstr ""
+msgstr "Länder"
 
 #: travel/templates/travel/country_admin_list.html:19
 #, python-format
 msgid "%(counter)s video"
 msgid_plural "%(counter)s videos"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "%(counter)s Video"
+msgstr[1] "%(counter)s Videos"
 
 #: travel/templates/travel/country_admin_list.html:25
-#, fuzzy
-#| msgid "No saved conversations yet."
 msgid "No countries yet."
-msgstr "Noch keine gespeicherten Unterhaltungen."
+msgstr "Noch keine Länder."
 
-#: travel/views.py:29
+#: travel/views.py:27
 msgid "Country created."
 msgstr ""
 
-#: travel/views.py:43
+#: travel/views.py:41
 #, fuzzy
 #| msgid "Trip updated."
 msgid "Country updated."
 msgstr "Reise aktualisiert."
 
-#: travel/views.py:69
+#: travel/views.py:67
 msgid "Video added."
 msgstr ""
 
-#: travel/views.py:79
+#: travel/views.py:77
 msgid "Video removed."
 msgstr ""
 
@@ -710,107 +695,107 @@ msgstr "Abgeschlossen"
 msgid "Cancelled"
 msgstr "Storniert"
 
-#: trips/models.py:28
+#: trips/models.py:26
 msgid "Excellent food"
 msgstr "Ausgezeichnetes Essen"
 
-#: trips/models.py:29
+#: trips/models.py:27
 msgid "Great value"
 msgstr "Sehr gutes Preis-Leistungs-Verhältnis"
 
-#: trips/models.py:30
+#: trips/models.py:28
 msgid "Friendly locals"
 msgstr "Freundliche Einheimische"
 
-#: trips/models.py:31
+#: trips/models.py:29
 msgid "Beautiful scenery"
 msgstr "Wunderschöne Landschaft"
 
-#: trips/models.py:32
+#: trips/models.py:30
 msgid "Too crowded"
 msgstr "Zu überfüllt"
 
-#: trips/models.py:33
+#: trips/models.py:31
 msgid "Overpriced"
 msgstr "Überteuert"
 
-#: trips/models.py:34
+#: trips/models.py:32
 msgid "Poor weather"
 msgstr "Schlechtes Wetter"
 
-#: trips/models.py:35
+#: trips/models.py:33
 msgid "Hard to get around"
 msgstr "Schwer zu erkunden"
 
-#: trips/models.py:57
+#: trips/models.py:54
 msgid "name"
 msgstr "Name"
 
-#: trips/models.py:58
+#: trips/models.py:55
 msgid "A short nickname, e.g. 'Summer in Lisbon'."
 msgstr "Ein kurzer Spitzname, z. B. 'Sommer in Lissabon'."
 
-#: trips/models.py:64 trips/models.py:149
+#: trips/models.py:61 trips/models.py:143
 msgid "destination"
 msgstr "Reiseziel"
 
-#: trips/models.py:66
+#: trips/models.py:63
 msgid "start date"
 msgstr "Startdatum"
 
-#: trips/models.py:67
+#: trips/models.py:64
 msgid "end date"
 msgstr "Enddatum"
 
-#: trips/models.py:69
+#: trips/models.py:66
 msgid "status"
 msgstr "Status"
 
-#: trips/models.py:92
+#: trips/models.py:88
 msgid "Order of this leg within the trip's itinerary (1, 2, 3...)."
 msgstr ""
 "Reihenfolge dieses Abschnitts innerhalb des Reiseverlaufs (1, 2, 3...)."
 
-#: trips/models.py:96
+#: trips/models.py:92
 msgid "True if this leg is a connecting flight, not the first/only leg."
 msgstr ""
 "Wahr, wenn dieser Abschnitt ein Anschlussflug ist, nicht der erste/einzige "
 "Abschnitt."
 
-#: trips/models.py:101
+#: trips/models.py:97
 msgid "How this price compares to the historical price for this route."
 msgstr "Wie sich dieser Preis zum historischen Preis dieser Route verhält."
 
-#: trips/models.py:121
+#: trips/models.py:117
 msgid "How this price compares to the historical price for this stay."
 msgstr ""
 "Wie sich dieser Preis zum historischen Preis dieses Aufenthalts verhält."
 
-#: trips/models.py:154
+#: trips/models.py:148
 msgid "visited year"
 msgstr "Besuchsjahr"
 
-#: trips/models.py:155
+#: trips/models.py:149
 msgid "Approximate year of the visit, if known."
 msgstr "Ungefähres Jahr des Besuchs, falls bekannt."
 
-#: trips/models.py:162
+#: trips/models.py:156
 msgid "travel history entries"
 msgstr "Reiseverlauf-Einträge"
 
-#: trips/models.py:190
+#: trips/models.py:184
 msgid "rating"
 msgstr "Bewertung"
 
-#: trips/models.py:195
+#: trips/models.py:189
 msgid "tags"
 msgstr "Schlagwörter"
 
-#: trips/models.py:196
+#: trips/models.py:190
 msgid "List of positive/negative tags."
 msgstr "Liste positiver/negativer Schlagwörter."
 
-#: trips/models.py:198
+#: trips/models.py:192
 msgid "comment"
 msgstr "Kommentar"
 
@@ -975,115 +960,115 @@ msgstr "Aktualisiert."
 msgid "Removed from your travel history."
 msgstr "Aus deinem Reiseverlauf entfernt."
 
-#: trips/views.py:112
+#: trips/views.py:107
 msgid "Trip saved."
 msgstr "Reise gespeichert."
 
-#: trips/views.py:142
+#: trips/views.py:137
 msgid "Trip updated."
 msgstr "Reise aktualisiert."
 
-#: trips/views.py:154
+#: trips/views.py:149
 msgid "Trip deleted."
 msgstr "Reise gelöscht."
 
-#: trips/views.py:183
+#: trips/views.py:178
 msgid "Thanks for your feedback!"
 msgstr "Danke für dein Feedback!"
 
-#: users/currency.py:54
+#: users/currency.py:48
 msgid "US Dollar (USD)"
 msgstr "US-Dollar (USD)"
 
-#: users/currency.py:55
+#: users/currency.py:49
 msgid "Euro (EUR)"
 msgstr "Euro (EUR)"
 
-#: users/currency.py:56
+#: users/currency.py:50
 msgid "British Pound (GBP)"
 msgstr "Britisches Pfund (GBP)"
 
-#: users/currency.py:57
+#: users/currency.py:51
 msgid "Brazilian Real (BRL)"
 msgstr "Brasilianischer Real (BRL)"
 
-#: users/currency.py:58
+#: users/currency.py:52
 msgid "Japanese Yen (JPY)"
 msgstr "Japanischer Yen (JPY)"
 
-#: users/currency.py:59
+#: users/currency.py:53
 msgid "Chinese Yuan (CNY)"
 msgstr "Chinesischer Yuan (CNY)"
 
-#: users/currency.py:60
+#: users/currency.py:54
 msgid "Indian Rupee (INR)"
 msgstr "Indische Rupie (INR)"
 
-#: users/currency.py:61
+#: users/currency.py:55
 msgid "Canadian Dollar (CAD)"
 msgstr "Kanadischer Dollar (CAD)"
 
-#: users/currency.py:62
+#: users/currency.py:56
 msgid "Australian Dollar (AUD)"
 msgstr "Australischer Dollar (AUD)"
 
-#: users/currency.py:63
+#: users/currency.py:57
 msgid "Swiss Franc (CHF)"
 msgstr "Schweizer Franken (CHF)"
 
-#: users/currency.py:64
+#: users/currency.py:58
 msgid "Mexican Peso (MXN)"
 msgstr "Mexikanischer Peso (MXN)"
 
-#: users/currency.py:65
+#: users/currency.py:59
 msgid "Argentine Peso (ARS)"
 msgstr "Argentinischer Peso (ARS)"
 
-#: users/currency.py:66
+#: users/currency.py:60
 msgid "Chilean Peso (CLP)"
 msgstr "Chilenischer Peso (CLP)"
 
-#: users/currency.py:67
+#: users/currency.py:61
 msgid "Colombian Peso (COP)"
 msgstr "Kolumbianischer Peso (COP)"
 
-#: users/currency.py:68
+#: users/currency.py:62
 msgid "South African Rand (ZAR)"
 msgstr "Südafrikanischer Rand (ZAR)"
 
-#: users/currency.py:69
+#: users/currency.py:63
 msgid "UAE Dirham (AED)"
 msgstr "VAE-Dirham (AED)"
 
-#: users/currency.py:70
+#: users/currency.py:64
 msgid "Singapore Dollar (SGD)"
 msgstr "Singapur-Dollar (SGD)"
 
-#: users/currency.py:71
+#: users/currency.py:65
 msgid "South Korean Won (KRW)"
 msgstr "Südkoreanischer Won (KRW)"
 
-#: users/currency.py:72
+#: users/currency.py:66
 msgid "Thai Baht (THB)"
 msgstr "Thailändischer Baht (THB)"
 
-#: users/currency.py:73
+#: users/currency.py:67
 msgid "Swedish Krona (SEK)"
 msgstr "Schwedische Krone (SEK)"
 
-#: users/currency.py:74
+#: users/currency.py:68
 msgid "Norwegian Krone (NOK)"
 msgstr "Norwegische Krone (NOK)"
 
-#: users/currency.py:75
+#: users/currency.py:69
 msgid "Polish Zloty (PLN)"
 msgstr "Polnischer Zloty (PLN)"
 
-#: users/currency.py:76
+#: users/currency.py:70
 msgid "Turkish Lira (TRY)"
 msgstr "Türkische Lira (TRY)"
 
-#: users/currency.py:77
+#: users/currency.py:71
 msgid "New Zealand Dollar (NZD)"
 msgstr "Neuseeland-Dollar (NZD)"
 
@@ -1127,41 +1112,41 @@ msgstr ""
 "Bitte gib Budgetbetrag, Währung und Zeitraum zusammen an, oder lasse alle "
 "drei leer."
 
-#: users/models.py:73
+#: users/models.py:66
 msgid "Explicit UI language choice, applied on every device once set."
 msgstr ""
 "Explizit gewählte Oberflächensprache, die nach dem Festlegen auf jedem Gerät "
 "gilt."
 
-#: users/models.py:86
+#: users/models.py:79
 msgid "Per day"
 msgstr "Pro Tag"
 
-#: users/models.py:87
+#: users/models.py:80
 msgid "Per week"
 msgstr "Pro Woche"
 
-#: users/models.py:88
+#: users/models.py:81
 msgid "Per month"
 msgstr "Pro Monat"
 
-#: users/models.py:115
+#: users/models.py:104
 msgid "List of preferred trip type codes, e.g. ['beach', 'culture']."
 msgstr "Liste bevorzugter Reiseart-Codes, z. B. ['beach', 'culture']."
 
-#: users/models.py:123
+#: users/models.py:112
 msgid "Where you usually travel from, e.g. 'Brazil'."
 msgstr "Von wo aus du normalerweise reist, z. B. 'Brasilien'."
 
-#: users/models.py:128
+#: users/models.py:117
 msgid "How many people you usually travel with, including yourself."
 msgstr "Mit wie vielen Personen du normalerweise reist, dich eingeschlossen."
 
-#: users/models.py:135
+#: users/models.py:124
 msgid "Typical travel budget, paired with budget_period."
 msgstr "Typisches Reisebudget, gepaart mit budget_period."
 
-#: users/models.py:144
+#: users/models.py:133
 msgid "The currency budget_amount is stated in - required alongside it."
 msgstr "Die Währung, in der budget_amount angegeben ist - dazu erforderlich."
 
@@ -1212,7 +1197,7 @@ msgstr "Mit Google fortfahren"
 msgid "New to Wanderes?"
 msgstr "Neu bei Wanderes?"
 
-#: users/templates/users/login.html:44
+#: users/templates/users/login.html:39
 msgid "Create an account"
 msgstr "Konto erstellen"
 
@@ -1365,6 +1350,9 @@ msgstr ""
 msgid "Already have an account?"
 msgstr "Hast du schon ein Konto?"
 
-#: users/views.py:117
+#: users/views.py:112
 msgid "Your traveler profile was updated."
 msgstr "Dein Reiseprofil wurde aktualisiert."
+
+#~ msgid "Wanderes - Your personal travel advisor"
+#~ msgstr "Wanderes - Dein persönlicher Reiseberater"

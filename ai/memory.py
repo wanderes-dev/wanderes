@@ -31,9 +31,13 @@ def get_history(key: str) -> list[dict]:
 # Intent extraction used to read these numbers back out of history and
 # blame them on the traveler - a bare "comer" after we'd mentioned a
 # temperature/cost tier could set min_temp_c/max_cost_of_living from
-# something WE said. Prompt tweaks didn't hold up, so instead we just
-# strip these figures before they're ever saved - can't misread what
-# isn't there.
+# something WE said. Prompt tweaks didn't hold up, so we strip these
+# figures before that one call ever sees them (ai.orchestration.
+# _sanitized_history_messages) - NOT at storage time. Sanitizing here used
+# to mean every history consumer got the redacted version, which broke
+# genuine recall ("what beaches did you suggest?") - the real figures were
+# gone before they were ever saved, so there was nothing left to recall,
+# and the model just echoed the literal "[cost]" placeholder back.
 _TEMPERATURE_PATTERN = re.compile(
     r"-?\d{1,3}(?:[.,]\d+)?\s*(?:-\s*-?\d{1,3}(?:[.,]\d+)?)?\s*°\s*C", re.IGNORECASE
 )
@@ -41,11 +45,12 @@ _COST_TIER_PATTERN = re.compile(r"\b[1-5]\s*/\s*5\b")
 
 
 def sanitize_reply_for_context(assistant_reply: str) -> str:
-    """Strip temperature/cost-tier figures (e.g. "31°C", "4/5") before an
-    assistant reply gets saved as context - doesn't touch what's actually
-    streamed to the traveler, or the raw text used for a saved
-    conversation's title. Only covers the patterns known to cause
-    contamination, not a general-purpose scrubber."""
+    """Strip temperature/cost-tier figures (e.g. "31°C", "4/5") from an
+    assistant reply before it's fed to intent extraction as history. Never
+    applied to what's streamed to the traveler, what gets persisted, or
+    the raw text used for a saved conversation's title - see the note
+    above. Only covers the patterns known to cause contamination, not a
+    general-purpose scrubber."""
     sanitized = _TEMPERATURE_PATTERN.sub("[temp]", assistant_reply)
     return _COST_TIER_PATTERN.sub("[cost]", sanitized)
 
@@ -53,12 +58,12 @@ def sanitize_reply_for_context(assistant_reply: str) -> str:
 def append_turn(key: str, *, user_message: str, assistant_reply: str) -> None:
     """Save one exchange, trim to MAX_HISTORY_MESSAGES, refresh the TTL.
     Called for every handled message no matter which branch produced the
-    reply."""
+    reply. Stores the reply exactly as sent to the traveler - see
+    sanitize_reply_for_context's docstring for why this doesn't sanitize
+    it first."""
     history = get_history(key)
     history.append({"role": "user", "content": user_message})
-    history.append(
-        {"role": "assistant", "content": sanitize_reply_for_context(assistant_reply)}
-    )
+    history.append({"role": "assistant", "content": assistant_reply})
     history = history[-MAX_HISTORY_MESSAGES:]
     cache.set(key, history, CONVERSATION_TTL_SECONDS)
 

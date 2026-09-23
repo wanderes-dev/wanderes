@@ -46,6 +46,17 @@ def resolve_country_name(place_name: str) -> str | None:
     return destination.country if destination else place_name
 
 
+def is_known_country(country_name: str) -> bool:
+    """Whether country_name (case-insensitive) is an actual value stored in
+    Destination.country somewhere in the catalog - a real single country we
+    have data for, as opposed to a multi-country region or colloquial term
+    ("Scandinavia", "the Balkans") that got captured as if it were one
+    country. Deliberately just a real-data membership check, not a curated
+    synonym list, so it generalizes to any such term without being taught
+    each one by hand."""
+    return Destination.objects.filter(country__iexact=country_name.strip()).exists()
+
+
 def find_destination_slugs_by_name(place_names: list[str]) -> frozenset:
     """Resolve free-text place/country names to matching Destination slugs.
 

@@ -93,6 +93,51 @@ class StructuredDataTests(TestCase):
         self.assertContains(response, '"name": "Wanderes"')
         self.assertContains(response, '"url": "https://www.wanderes.com/"')
 
+    def test_landing_page_includes_webapplication_json_ld(self):
+        response = self.client.get("/")
+
+        self.assertContains(response, '"@type": "WebApplication"')
+        self.assertContains(response, '"applicationCategory": "TravelApplication"')
+        self.assertContains(response, '"operatingSystem": "Web"')
+        self.assertContains(response, '"url": "https://www.wanderes.com/"')
+
+
+class SocialPreviewImageTests(TestCase):
+    """og:image/twitter:image must be an absolute URL (per spec) built
+    from SITE_DOMAIN, same reasoning as canonical_url - and must point at
+    a real, existing static asset, never a fabricated path."""
+
+    def test_og_and_twitter_image_point_at_the_real_logo_asset(self):
+        response = self.client.get("/")
+
+        self.assertContains(
+            response, '<meta property="og:image" content="https://www.wanderes.com/static/img/logo.png">'
+        )
+        self.assertContains(
+            response, '<meta name="twitter:image" content="https://www.wanderes.com/static/img/logo.png">'
+        )
+
+
+class LandingPageTitleAndDescriptionTests(TestCase):
+    """The homepage title/description should say plainly what Wanderes
+    is - an AI travel advisor - not just its brand name, since that's
+    the actual concept a search query would match on."""
+
+    def test_title_names_the_product_category(self):
+        response = self.client.get("/")
+
+        self.assertContains(
+            response, "<title>Wanderes — AI Travel Advisor & Destination Finder</title>"
+        )
+
+    def test_meta_description_covers_the_core_concepts(self):
+        response = self.client.get("/")
+        content = response.content.decode()
+
+        concepts = ["AI travel advisor", "travel destinations", "budget", "climate", "travel style"]
+        for concept in concepts:
+            self.assertIn(concept, content)
+
 
 @override_settings(SITE_DOMAIN="example-alias.test")
 class SiteDomainOverrideTests(TestCase):

@@ -1,6 +1,7 @@
 import json
 
 from django.conf import settings
+from django.templatetags.static import static
 from django.utils.translation import get_language, get_supported_language_variant
 from django.utils.translation import gettext as _
 from django.utils.translation.trans_real import parse_accept_lang_header
@@ -77,6 +78,22 @@ def language_suggestion(request):
     }
 
 
+def _safe_jsonld(data):
+    """json.dumps, then the same escaping Django's own json_script helper
+    applies - needed because this is dropped into a <script> tag with
+    |safe, bypassing Django's normal (HTML, not JSON) autoescaping. None
+    of the fixed values passed in today contain these characters, but a
+    translator could plausibly introduce one in a future locale's .po
+    file, and an unescaped "<" would let translated text break out of the
+    <script> tag it's embedded in."""
+    return (
+        json.dumps(data)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
+
+
 def site_meta(request):
     """Canonical-URL and structured-data context for every template.
 
@@ -84,34 +101,52 @@ def site_meta(request):
     request.get_host() - the live service is reachable under more than
     one hostname (see CanonicalDomainRedirectMiddleware's docstring), and
     a canonical link that echoed back whatever host served the request
-    would defeat its own purpose.
+    would defeat its own purpose. og_image_url follows the same
+    SITE_DOMAIN-based construction rather than request.build_absolute_uri
+    - the Open Graph/Twitter spec requires an absolute URL, and the same
+    duplicate-hostname problem canonical_url avoids applies here too.
 
-    organization_jsonld is serialized here with json.dumps rather than
-    hand-written inline in the template with {% trans %} calls mixed in -
-    Django's default autoescaping (meant for HTML) would otherwise apply
-    to content sitting inside a <script> tag, the wrong escaping entirely
-    for JSON. Every value here is a fixed, translated string this app
-    controls - nothing user-supplied ever reaches it - so rendering the
-    result with |safe in the template is fine."""
-    organization_jsonld = json.dumps(
+    organization_jsonld/webapplication_jsonld are serialized here with
+    json.dumps rather than hand-written inline in the template with
+    {% trans %} calls mixed in - Django's default autoescaping (meant for
+    HTML) would otherwise apply to content sitting inside a <script> tag,
+    the wrong escaping entirely for JSON. Every value here is a fixed,
+    translated string this app controls - nothing user-supplied ever
+    reaches it - so rendering the result with |safe in the template is
+    fine."""
+    site_url = f"https://{settings.SITE_DOMAIN}/"
+    organization_jsonld = _safe_jsonld(
         {
             "@context": "https://schema.org",
             "@type": "Organization",
             "name": "Wanderes",
-            "url": f"https://{settings.SITE_DOMAIN}/",
+            "url": site_url,
             "description": _(
                 "Wanderes is an intelligent travel consultant that recommends real "
                 "destinations based on what travelers actually want."
             ),
         }
     )
-    # Same escaping Django's own json_script helper applies - none of the
-    # fixed values above contain these characters today, but a translator
-    # could plausibly introduce one in a future locale's .po file, and an
-    # unescaped "<" would let translated text break out of the <script>
-    # tag it's embedded in.
-    organization_jsonld = (
-        organization_jsonld.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    # WebApplication, not SoftwareApplication - Wanderes runs entirely in
+    # the browser, there's no installable binary to describe.
+    # applicationCategory: "TravelApplication" is the schema.org-recognized
+    # category value for this genre of app. Deliberately no
+    # offers/aggregateRating/price - nothing here that isn't verifiably
+    # true today (no paid tier, no reviews to report).
+    webapplication_jsonld = _safe_jsonld(
+        {
+            "@context": "https://schema.org",
+            "@type": "WebApplication",
+            "name": "Wanderes",
+            "url": site_url,
+            "description": _(
+                "Wanderes is an AI travel advisor: tell it your budget, climate "
+                "preferences, and travel style, and it recommends real travel "
+                "destinations that fit, with an explanation for every suggestion."
+            ),
+            "applicationCategory": "TravelApplication",
+            "operatingSystem": "Web",
+        }
     )
     # SOCIALACCOUNT_PROVIDERS always registers the google provider (see
     # settings/base.py), but with no real GOOGLE_OAUTH_CLIENT_ID/SECRET
@@ -126,6 +161,14 @@ def site_meta(request):
         "site_domain": settings.SITE_DOMAIN,
         "canonical_url": f"https://{settings.SITE_DOMAIN}{request.path}",
         "organization_jsonld": organization_jsonld,
+        "webapplication_jsonld": webapplication_jsonld,
+        # The full wordmark, not icon.png - a recognizable brand image for
+        # link-preview cards, same asset already used in the site header.
+        # Built from SITE_DOMAIN + static(), not request.build_absolute_uri,
+        # for the same duplicate-hostname reason as canonical_url above -
+        # static() itself may or may not include a leading slash depending
+        # on STATIC_URL, so strip and re-add exactly one.
+        "og_image_url": f"https://{settings.SITE_DOMAIN}/{static('img/logo.png').lstrip('/')}",
         "google_oauth_configured": google_oauth_configured,
         # Same reasoning as google_oauth_configured above, for password
         # reset via emailed token. Checks EMAIL_BACKEND, not EMAIL_HOST

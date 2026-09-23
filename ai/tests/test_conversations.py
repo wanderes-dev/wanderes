@@ -82,13 +82,15 @@ class RecordTurnTests(TestCase):
         )
         self.assertEqual(len(provider.generate_reply_calls), 1)
 
-    def test_stores_a_sanitized_reply_but_generates_subject_from_the_raw_text(self):
+    def test_stores_the_raw_unsanitized_reply_and_generates_subject_from_it(self):
         # A later turn's intent extraction was reading temperature/
         # cost-tier figures back out of a SavedConversation's stored
         # messages (used as history_override) and misattributing them to
-        # the traveler. Fix: strip those figures from what's persisted,
-        # but keep using the raw reply for the subject, since that's
-        # unrelated and benefits from real text.
+        # the traveler. That used to get fixed by stripping those figures
+        # here, at storage time - which broke genuine recall requests, since
+        # the real figures were gone before they were ever saved. The real
+        # fix lives only in ai.orchestration._sanitized_history_messages
+        # now; storage (and subject generation) always sees the raw reply.
         provider = StubAIProvider(subject="Beach trip planning")
 
         result = record_turn(
@@ -103,12 +105,9 @@ class RecordTurnTests(TestCase):
         self.assertTrue(result.saved)
         conversation = SavedConversation.objects.get(pk=result.conversation_id)
         stored_reply = conversation.messages[1]["content"]
-        self.assertNotIn("18-20°C", stored_reply)
-        self.assertNotIn("31°C", stored_reply)
-        self.assertNotIn("4/5", stored_reply)
-        self.assertIn("[temp]", stored_reply)
-        self.assertIn("[cost]", stored_reply)
-        # Subject generation still saw the real figures.
+        self.assertIn("18-20°C", stored_reply)
+        self.assertIn("31°C", stored_reply)
+        self.assertIn("4/5", stored_reply)
         subject_call_content = provider.generate_reply_calls[0][1].content
         self.assertIn("31°C", subject_call_content)
 
