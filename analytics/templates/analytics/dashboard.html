@@ -71,6 +71,7 @@
                     <th>{% trans "Recommended" %}</th>
                     <th>{% trans "Selected" %}</th>
                     <th>{% trans "Saved" %}</th>
+                    <th>{% trans "Stays clicked" %}</th>
                 </tr>
             </thead>
             <tbody>
@@ -81,6 +82,7 @@
                     <td>{{ row.times_recommended }}</td>
                     <td>{{ row.times_selected }}</td>
                     <td>{{ row.times_saved }}</td>
+                    <td>{{ row.times_accommodation_clicked }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
