@@ -8,6 +8,7 @@ from ai.orchestration import (
     MAX_RECOMMENDATIONS,
     NEEDS_LOGIN_REPLY,
     _extract_climate_budget_signal,
+    _resolve_destination,
     _sanitized_history_messages,
     _validate_climate_budget,
     get_travel_recommendation,
@@ -1882,6 +1883,89 @@ class ActivityQuestionTests(TestCase):
         self.assertEqual(len(result.recommendations), 1)
 
 
+class ResolveDestinationTests(TestCase):
+    """Direct user request (2026-09-24): "um usuario nao deve precisar
+    saber escrever corretamente o lugar aonde ele quer ir" - a traveler
+    shouldn't need to spell a destination correctly, or in English, for
+    Wanderes to find it. _resolve_destination() tries a cheap DB match
+    first and only falls back to an AI-based catalog match when that
+    finds nothing - never inventing a destination, only ever picking a
+    real one from the actual catalog (re-verified against the database
+    regardless of what the AI returns)."""
+
+    def setUp(self):
+        self.destination = Destination.objects.create(
+            slug="shanghai-cn",
+            name="Shanghai",
+            country="China",
+            latitude=31.23,
+            longitude=121.47,
+            trip_type="city",
+            cost_of_living=3,
+            best_season="Mar-May",
+            worst_season="Jul-Aug",
+            short_description="A futuristic skyline on the Huangpu river.",
+            points_of_interest=["The Bund", "Yu Garden"],
+        )
+
+    def test_exact_db_match_never_calls_the_ai(self):
+        result = _resolve_destination("Shanghai", ai_provider=FailingAIProvider())
+
+        self.assertEqual(result, self.destination)
+
+    def test_no_ai_provider_given_just_uses_the_db_match(self):
+        result = _resolve_destination("Xangai")
+
+        self.assertIsNone(result)
+
+    def test_ai_fallback_resolves_a_misspelled_or_translated_name(self):
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={"destination_resolution": {"slug": "shanghai-cn"}}
+        )
+
+        result = _resolve_destination("Xangai", ai_provider=ai_provider)
+
+        self.assertEqual(result, self.destination)
+        self.assertEqual(len(ai_provider.generate_structured_reply_calls), 1)
+
+    def test_ai_fallback_returning_null_resolves_to_none(self):
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={"destination_resolution": {"slug": None}}
+        )
+
+        result = _resolve_destination("Atlantis", ai_provider=ai_provider)
+
+        self.assertIsNone(result)
+
+    def test_a_hallucinated_slug_is_never_trusted(self):
+        # Never trust structured output blindly - a slug the AI invented,
+        # or got wrong, that doesn't actually exist must resolve to None,
+        # not raise or silently succeed.
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={"destination_resolution": {"slug": "not-a-real-slug"}}
+        )
+
+        result = _resolve_destination("Xangai", ai_provider=ai_provider)
+
+        self.assertIsNone(result)
+
+    def test_ai_failure_is_handled_gracefully(self):
+        result = _resolve_destination("Xangai", ai_provider=FailingAIProvider())
+
+        self.assertIsNone(result)
+
+    def test_catalog_sent_to_the_ai_includes_the_real_destination(self):
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={"destination_resolution": {"slug": "shanghai-cn"}}
+        )
+
+        _resolve_destination("Xangai", ai_provider=ai_provider)
+
+        prompt = ai_provider.generate_structured_reply_calls[0][-1].content
+        self.assertIn("shanghai-cn: Shanghai, China", prompt)
+        self.assertIn("Xangai", prompt)
+
+
 class AccommodationRequestTests(TestCase):
     """Direct user report (2026-09-23): after naming Tokyo specifically and
     then typing "só quero que me sugira hospedagens" (just suggest
@@ -2079,6 +2163,49 @@ class AccommodationRequestTests(TestCase):
         prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertIn("Bruges", prompt)
         self.assertIn("isn't in our curated catalog", prompt)
+
+    def test_ai_fallback_resolves_a_misspelled_destination_end_to_end(self):
+        # The full reported scenario (2026-09-24): "quero hospedagens em
+        # Xangai" falsely reported "no data" for a real destination
+        # (Shanghai) because the naive DB lookup never matched. Confirms
+        # the AI-fallback resolution added to _resolve_destination()
+        # actually reaches this destination through the real pipeline,
+        # not just in isolation.
+        shanghai = Destination.objects.create(
+            slug="shanghai-cn",
+            name="Shanghai",
+            country="China",
+            latitude=31.23,
+            longitude=121.47,
+            trip_type="city",
+            cost_of_living=3,
+            best_season="Mar-May",
+            worst_season="Jul-Aug",
+            short_description="A futuristic skyline on the Huangpu river.",
+            points_of_interest=["The Bund", "Yu Garden"],
+        )
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(
+                    is_accommodation_request=True,
+                    accommodation_place_name="Xangai",
+                    accommodation_party_size=2,
+                ),
+                "destination_resolution": {"slug": "shanghai-cn"},
+            },
+            reply_text="Here's what's good to know about staying in Shanghai.",
+        )
+
+        result = stream_travel_recommendation(
+            "quero hospedagens em Xangai",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+        list(result.reply_chunks)
+
+        self.assertEqual(len(result.recommendations), 1)
+        self.assertEqual(result.recommendations[0].destination, shanghai)
+        self.assertTrue(result.is_destination_detail)
 
     def test_extraction_prompt_requires_the_english_catalog_name(self):
         # Regression guard for the actual root cause of the Xangai/Toquio

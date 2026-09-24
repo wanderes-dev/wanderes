@@ -569,6 +569,43 @@ CLIMATE_BUDGET_SYSTEM_PROMPT = (
     "max), leave both null instead."
 )
 
+# Fallback for _resolve_destination() when the cheap DB substring lookup
+# (find_destination_slugs_by_name) finds nothing - a traveler shouldn't
+# need to spell a place correctly, or in English, just to reach it
+# (2026-09-24, direct user request: "um usuario nao deve precisar saber
+# escrever corretamente o lugar aonde ele quer ir"). Constrained to
+# picking a real slug from the actual catalog (never inventing one) -
+# the caller re-verifies the returned slug against the database before
+# trusting it (09_AI_ORCHESTRATION.md §9's "never trust structured output
+# blindly", same discipline as every other extraction in this module), so
+# a hallucinated or malformed slug just falls back to "not found" rather
+# than being treated as valid.
+DESTINATION_RESOLUTION_SYSTEM_PROMPT = (
+    "A traveler wrote a place name that didn't match anything in our real "
+    "destination catalog by a simple substring lookup - it may be "
+    "misspelled, a nickname, or written in a different language than the "
+    "catalog uses. You'll be given the traveler's exact text and the full "
+    "list of real destinations on file (slug: name, country). Decide "
+    "whether the traveler's text is clearly a misspelling, alternate "
+    "spelling, or translation of EXACTLY ONE destination in that list - "
+    "not a guess about what they might like, only a real identification "
+    "of the same place under a different spelling/language. If so, return "
+    "that destination's exact slug from the list. If it could plausibly "
+    "match more than one, or doesn't clearly match any of them, return "
+    "null - never guess."
+)
+
+DESTINATION_RESOLUTION_SCHEMA = {
+    "name": "destination_resolution",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {"slug": {"type": ["string", "null"]}},
+        "required": ["slug"],
+        "additionalProperties": False,
+    },
+}
+
 
 @dataclass(frozen=True)
 class OrchestrationResult:
@@ -744,7 +781,9 @@ def stream_travel_recommendation(
     if intent["is_accommodation_request"]:
         accommodation_place_name = intent["accommodation_place_name"]
         if accommodation_place_name:
-            accommodation_destination = _resolve_destination(accommodation_place_name)
+            accommodation_destination = _resolve_destination(
+                accommodation_place_name, ai_provider=ai_provider, conversation_key=conv_key
+            )
             if accommodation_destination is not None:
                 party_size = intent["accommodation_party_size"]
                 if party_size is None:
@@ -847,7 +886,12 @@ def stream_travel_recommendation(
         # None for a real destination our catalog doesn't have, and gets
         # the same real-reply treatment instead of a dead-end note.
         quick_feedback_reply = _handle_feedback(
-            intent, user=user, message=message, history=history, ai_provider=ai_provider
+            intent,
+            user=user,
+            message=message,
+            history=history,
+            ai_provider=ai_provider,
+            conversation_key=conv_key,
         )
         if quick_feedback_reply is not None:
             _remember(quick_feedback_reply)
@@ -872,7 +916,12 @@ def stream_travel_recommendation(
         # "I don't have it, but noted" - same treatment as an unmatched
         # recommendation request gets.
         quick_reply = _handle_future_intent(
-            intent, user=user, message=message, history=history, ai_provider=ai_provider
+            intent,
+            user=user,
+            message=message,
+            history=history,
+            ai_provider=ai_provider,
+            conversation_key=conv_key,
         )
         if quick_reply is not None:
             _remember(quick_reply)
@@ -1375,6 +1424,7 @@ def _handle_feedback(
     message: str,
     history: list[dict] | None = None,
     ai_provider: AIProvider,
+    conversation_key: str | None = None,
 ) -> str | None:
     """Persist feedback shared conversationally, and register that the
     trip actually happened - giving feedback implies a visit occurred, per
@@ -1405,7 +1455,9 @@ def _handle_feedback(
             NEEDS_LOGIN_REPLY, message=message, history=history, ai_provider=ai_provider
         )
 
-    destination = _resolve_destination(destination_name)
+    destination = _resolve_destination(
+        destination_name, ai_provider=ai_provider, conversation_key=conversation_key
+    )
     if destination is None:
         # Same reasoning as future_intent above - no Destination row means
         # no real TravelHistoryEntry to register against.
@@ -1459,6 +1511,7 @@ def _handle_future_intent(
     message: str,
     history: list[dict] | None = None,
     ai_provider: AIProvider,
+    conversation_key: str | None = None,
 ) -> str | None:
     """Returns None specifically when the traveler named a real, valid
     destination that just isn't in our curated catalog - the caller
@@ -1482,7 +1535,9 @@ def _handle_future_intent(
             NEEDS_LOGIN_REPLY, message=message, history=history, ai_provider=ai_provider
         )
 
-    destination = _resolve_destination(destination_name)
+    destination = _resolve_destination(
+        destination_name, ai_provider=ai_provider, conversation_key=conversation_key
+    )
     if destination is None:
         # No Destination row means no Trip can be persisted either - the
         # caller handles this with a real AI reply from general knowledge
@@ -1520,9 +1575,63 @@ def _handle_future_intent(
     )
 
 
-def _resolve_destination(name: str):
+def _resolve_destination(
+    name: str,
+    *,
+    ai_provider: AIProvider | None = None,
+    conversation_key: str | None = None,
+) -> Destination | None:
+    """Resolve a free-text destination name to a real catalog entry.
+
+    Tries the cheap DB substring match first (find_destination_slugs_by_name)
+    - the common case, no AI call needed. Only when that finds nothing, and
+    an ai_provider was given, falls back to asking the AI to match the raw
+    text against the real catalog (see DESTINATION_RESOLUTION_SYSTEM_PROMPT
+    for why this is safe: it can only pick a real slug from the actual
+    list, never invent one, and the result is re-verified against the
+    database below regardless). Callers that can't supply an ai_provider
+    (none currently) simply get the DB-only behavior."""
     slugs = find_destination_slugs_by_name([name])
-    return Destination.objects.filter(slug__in=slugs).first()
+    destination = Destination.objects.filter(slug__in=slugs).first()
+    if destination is not None or ai_provider is None:
+        return destination
+
+    catalog = "\n".join(
+        f"{d.slug}: {d.name}, {d.country}" for d in Destination.objects.all()
+    )
+    if not catalog:
+        return None
+
+    try:
+        with track_llm_call(
+            operation="resolve_destination_name", conversation_key=conversation_key
+        ):
+            response = ai_provider.generate_structured_reply(
+                [
+                    AIMessage(role="system", content=DESTINATION_RESOLUTION_SYSTEM_PROMPT),
+                    AIMessage(
+                        role="user",
+                        content=(
+                            f'The traveler wrote: "{name}"\n\n'
+                            f"Real destinations on file:\n{catalog}"
+                        ),
+                    ),
+                ],
+                json_schema=DESTINATION_RESOLUTION_SCHEMA,
+            )
+    except AIProviderError:
+        logger.warning(
+            "Destination-name AI resolution failed - treating as unresolved. name=%r", name
+        )
+        return None
+
+    resolved_slug = response.get("slug") if isinstance(response, dict) else None
+    if not isinstance(resolved_slug, str) or not resolved_slug:
+        return None
+    # Never trust the model's slug blindly (09_AI_ORCHESTRATION.md §9) - a
+    # hallucinated or malformed value just resolves to None here, same as
+    # if the AI had said null in the first place.
+    return Destination.objects.filter(slug=resolved_slug).first()
 
 
 def _history_messages(history: list[dict] | None) -> list[AIMessage]:
