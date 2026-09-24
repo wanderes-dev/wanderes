@@ -82,6 +82,26 @@ class FactRecommendation(models.Model):
         db_table = "fact_recommendations"
 
 
+class FactAcquisitionFunnel(models.Model):
+    id = models.CharField(max_length=32, primary_key=True)
+    conversation_key = models.CharField(max_length=255)
+    episode_number = models.IntegerField()
+    touch_type = models.CharField(max_length=10, null=True)
+    source = models.CharField(max_length=100, null=True)
+    medium = models.CharField(max_length=100, null=True)
+    campaign = models.CharField(max_length=100, null=True)
+    content = models.CharField(max_length=100, null=True)
+    term = models.CharField(max_length=100, null=True)
+    touched_at = models.DateTimeField()
+    reached_planning = models.BooleanField()
+    reached_recommendation = models.BooleanField()
+    reached_accommodation_click = models.BooleanField()
+
+    class Meta:
+        managed = False
+        db_table = "fact_acquisition_funnel"
+
+
 class FactAiRequest(models.Model):
     event_id = models.BigIntegerField(primary_key=True)
     event_type = models.CharField(max_length=40)

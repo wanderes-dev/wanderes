@@ -633,6 +633,113 @@ class RecommendationsStreamAnalyticsTests(TestCase):
         self.assertEqual(selected.metadata["destination_slug"], "bali-id")
 
 
+class AcquisitionSnapshotInFunnelEventsTests(TestCase):
+    """A traveler who arrived via a real campaign link should have that
+    attribution attached to travel_question_submitted/
+    recommendation_generated - see analytics/tests/test_acquisition.py for
+    the capture logic itself, and ai/tests/test_views.py's
+    AccommodationClickViewTests for the same check on accommodation
+    clicks."""
+
+    def setUp(self):
+        self.client.get(
+            "/",
+            {
+                "utm_source": "tiktok",
+                "utm_medium": "organic_social",
+                "utm_campaign": "warm_november",
+            },
+        )
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_travel_question_submitted_carries_the_acquisition_snapshot(self, mock_stream):
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter(["Hi!"])
+        )
+
+        self.client.post(reverse("ai:recommendations-api"), {"message": "somewhere warm"})
+
+        event = Event.objects.get(event_type="travel_question_submitted")
+        self.assertEqual(event.metadata["acquisition"]["first_touch"]["source"], "tiktok")
+        self.assertEqual(event.metadata["acquisition"]["latest_touch"]["source"], "tiktok")
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_recommendation_generated_carries_the_acquisition_snapshot(self, mock_stream):
+        destination = Destination.objects.create(
+            slug="lisbon-pt",
+            name="Lisbon",
+            country="Portugal",
+            latitude="38.72000",
+            longitude="-9.14000",
+            trip_type="city",
+            cost_of_living=3,
+            best_season="Mar-Oct",
+            worst_season="Dec-Feb",
+            short_description="A hilly coastal capital.",
+            points_of_interest=[],
+        )
+        scored = ScoredDestination(
+            destination=destination,
+            avg_high_c=24.0,
+            avg_low_c=16.0,
+            preference_fit=0.0,
+            budget_fit=0.0,
+            temperature_fit=0.0,
+            repetition_penalty=0.0,
+            score=0.0,
+        )
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[scored], reply_chunks=iter(["Try Lisbon!"])
+        )
+
+        self.client.post(reverse("ai:recommendations-api"), {"message": "somewhere warm"})
+
+        event = Event.objects.get(event_type="recommendation_generated")
+        self.assertEqual(event.metadata["acquisition"]["first_touch"]["campaign"], "warm_november")
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_no_acquisition_key_when_the_session_never_captured_one(self, mock_stream):
+        # A fresh client that never hit a real landing view first - the
+        # metadata simply omits "acquisition" rather than padding it with
+        # nulls.
+        fresh_client = self.client_class()
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter(["Hi!"])
+        )
+
+        fresh_client.post(reverse("ai:recommendations-api"), {"message": "somewhere warm"})
+
+        event = Event.objects.get(event_type="travel_question_submitted")
+        self.assertNotIn("acquisition", event.metadata)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_acquisition_source_never_reaches_the_recommendation_pipeline(self, mock_stream):
+        # recommendations.scoring's own ranking-independence boundary is
+        # only meaningful if nothing upstream ever passes it acquisition
+        # data in the first place - stream_travel_recommendation's own
+        # signature has no such parameter, so the strongest test of this
+        # is that the exact same call is made regardless of which
+        # acquisition channel the session came from.
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter(["Hi!"])
+        )
+        self.client.post(reverse("ai:recommendations-api"), {"message": "somewhere warm"})
+        tiktok_call_kwargs = mock_stream.call_args.kwargs
+
+        direct_client = self.client_class()
+        mock_stream.reset_mock()
+        direct_client.post(reverse("ai:recommendations-api"), {"message": "somewhere warm"})
+        direct_call_kwargs = mock_stream.call_args.kwargs
+
+        # session_key differs by construction (two different sessions) -
+        # everything that could actually influence scoring must not.
+        for key in ("history_override", "focus_destination_slug"):
+            self.assertEqual(tiktok_call_kwargs[key], direct_call_kwargs[key])
+        self.assertNotIn("acquisition", tiktok_call_kwargs)
+        self.assertNotIn("source", tiktok_call_kwargs)
+        self.assertNotIn("campaign", tiktok_call_kwargs)
+
+
 class SavedConversationStreamTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(email="traveler@example.com", password="testpass123")
@@ -896,6 +1003,14 @@ class AccommodationClickViewTests(TestCase):
         self.assertEqual(event.metadata["destination_trip_type"], "beach")
         self.assertEqual(event.metadata["destination_cost_of_living"], 1)
         self.assertNotIn("traveler_preferred_trip_types", event.metadata)
+
+    def test_records_the_acquisition_snapshot_when_the_session_has_one(self):
+        self.client.get("/", {"utm_source": "tiktok", "utm_campaign": "warm_november"})
+
+        self.client.post(reverse("ai:accommodation-click"), {"destination_slug": "bali-id"})
+
+        event = Event.objects.get(event_type="accommodation_outbound_click")
+        self.assertEqual(event.metadata["acquisition"]["first_touch"]["source"], "tiktok")
 
     def test_records_the_authenticated_users_traveler_profile_snapshot(self):
         from users.models import TravelerProfile

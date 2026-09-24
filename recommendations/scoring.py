@@ -56,6 +56,14 @@ CLIMATE_LOOKUP_TIME_BUDGET_SECONDS = 15.0
 # accommodation clicks earns no boost here, and one that converts poorly
 # earns no penalty. Keep it that way; wiring affiliate performance into
 # scoring is a monetization-philosophy call, not a technical one.
+#
+# Same boundary for acquisition data (analytics.acquisition,
+# fact_acquisition_funnel) - a traveler's marketing source, campaign, ad
+# spend, or channel-level CTR never reaches this module either. A TikTok
+# visitor and a direct visitor with identical stated preferences get
+# identical rankings; acquisition data exists purely to measure which
+# channels bring in real travel intent, never to shape what any one
+# traveler sees.
 
 
 @dataclass(frozen=True)
