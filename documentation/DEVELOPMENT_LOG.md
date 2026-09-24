@@ -2690,3 +2690,28 @@ No code changed - a data reload plus verification.
 **Verification**: 546/546 tests passing (2 new: `/chat/` absent from the sitemap, no `<priority>`/`<changefreq>` anywhere in it), `ruff check .` clean, no migrations. Live-checked the actual XML output: `<url><loc>https://www.wanderes.com/</loc></url>` and nothing else.
 
 **Files changed**: `core/views.py`, `core/tests/test_seo.py`.
+
+## 2026-09-24 — Same day: full technical SEO/indexability audit of production - found no code defects
+
+**Direct request, prompted by "even searching for wanderes.com doesn't reliably surface the site" despite Search Console already showing it indexed.** A thorough audit against real production, not the codebase alone - curl against `https://www.wanderes.com/` and all 4 domain variants, header/HTML inspection, a Googlebot-UA comparison, robots.txt/sitemap live checks - before touching anything, per the spec's own "report what you found, then implement only justified fixes" instruction.
+
+**Result: everything technical was already correct.** No code changes were made to the site itself - only test hardening, listed below.
+
+- **Homepage**: 200, `content-language: en`/`<html lang="en">`, exactly one of each - `<title>`, meta description, canonical link (`https://www.wanderes.com/`), `<h1>`, `og:title` - no duplicates, no conflicting metadata, no `X-Robots-Tag` header anywhere (confirmed by header dump and by grepping the codebase - nothing sets it). `<meta name="robots" content="index, follow">` present, not noindex. All real content (title, H1, body copy) is in the raw server-rendered HTML - zero JS dependency for indexable content.
+- **Domain normalization**: all 4 variants (`http`/`https` × apex/`www`) converge cleanly to `https://www.wanderes.com/` with 200 - `http://wanderes.com/` is a 2-hop chain (http→https apex, then apex→www, both handled outside Django per `core/middleware.py`'s own documented incident history), the other three are single-hop. No loops, no chain long enough to matter.
+- **robots.txt**: `Allow: /`, only genuinely private/staff/API/health paths disallowed, nothing blocking `/static/` (confirmed live - the homepage's own JS asset returns 200), correct `Sitemap:` line.
+- **Sitemap**: unchanged from yesterday - 200, valid XML, exactly the canonical homepage.
+- **Title/meta description**: already name the brand, the product category ("AI Travel Advisor"), and the core value prop (budget/climate/style matching with an explanation) - close to the spec's own suggested template, arguably more specific. Not keyword-stuffed. Left unchanged - the spec's own "do not make speculative changes when the current implementation is already correct" applied directly.
+- **OG/Twitter metadata**: complete and consistent - title/description match the meta description exactly (not a separate, conflicting copy), real image asset, no duplication.
+- **Structured data**: `Organization` + `WebApplication` JSON-LD, factually accurate, nothing fabricated. Considered adding `WebSite` schema (the spec explicitly allows it "if it accurately describes Wanderes") and decided against it - its real value is enabling Google's sitelinks search box via a `SearchAction`, which would need a real `?q=` search endpoint Wanderes doesn't have; a bare `WebSite` block with no `SearchAction` would be functionally redundant with `Organization` and add nothing - "do not add structured data merely for the sake of having structured data" applied directly.
+- **Accidental indexing**: already covered by the existing robots.txt/sitemap audit trail - nothing private is exposed to either.
+- **Search Console / cloaking**: grepped the whole codebase for any User-Agent-based branching - none exists. Live-verified by fetching the homepage with a real Googlebot UA string and diffing against a normal-browser fetch - byte-identical except the per-request CSRF token (expected, harmless).
+- **Performance/crawlability**: only 2 external `<script>` tags - the app's own `main.js` (`defer`) and the CJ Deep Link Automation script, both placed so neither blocks or is required for the homepage's real content to render or be indexed (the CJ script specifically loads last, after everything real).
+
+**Root-cause note on the actual complaint, not glossed over**: with every technical fundamental already correct, weak organic discoverability for a query like "wanderes.com" is very unlikely to be a crawlability/indexability problem at this point - it's far more consistent with a brand-new site simply not yet having accumulated the ranking signals (backlinks, traffic, engagement history) Google's algorithm weighs over time, independent of anything fixable in this codebase. Stated plainly rather than promising a ranking outcome, per the spec's own "do not promise ranking improvements."
+
+**What was added**: only test coverage codifying what the audit verified, not new behavior - `HomepageIndexabilityTests` (200, no noindex, no `X-Robots-Tag` header), `RobotsTxtTests.test_allows_the_public_homepage_and_static_assets`, and two new `StructuredDataTests` (JSON-LD blocks are syntactically valid JSON via `json.loads()`, not just substring matches; an explicit negative check that no fabricated-data field - `aggregateRating`/`review`/`priceRange`/`founder`/`address`/`sameAs`/`award` - ever appears).
+
+**Verification**: 552/552 tests passing (6 new), `ruff check .` clean, no migrations, no production code changed.
+
+**Files changed**: `core/tests/test_seo.py` only.
