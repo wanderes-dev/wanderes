@@ -2147,21 +2147,34 @@ class AccommodationRequestTests(TestCase):
         self.assertIn("Tokyo, Japan", prompt)
         self.assertIn("hasn't said how many people", prompt)
 
-    def test_unresolved_destination_gets_an_honest_reply_no_cards(self):
-        ai_provider = StubAIProvider(
-            structured_response=_intent(
-                is_accommodation_request=True, accommodation_place_name="Bruges"
-            ),
-            reply_text="Bruges is a lovely canal city - I can't pull up a live search for it.",
+    def test_unresolvable_destination_gets_an_honest_reply_no_cards(self):
+        # Not in the catalog, AND the AI itself isn't confident it's a
+        # real place either (here: simulated as unconfident, the one case
+        # that still needs the honest "can't search" fallback - see
+        # FreeformAccommodationRequestTests below for the real place case,
+        # which now gets an actual search link instead of this reply).
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(
+                    is_accommodation_request=True, accommodation_place_name="Narnia"
+                ),
+                "destination_resolution": {"slug": None},
+                "freeform_place_resolution": {
+                    "is_real_place": False,
+                    "name": None,
+                    "country": None,
+                },
+            },
+            reply_text="Narnia isn't a real place I can search accommodation for.",
         )
 
         result = get_travel_recommendation(
-            "hospedagens em Bruges", ai_provider=ai_provider, climate_provider=self.climate
+            "hospedagens em Narnia", ai_provider=ai_provider, climate_provider=self.climate
         )
 
         self.assertEqual(result.recommendations, [])
         prompt = ai_provider.stream_reply_calls[0][-1].content
-        self.assertIn("Bruges", prompt)
+        self.assertIn("Narnia", prompt)
         self.assertIn("isn't in our curated catalog", prompt)
 
     def test_ai_fallback_resolves_a_misspelled_destination_end_to_end(self):
@@ -2258,6 +2271,171 @@ class AccommodationRequestTests(TestCase):
 
         self.assertEqual(len(result.recommendations), 1)
         self.assertFalse(result.is_destination_detail)
+
+
+class FreeformAccommodationRequestTests(TestCase):
+    """Direct user report (2026-09-25): "me ajude a achar hospedagens em
+    wuhan" got a general-knowledge-only reply ("não consigo fazer uma
+    busca de hospedagem em tempo real") with no party-size question and
+    no search link - even though Wuhan is a real city, just not one of
+    Wanderes's curated, scored destinations. Root cause:
+    is_accommodation_request only ever offered a real "Search stays" link
+    through _resolve_destination's closed-catalog match; anything it
+    couldn't match fell straight to a "can't search" reply, even though a
+    live Booking.com search never needed catalog data at all (only a
+    name and country - see integrations/accommodations/booking_com.py).
+    _resolve_freeform_place now confirms a place is genuinely real before
+    offering a search for it, without pretending to have any curated data
+    (climate/description/points of interest) about it."""
+
+    def setUp(self):
+        self.climate = StubClimateProvider({})
+
+    def test_real_non_catalog_place_gets_a_freeform_result(self):
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(
+                    is_accommodation_request=True,
+                    accommodation_place_name="Wuhan",
+                    accommodation_party_size=3,
+                ),
+                "destination_resolution": {"slug": None},
+                "freeform_place_resolution": {
+                    "is_real_place": True,
+                    "name": "Wuhan",
+                    "country": "China",
+                },
+            },
+            reply_text="Wuhan has some great riverside areas to stay in.",
+        )
+
+        result = stream_travel_recommendation(
+            "me ajude a achar hospedagens em wuhan",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+        list(result.reply_chunks)
+
+        self.assertEqual(result.recommendations, [])
+        self.assertEqual(result.accommodation_freeform_name, "Wuhan")
+        self.assertEqual(result.accommodation_freeform_country, "China")
+        self.assertEqual(result.accommodation_party_size, 3)
+
+    def test_asks_for_party_size_before_resolving_a_freeform_reply(self):
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(
+                    is_accommodation_request=True,
+                    accommodation_place_name="Wuhan",
+                    accommodation_party_size=None,
+                ),
+                "destination_resolution": {"slug": None},
+                "freeform_place_resolution": {
+                    "is_real_place": True,
+                    "name": "Wuhan",
+                    "country": "China",
+                },
+            },
+            reply_text="Claro! Quantas pessoas vão viajar?",
+        )
+
+        result = stream_travel_recommendation(
+            "quero hospedagens em wuhan", ai_provider=ai_provider, climate_provider=self.climate
+        )
+        reply = "".join(result.reply_chunks)
+
+        self.assertEqual(result.recommendations, [])
+        self.assertIsNone(result.accommodation_freeform_name)
+        self.assertIsNone(result.accommodation_party_size)
+        self.assertEqual(reply, "Claro! Quantas pessoas vão viajar? ")
+
+    def test_party_size_question_names_the_resolved_place(self):
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(
+                    is_accommodation_request=True,
+                    accommodation_place_name="Wuhan",
+                    accommodation_party_size=None,
+                ),
+                "destination_resolution": {"slug": None},
+                "freeform_place_resolution": {
+                    "is_real_place": True,
+                    "name": "Wuhan",
+                    "country": "China",
+                },
+            },
+            reply_text="Claro! Quantas pessoas vão viajar?",
+        )
+
+        get_travel_recommendation(
+            "quero hospedagens em wuhan", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("Wuhan, China", prompt)
+        self.assertIn("hasn't said how many people", prompt)
+
+    def test_freeform_reply_prompt_never_claims_it_cant_search(self):
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(
+                    is_accommodation_request=True,
+                    accommodation_place_name="Wuhan",
+                    accommodation_party_size=2,
+                ),
+                "destination_resolution": {"slug": None},
+                "freeform_place_resolution": {
+                    "is_real_place": True,
+                    "name": "Wuhan",
+                    "country": "China",
+                },
+            },
+            reply_text="Wuhan has some great riverside areas to stay in.",
+        )
+
+        get_travel_recommendation(
+            "quero hospedagens em wuhan", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("a live accommodation search link IS being shown", prompt)
+        self.assertIn("don't say you can't help with a search", prompt)
+        self.assertIn("Never invent a specific hotel name, price, or rating", prompt)
+
+    def test_ai_failure_during_freeform_resolution_falls_back_to_honest_reply(self):
+        # _resolve_freeform_place must degrade the same way _resolve_destination
+        # does - a failed AI call is treated as "not a real place", not an
+        # unhandled exception reaching the traveler.
+        ai_provider = SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": _intent(
+                    is_accommodation_request=True,
+                    accommodation_place_name="Wuhan",
+                    accommodation_party_size=2,
+                ),
+                "destination_resolution": {"slug": None},
+            },
+            reply_text="I can't pull up a live search for it.",
+        )
+
+        original = ai_provider.generate_structured_reply
+
+        def _patched(messages, *, json_schema, max_tokens=None, temperature=None):
+            if json_schema["name"] == "freeform_place_resolution":
+                raise AIProviderError("boom")
+            return original(
+                messages, json_schema=json_schema, max_tokens=max_tokens, temperature=temperature
+            )
+
+        ai_provider.generate_structured_reply = _patched
+
+        result = stream_travel_recommendation(
+            "quero hospedagens em wuhan", ai_provider=ai_provider, climate_provider=self.climate
+        )
+        list(result.reply_chunks)
+
+        self.assertEqual(result.recommendations, [])
+        self.assertIsNone(result.accommodation_freeform_name)
 
 
 class PromptReinforcementTests(TestCase):

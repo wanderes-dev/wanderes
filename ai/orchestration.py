@@ -606,6 +606,43 @@ DESTINATION_RESOLUTION_SCHEMA = {
     },
 }
 
+# Separate from DESTINATION_RESOLUTION_* above on purpose - that one
+# matches against our closed catalog (only ever returns a real slug or
+# null); this one answers a different question entirely ("does this place
+# exist at all?") for the case _resolve_destination already gave up on.
+# A live accommodation search doesn't need catalog data - only a name and
+# country to hand Booking.com's own free-text search - so a place failing
+# the catalog match shouldn't also block a real search link.
+FREEFORM_PLACE_SYSTEM_PROMPT = (
+    "A traveler asked about accommodation in a place that isn't in our "
+    "curated destination catalog. Decide whether the place they named is "
+    "a genuine, real-world city, town, or region a traveler could "
+    "realistically book a stay in - not whether we have data on it, just "
+    "whether it exists. If so, return its name and country using their "
+    "standard English names (the way an English-language hotel search "
+    "would recognize them), correcting obvious typos or translating from "
+    "another language if needed. If you're not confident it's real, or "
+    "it's fictional, made up, or too vague to identify (e.g. a generic "
+    "word with no specific place attached), set is_real_place to false "
+    "and leave name/country null - never invent a place that doesn't "
+    "exist just to give an answer."
+)
+
+FREEFORM_PLACE_SCHEMA = {
+    "name": "freeform_place_resolution",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "is_real_place": {"type": "boolean"},
+            "name": {"type": ["string", "null"]},
+            "country": {"type": ["string", "null"]},
+        },
+        "required": ["is_real_place", "name", "country"],
+        "additionalProperties": False,
+    },
+}
+
 
 @dataclass(frozen=True)
 class OrchestrationResult:
@@ -630,6 +667,15 @@ class StreamingOrchestrationResult:
     # with the right group_adults instead of a destination-only search
     # that would silently default to Booking.com's own guess (2).
     accommodation_party_size: int | None = None
+    # Set only when is_accommodation_request named a place _resolve_destination
+    # couldn't match in the catalog, but _resolve_freeform_place confirmed is
+    # real - e.g. Wuhan, which Wanderes has no scored Destination row for but
+    # is still a real city Booking.com can search. ai/views.py builds a
+    # minimal card from these two strings directly (no ScoredDestination, no
+    # slug, no "Save this trip" - trips.Trip.destination is a hard FK to
+    # travel.Destination and a freeform place was never written there).
+    accommodation_freeform_name: str | None = None
+    accommodation_freeform_country: str | None = None
 
 
 def stream_travel_recommendation(
@@ -784,8 +830,8 @@ def stream_travel_recommendation(
             accommodation_destination = _resolve_destination(
                 accommodation_place_name, ai_provider=ai_provider, conversation_key=conv_key
             )
+            party_size = intent["accommodation_party_size"]
             if accommodation_destination is not None:
-                party_size = intent["accommodation_party_size"]
                 if party_size is None:
                     # Ask once, up front, before generating any "Search
                     # stays" link - Booking.com's own default (2 adults)
@@ -796,7 +842,9 @@ def stream_travel_recommendation(
                     # for the wrong number of people (2026-09-24, direct
                     # user report: asked for 3, got a link for 2).
                     party_size_messages = _build_accommodation_party_size_question_messages(
-                        message, accommodation_destination, history
+                        message,
+                        f"{accommodation_destination.name}, {accommodation_destination.country}",
+                        history,
                     )
                     party_size_reply = _stream_ai_reply(
                         party_size_messages,
@@ -817,6 +865,57 @@ def stream_travel_recommendation(
                     conversation_key=conv_key,
                     accommodation_focus=True,
                     accommodation_party_size=party_size,
+                )
+            # Not in our curated catalog - but a live accommodation search
+            # doesn't actually need catalog data (no scoring, no climate,
+            # no description), only a name Booking.com's own free-text
+            # search can resolve. Confirm it's a genuine place before
+            # offering a search for it (2026-09-25, direct user report:
+            # asked about Wuhan, a real city with no Destination row, and
+            # got a canned "can't search" reply instead of a real link).
+            freeform_place = _resolve_freeform_place(
+                accommodation_place_name, ai_provider=ai_provider, conversation_key=conv_key
+            )
+            if freeform_place is not None:
+                freeform_name, freeform_country = freeform_place
+                if party_size is None:
+                    freeform_label = (
+                        f"{freeform_name}, {freeform_country}"
+                        if freeform_country
+                        else freeform_name
+                    )
+                    party_size_messages = _build_accommodation_party_size_question_messages(
+                        message, freeform_label, history
+                    )
+                    party_size_reply = _stream_ai_reply(
+                        party_size_messages,
+                        message,
+                        ai_provider=ai_provider,
+                        remember=_remember,
+                        conversation_key=conv_key,
+                    )
+                    return StreamingOrchestrationResult([], party_size_reply)
+                freeform_messages = _build_freeform_accommodation_messages(
+                    message,
+                    freeform_name,
+                    freeform_country,
+                    party_size=party_size,
+                    profile=profile,
+                    history=history,
+                )
+                freeform_reply = _stream_ai_reply(
+                    freeform_messages,
+                    message,
+                    ai_provider=ai_provider,
+                    remember=_remember,
+                    conversation_key=conv_key,
+                )
+                return StreamingOrchestrationResult(
+                    [],
+                    freeform_reply,
+                    accommodation_party_size=party_size,
+                    accommodation_freeform_name=freeform_name,
+                    accommodation_freeform_country=freeform_country,
                 )
             unrecognized_accommodation_messages = (
                 _build_unrecognized_accommodation_destination_messages(
@@ -1632,6 +1731,53 @@ def _resolve_destination(
     # hallucinated or malformed value just resolves to None here, same as
     # if the AI had said null in the first place.
     return Destination.objects.filter(slug=resolved_slug).first()
+
+
+def _resolve_freeform_place(
+    name: str, *, ai_provider: AIProvider | None, conversation_key: str | None = None
+) -> tuple[str, str] | None:
+    """Confirm a place is real enough to hand to Booking.com's own
+    free-text search - not a catalog lookup, since a live accommodation
+    search doesn't need any of the curated data _resolve_destination
+    checks for (BookingComSearchLinkProvider.build_search_url only ever
+    needs a name and, optionally, a country string). Only called once
+    _resolve_destination has already found nothing in the catalog, so
+    this never shadows a real catalog match - and the two are asked
+    genuinely different questions (a closed-list lookup vs. "does this
+    exist at all"), not the same prompt reused.
+
+    Same "never trust structured output blindly" discipline as
+    _resolve_destination: a failed call or an unconfident/malformed
+    response just resolves to None, which the caller treats the same as
+    "not a real place" - falls back to the existing general-knowledge
+    reply with no search link offered, rather than guessing."""
+    if ai_provider is None:
+        return None
+    try:
+        with track_llm_call(
+            operation="resolve_freeform_place", conversation_key=conversation_key
+        ):
+            response = ai_provider.generate_structured_reply(
+                [
+                    AIMessage(role="system", content=FREEFORM_PLACE_SYSTEM_PROMPT),
+                    AIMessage(role="user", content=f'The traveler wrote: "{name}"'),
+                ],
+                json_schema=FREEFORM_PLACE_SCHEMA,
+            )
+    except AIProviderError:
+        logger.warning(
+            "Freeform place AI resolution failed - treating as unresolved. name=%r", name
+        )
+        return None
+
+    if not isinstance(response, dict) or not response.get("is_real_place"):
+        return None
+    resolved_name = response.get("name")
+    if not isinstance(resolved_name, str) or not resolved_name.strip():
+        return None
+    resolved_country = response.get("country")
+    resolved_country = resolved_country.strip() if isinstance(resolved_country, str) else ""
+    return resolved_name.strip(), resolved_country
 
 
 def _history_messages(history: list[dict] | None) -> list[AIMessage]:
@@ -2799,16 +2945,21 @@ def _build_unrecognized_accommodation_destination_messages(
 
 
 def _build_accommodation_party_size_question_messages(
-    message: str, destination: Destination, history: list[dict] | None = None
+    message: str, destination_label: str, history: list[dict] | None = None
 ) -> list[AIMessage]:
     """Built when is_accommodation_request resolves to a real destination
-    but no party size has been stated anywhere in the conversation yet -
-    asked once, up front, before any "Search stays" link is generated
-    (2026-09-24, direct user report: asked for 3 people, got a link built
-    for Booking.com's own default of 2, because the search omitted a
-    count entirely). The traveler's next reply, even a bare number, gets
-    picked up by accommodation_party_size checking history - see that
-    field's own prompt instructions."""
+    (catalog or freeform) but no party size has been stated anywhere in
+    the conversation yet - asked once, up front, before any "Search
+    stays" link is generated (2026-09-24, direct user report: asked for 3
+    people, got a link built for Booking.com's own default of 2, because
+    the search omitted a count entirely). The traveler's next reply, even
+    a bare number, gets picked up by accommodation_party_size checking
+    history - see that field's own prompt instructions.
+
+    Takes a plain "name, country" label rather than a Destination object
+    so the same builder covers a freeform (non-catalog) place too - this
+    question doesn't need any curated data, just something to name back
+    to the traveler."""
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
     messages.append(
@@ -2816,7 +2967,7 @@ def _build_accommodation_party_size_question_messages(
             role="user",
             content=(
                 f'The traveler just said: "{message}" - asking about places to stay '
-                f"in {destination.name}, {destination.country}, but hasn't said how "
+                f"in {destination_label}, but hasn't said how "
                 "many people it's for anywhere in this conversation. Ask them, "
                 "briefly and naturally, before suggesting anything specific - how "
                 "many people (adults, and any children) the stay needs to fit. Keep "
@@ -2824,6 +2975,60 @@ def _build_accommodation_party_size_question_messages(
                 "information you already gave them earlier in this conversation. "
                 "Reply in the same language the traveler has been using in this "
                 "conversation (check the history above, not just this message)."
+            ),
+        )
+    )
+    return messages
+
+
+def _build_freeform_accommodation_messages(
+    message: str,
+    place_name: str,
+    place_country: str,
+    *,
+    party_size: int | None,
+    profile: TravelerProfile | None,
+    history: list[dict] | None = None,
+) -> list[AIMessage]:
+    """Built when is_accommodation_request names a place _resolve_destination
+    can't match in the curated catalog, but _resolve_freeform_place
+    confirmed is real - e.g. Wuhan, which Wanderes has never scored or
+    written a description for, but is still a real city Booking.com can
+    search directly (2026-09-25, direct user report: asked about Wuhan,
+    got a canned "can't search" reply with no party-size question at all,
+    even though a live accommodation search never actually depended on
+    the curated catalog).
+
+    No description/points_of_interest/climate/entry-requirements
+    grounding here, unlike _build_destination_detail_messages - none of
+    that exists for a non-catalog place, and inventing it would break
+    "never invent travel data." ai/views.py attaches the real "Search
+    stays" link from place_name/place_country directly - the reply just
+    needs to know one is coming so it doesn't claim it can't help."""
+    party_note = f" for their group of {party_size}" if party_size else ""
+    location_label = f"{place_name}, {place_country}" if place_country else place_name
+    traveler_note = _traveler_context_note(profile)
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler just said: "{message}" - asking about places to '
+                f"stay in {location_label}{party_note}. This isn't one of our "
+                "curated destinations, so there's no researched description or "
+                "climate data on file for it - but it's a real place, so a live "
+                "accommodation search link IS being shown to them separately "
+                "right after your reply (don't say you can't help with a "
+                "search, and don't paste a URL yourself - just don't dwell on "
+                "the lack of one). Using your own general travel knowledge, say "
+                "something genuinely useful about staying there - good "
+                "areas/neighborhoods, what to expect - the way a knowledgeable "
+                "consultant would. Never invent a specific hotel name, price, "
+                "or rating. Do not mention saving this as a trip. Reply in the "
+                "same language the traveler has been using in this "
+                "conversation (check the history above, not just this "
+                f"message).{traveler_note}"
             ),
         )
     )

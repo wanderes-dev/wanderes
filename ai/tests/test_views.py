@@ -467,6 +467,83 @@ class RecommendationsStreamViewTests(TestCase):
         self.assertNotIn("accommodation_search_url", parsed[0])
 
 
+class FreeformAccommodationCardTests(TestCase):
+    """Direct user report (2026-09-25): asked for accommodation in Wuhan,
+    a real city with no curated Destination row, and got a general-
+    knowledge-only reply with no search link and no party-size question
+    at all. ai.orchestration's is_accommodation_request branch now falls
+    back to _resolve_freeform_place when the catalog has nothing, and
+    StreamingOrchestrationResult carries the confirmed name/country here
+    instead of a ScoredDestination - these tests cover the card this view
+    builds directly from those two strings (no slug, since no Destination
+    row exists for a freeform place)."""
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_freeform_place_gets_a_real_search_url(self, mock_stream):
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[],
+            reply_chunks=iter(["Wuhan has some great riverside areas to stay in."]),
+            accommodation_party_size=3,
+            accommodation_freeform_name="Wuhan",
+            accommodation_freeform_country="China",
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "hospedagens em wuhan pra 3 pessoas"}
+        )
+
+        content = b"".join(response.streaming_content).decode()
+        _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
+        parsed = json.loads(json_part)
+        self.assertEqual(len(parsed), 1)
+        card = parsed[0]
+        self.assertEqual(card["name"], "Wuhan")
+        self.assertEqual(card["country"], "China")
+        self.assertTrue(card["detail_shown"])
+        self.assertTrue(card["freeform"])
+        accommodation_url = card["accommodation_search_url"]
+        self.assertIn("https://www.booking.com/searchresults.en-gb.html?", accommodation_url)
+        self.assertIn("ss=Wuhan%2C+China", accommodation_url)
+        self.assertIn("group_adults=3", accommodation_url)
+        # No slug - trips.Trip.destination is a hard FK to travel.Destination
+        # and a freeform place was never written to that table.
+        self.assertNotIn("slug", card)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_freeform_place_with_no_country_still_gets_a_search_url(self, mock_stream):
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[],
+            reply_chunks=iter(["Here's what to expect."]),
+            accommodation_party_size=2,
+            accommodation_freeform_name="Wuhan",
+            accommodation_freeform_country="",
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "hospedagens em wuhan"}
+        )
+
+        content = b"".join(response.streaming_content).decode()
+        _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
+        parsed = json.loads(json_part)
+        self.assertIn("ss=Wuhan", parsed[0]["accommodation_search_url"])
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_no_freeform_name_means_no_recommendations_footer(self, mock_stream):
+        # The party-size question itself (freeform name/country not
+        # resolved yet on that turn) must not emit an empty/bogus card.
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter(["Quantas pessoas vão viajar?"])
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "hospedagens em wuhan"}
+        )
+
+        content = b"".join(response.streaming_content).decode()
+        self.assertNotIn(RECOMMENDATIONS_DELIMITER, content)
+
+
 class RecommendationsStreamAnalyticsTests(TestCase):
     @patch("ai.views.stream_travel_recommendation")
     def test_any_message_records_travel_question_submitted(self, mock_stream):

@@ -297,6 +297,30 @@ def recommendations_stream(request):
                 for r in result.recommendations[:MAX_RECOMMENDATIONS]
             ]
             yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)
+        elif result.accommodation_freeform_name:
+            # A real place _resolve_destination couldn't match in the
+            # curated catalog (e.g. Wuhan) but ai.orchestration's
+            # _resolve_freeform_place confirmed exists - no
+            # ScoredDestination to build a normal card from, just a name
+            # and country to hand Booking.com's own free-text search.
+            # freeform=True tells the card template to skip "Save this
+            # trip" (trips.Trip.destination is a hard FK to
+            # travel.Destination; this place was never written there).
+            accommodation_provider = get_accommodation_search_link_provider()
+            payload = [
+                {
+                    "name": result.accommodation_freeform_name,
+                    "country": result.accommodation_freeform_country or "",
+                    "detail_shown": True,
+                    "freeform": True,
+                    "accommodation_search_url": accommodation_provider.build_search_url(
+                        destination=result.accommodation_freeform_name,
+                        country=result.accommodation_freeform_country or "",
+                        adults=result.accommodation_party_size,
+                    ),
+                }
+            ]
+            yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)
 
         if user is not None:
             # A degraded reply (provider unreachable, or failed
