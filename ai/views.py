@@ -104,7 +104,9 @@ def _parse_conversation_id(raw: str | None) -> int | None:
     return None
 
 
-def _recommendation_card_data(scored_destination, *, detail_shown=False):
+def _recommendation_card_data(
+    scored_destination, *, detail_shown=False, accommodation_party_size=None
+):
     """Shape one ScoredDestination into what the chat page's recommendation
     cards need. `05_AI_DESIGN.md` §7's "never invent travel data" applies
     to the frontend too - only real fields already computed by
@@ -120,7 +122,12 @@ def _recommendation_card_data(scored_destination, *, detail_shown=False):
     immediately. The accommodation search link is only offered here too -
     matches the one destination CJ's Deep Link Automation was validated
     against in production, and avoids cluttering the browse-stage,
-    multiple-destinations-at-once cards."""
+    multiple-destinations-at-once cards.
+
+    `accommodation_party_size` comes from ai.orchestration's
+    is_accommodation_request branch, which only ever reaches this point
+    once a party size is actually known (it asks for one first when it
+    isn't) - never guessed here."""
     destination = scored_destination.destination
     fit_reasons = []
     if scored_destination.preference_fit > 0:
@@ -141,13 +148,15 @@ def _recommendation_card_data(scored_destination, *, detail_shown=False):
         "detail_shown": detail_shown,
     }
     if detail_shown:
-        # No dates/party size known at this point in the live chat flow -
-        # the provider degrades to a destination-only search rather than
-        # inventing any of that (integrations.accommodations.base's own
-        # docstring covers this).
+        # No dates known at this point in the live chat flow - the
+        # provider degrades to those being absent rather than inventing
+        # them (integrations.accommodations.base's own docstring covers
+        # this). Party size is passed through when actually known.
         accommodation_provider = get_accommodation_search_link_provider()
         data["accommodation_search_url"] = accommodation_provider.build_search_url(
-            destination=destination.name, country=destination.country
+            destination=destination.name,
+            country=destination.country,
+            adults=accommodation_party_size,
         )
     return data
 
@@ -263,7 +272,11 @@ def recommendations_stream(request):
             # kept so a future caller that doesn't pre-cap can't flood the
             # UI with cards.
             payload = [
-                _recommendation_card_data(r, detail_shown=result.is_destination_detail)
+                _recommendation_card_data(
+                    r,
+                    detail_shown=result.is_destination_detail,
+                    accommodation_party_size=result.accommodation_party_size,
+                )
                 for r in result.recommendations[:MAX_RECOMMENDATIONS]
             ]
             yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)

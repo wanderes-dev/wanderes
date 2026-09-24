@@ -160,6 +160,7 @@ def _intent(
     activity_place_name=None,
     is_accommodation_request=False,
     accommodation_place_name=None,
+    accommodation_party_size=None,
 ):
     return {
         "message_type": message_type,
@@ -187,6 +188,7 @@ def _intent(
         "activity_place_name": activity_place_name,
         "is_accommodation_request": is_accommodation_request,
         "accommodation_place_name": accommodation_place_name,
+        "accommodation_party_size": accommodation_party_size,
     }
 
 
@@ -1914,7 +1916,9 @@ class AccommodationRequestTests(TestCase):
     def test_resolves_to_the_named_destination_not_a_new_search(self):
         ai_provider = StubAIProvider(
             structured_response=_intent(
-                is_accommodation_request=True, accommodation_place_name="Tokyo"
+                is_accommodation_request=True,
+                accommodation_place_name="Tokyo",
+                accommodation_party_size=2,
             ),
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
@@ -1940,6 +1944,7 @@ class AccommodationRequestTests(TestCase):
                 country="Japan",
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
+                accommodation_party_size=2,
             ),
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
@@ -1956,7 +1961,9 @@ class AccommodationRequestTests(TestCase):
     def test_prompt_reflects_the_real_message_not_a_fake_button_click(self):
         ai_provider = StubAIProvider(
             structured_response=_intent(
-                is_accommodation_request=True, accommodation_place_name="Tokyo"
+                is_accommodation_request=True,
+                accommodation_place_name="Tokyo",
+                accommodation_party_size=2,
             ),
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
@@ -1971,6 +1978,90 @@ class AccommodationRequestTests(TestCase):
         self.assertIn("asked about places to stay in Tokyo", prompt)
         self.assertNotIn('they clicked "Choose this trip"', prompt)
         self.assertIn("never a specific hotel name, price, or availability claim", prompt)
+
+    def test_known_party_size_reaches_the_result_for_the_link_builder(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_accommodation_request=True,
+                accommodation_place_name="Tokyo",
+                accommodation_party_size=3,
+            ),
+            reply_text="Here's what's good to know about staying in Tokyo.",
+        )
+
+        result = stream_travel_recommendation(
+            "somos 3 pessoas, quero hospedagens em Toquio",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+        list(result.reply_chunks)
+
+        self.assertEqual(result.accommodation_party_size, 3)
+
+    def test_party_size_mentioned_in_the_prompt_when_known(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_accommodation_request=True,
+                accommodation_place_name="Tokyo",
+                accommodation_party_size=3,
+            ),
+            reply_text="Here's what's good to know about staying in Tokyo.",
+        )
+
+        get_travel_recommendation(
+            "somos 3 pessoas, quero hospedagens em Toquio",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("for their group of 3", prompt)
+
+    def test_unknown_party_size_asks_before_suggesting_anything(self):
+        # Direct user report (2026-09-24): the AI should always ask how
+        # many people a stay is for before suggesting - and critically,
+        # before building any "Search stays" link at all (which would
+        # otherwise silently default to Booking.com's own guess).
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_accommodation_request=True,
+                accommodation_place_name="Tokyo",
+                accommodation_party_size=None,
+            ),
+            reply_text="Claro! Quantas pessoas vão viajar?",
+        )
+
+        result = stream_travel_recommendation(
+            "quero hospedagens em Toquio",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+        reply = "".join(result.reply_chunks)
+
+        self.assertEqual(result.recommendations, [])
+        self.assertFalse(result.is_destination_detail)
+        self.assertIsNone(result.accommodation_party_size)
+        self.assertEqual(reply, "Claro! Quantas pessoas vão viajar? ")
+
+    def test_party_size_question_prompt_names_the_resolved_destination(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                is_accommodation_request=True,
+                accommodation_place_name="Tokyo",
+                accommodation_party_size=None,
+            ),
+            reply_text="Claro! Quantas pessoas vão viajar?",
+        )
+
+        get_travel_recommendation(
+            "quero hospedagens em Toquio",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertIn("Tokyo, Japan", prompt)
+        self.assertIn("hasn't said how many people", prompt)
 
     def test_unresolved_destination_gets_an_honest_reply_no_cards(self):
         ai_provider = StubAIProvider(
@@ -1988,6 +2079,19 @@ class AccommodationRequestTests(TestCase):
         prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertIn("Bruges", prompt)
         self.assertIn("isn't in our curated catalog", prompt)
+
+    def test_extraction_prompt_requires_the_english_catalog_name(self):
+        # Regression guard for the actual root cause of the Xangai/Toquio
+        # bug (2026-09-24): accommodation_place_name shipped without the
+        # same "always give the standard English name" instruction the
+        # country field already had, so a Portuguese city name never
+        # matched the English-canonical catalog at all - not a typo, a
+        # missing instruction. This asserts the fix is actually in the
+        # prompt sent to the model, not just something that happened to
+        # work once against a stub.
+        from ai.orchestration import INTENT_EXTRACTION_SYSTEM_PROMPT
+
+        self.assertIn("'Xangai' -> 'Shanghai'", INTENT_EXTRACTION_SYSTEM_PROMPT)
 
     def test_no_place_identified_falls_through_to_normal_handling(self):
         ai_provider = StubAIProvider(

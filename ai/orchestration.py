@@ -397,21 +397,38 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "hospedagens em Tóquio', 'me sugira hotéis em Lisboa', 'where should "
     "I stay in Rome?', 'any hotel recommendations for Bali?', or (after "
     "already discussing Tokyo) simply 'só quero hospedagens'/'just show "
-    "me places to stay'. False when the traveler is instead asking for "
-    "NEW destination suggestions, even ones filtered by budget, climate, "
-    "or trip type - that's the normal recommendation flow, not this: "
-    "e.g. 'accommodations for a warm beach trip' with no specific place "
-    "named or previously established is false, since there's no single "
-    "place yet to search stays for. Also false when only a whole "
-    "country/region was named or established, with no single specific "
-    "city/destination - a country has many possible places to stay, so "
-    "this only fires for one specific destination.\n"
+    "me places to stay'. Also true when the traveler is simply replying "
+    "with a number of people, continuing an accommodation conversation "
+    "you already started - e.g. you asked how many people the stay is "
+    "for and they replied '3' or 'somos 3 pessoas'. False when the "
+    "traveler is instead asking for NEW destination suggestions, even "
+    "ones filtered by budget, climate, or trip type - that's the normal "
+    "recommendation flow, not this: e.g. 'accommodations for a warm "
+    "beach trip' with no specific place named or previously established "
+    "is false, since there's no single place yet to search stays for. "
+    "Also false when only a whole country/region was named or "
+    "established, with no single specific city/destination - a country "
+    "has many possible places to stay, so this only fires for one "
+    "specific destination.\n"
     "accommodation_place_name: the specific place being asked about, as "
     "written in this message if named there, otherwise the most "
     "recently discussed specific place from the conversation above "
-    "(your prior reply or the traveler's). Null if is_accommodation_"
+    "(your prior reply or the traveler's). Always give its standard "
+    "English name (e.g. 'Xangai' -> 'Shanghai', 'Toquio' -> 'Tokyo'), "
+    "regardless of what language the traveler used - same reason as the "
+    "country field above, this is matched against a destination catalog "
+    "that stores every place name in English, and any other language's "
+    "spelling would silently match nothing. Null if is_accommodation_"
     "request is false, or if it's true but no specific place can be "
-    "identified either way."
+    "identified either way.\n"
+    "accommodation_party_size: the total number of travelers the stay "
+    "is for, if stated anywhere in this conversation - in this message, "
+    "or an earlier one (check the history above). Count everyone "
+    "traveling together, including the traveler themselves (e.g. 'eu, "
+    "minha esposa e filha' -> 3, 'my wife and I' -> 2, 'a family of "
+    "four' -> 4, 'somos 3 pessoas' -> 3, or simply replying '3' to your "
+    "own earlier question about how many people). Null if never stated "
+    "anywhere in the conversation - never guess a number."
 )
 
 INTENT_SCHEMA = {
@@ -454,6 +471,7 @@ INTENT_SCHEMA = {
             "activity_place_name": {"type": ["string", "null"]},
             "is_accommodation_request": {"type": "boolean"},
             "accommodation_place_name": {"type": ["string", "null"]},
+            "accommodation_party_size": {"type": ["integer", "null"]},
         },
         "required": [
             "message_type",
@@ -481,6 +499,7 @@ INTENT_SCHEMA = {
             "activity_place_name",
             "is_accommodation_request",
             "accommodation_place_name",
+            "accommodation_party_size",
         ],
         "additionalProperties": False,
     },
@@ -569,6 +588,11 @@ class StreamingOrchestrationResult:
     # can enrich its analytics event without knowing anything about intent
     # extraction. None on every other branch (nothing to report).
     recommendation_constraints: dict | None = None
+    # Set only when is_accommodation_request resolved a real destination
+    # AND a party size - lets ai/views.py build the "Search stays" link
+    # with the right group_adults instead of a destination-only search
+    # that would silently default to Booking.com's own guess (2).
+    accommodation_party_size: int | None = None
 
 
 def stream_travel_recommendation(
@@ -722,6 +746,27 @@ def stream_travel_recommendation(
         if accommodation_place_name:
             accommodation_destination = _resolve_destination(accommodation_place_name)
             if accommodation_destination is not None:
+                party_size = intent["accommodation_party_size"]
+                if party_size is None:
+                    # Ask once, up front, before generating any "Search
+                    # stays" link - Booking.com's own default (2 adults)
+                    # when a search omits a count at all doesn't match
+                    # whatever the traveler actually stated elsewhere in
+                    # the conversation, so silently degrading to a
+                    # destination-only link here would produce a link
+                    # for the wrong number of people (2026-09-24, direct
+                    # user report: asked for 3, got a link for 2).
+                    party_size_messages = _build_accommodation_party_size_question_messages(
+                        message, accommodation_destination, history
+                    )
+                    party_size_reply = _stream_ai_reply(
+                        party_size_messages,
+                        message,
+                        ai_provider=ai_provider,
+                        remember=_remember,
+                        conversation_key=conv_key,
+                    )
+                    return StreamingOrchestrationResult([], party_size_reply)
                 return _handle_focus_destination(
                     message,
                     accommodation_destination,
@@ -732,6 +777,7 @@ def stream_travel_recommendation(
                     remember=_remember,
                     conversation_key=conv_key,
                     accommodation_focus=True,
+                    accommodation_party_size=party_size,
                 )
             unrecognized_accommodation_messages = (
                 _build_unrecognized_accommodation_destination_messages(
@@ -1039,6 +1085,7 @@ def _handle_focus_destination(
     remember,
     conversation_key: str | None = None,
     accommodation_focus: bool = False,
+    accommodation_party_size: int | None = None,
 ) -> StreamingOrchestrationResult:
     """The "choose this trip" detail path: the traveler already picked one
     destination from a browse-stage card, so there's nothing left to
@@ -1054,7 +1101,11 @@ def _handle_focus_destination(
     attaches to a detail_shown card. Threaded through so the prompt can
     say what actually happened instead of falsely claiming a button
     click, and nudge the reply toward what's useful for choosing where
-    to stay."""
+    to stay. `accommodation_party_size` only ever accompanies
+    accommodation_focus - the caller only reaches this function with a
+    known party size (it asks first when one isn't known yet) - and gets
+    carried on the result so ai/views.py can build a link with the right
+    group_adults instead of a destination-only search."""
     climate_provider = climate_provider or get_climate_provider()
     try:
         summary = climate_provider.get_monthly_climate(
@@ -1083,6 +1134,7 @@ def _handle_focus_destination(
         profile=profile,
         history=history,
         accommodation_focus=accommodation_focus,
+        accommodation_party_size=accommodation_party_size,
     )
     reply = _stream_ai_reply(
         messages,
@@ -1091,7 +1143,12 @@ def _handle_focus_destination(
         remember=remember,
         conversation_key=conversation_key,
     )
-    return StreamingOrchestrationResult([scored], reply, is_destination_detail=True)
+    return StreamingOrchestrationResult(
+        [scored],
+        reply,
+        is_destination_detail=True,
+        accommodation_party_size=accommodation_party_size,
+    )
 
 
 def _build_destination_detail_messages(
@@ -1102,6 +1159,7 @@ def _build_destination_detail_messages(
     profile: TravelerProfile | None,
     history: list[dict] | None,
     accommodation_focus: bool = False,
+    accommodation_party_size: int | None = None,
 ) -> list[AIMessage]:
     poi = ", ".join(destination.points_of_interest) if destination.points_of_interest else ""
     climate_line = f"\n- Current typical avg high: {avg_high_c}C" if avg_high_c is not None else ""
@@ -1110,9 +1168,14 @@ def _build_destination_detail_messages(
     video_note = _video_availability_note([destination])
 
     if accommodation_focus:
+        party_note = (
+            f" for their group of {accommodation_party_size}"
+            if accommodation_party_size
+            else ""
+        )
         context_line = (
             f"The traveler asked about places to stay in {destination.name}, "
-            f"{destination.country}. "
+            f"{destination.country}{party_note}. "
         )
         message_line = f'Their message was: "{message}"\n\n'
         conversation_note = (
@@ -1806,6 +1869,10 @@ def _validate_intent(data: dict) -> dict:
         accommodation_place_name
         if isinstance(accommodation_place_name, str) and accommodation_place_name.strip()
         else None
+    )
+    party_size = data.get("accommodation_party_size")
+    data["accommodation_party_size"] = (
+        party_size if isinstance(party_size, int) and party_size > 0 else None
     )
 
     return data
@@ -2616,6 +2683,38 @@ def _build_unrecognized_accommodation_destination_messages(
                 "traveler has been using in this conversation (check the history above, "
                 "not just this message) - this applies just as much to English as to any "
                 "other language."
+            ),
+        )
+    )
+    return messages
+
+
+def _build_accommodation_party_size_question_messages(
+    message: str, destination: Destination, history: list[dict] | None = None
+) -> list[AIMessage]:
+    """Built when is_accommodation_request resolves to a real destination
+    but no party size has been stated anywhere in the conversation yet -
+    asked once, up front, before any "Search stays" link is generated
+    (2026-09-24, direct user report: asked for 3 people, got a link built
+    for Booking.com's own default of 2, because the search omitted a
+    count entirely). The traveler's next reply, even a bare number, gets
+    picked up by accommodation_party_size checking history - see that
+    field's own prompt instructions."""
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler just said: "{message}" - asking about places to stay '
+                f"in {destination.name}, {destination.country}, but hasn't said how "
+                "many people it's for anywhere in this conversation. Ask them, "
+                "briefly and naturally, before suggesting anything specific - how "
+                "many people (adults, and any children) the stay needs to fit. Keep "
+                "it short and conversational, not a formal form, and don't repeat "
+                "information you already gave them earlier in this conversation. "
+                "Reply in the same language the traveler has been using in this "
+                "conversation (check the history above, not just this message)."
             ),
         )
     )

@@ -373,6 +373,55 @@ class RecommendationsStreamViewTests(TestCase):
         accommodation_url = parsed[0]["accommodation_search_url"]
         self.assertIn("https://www.booking.com/searchresults.en-gb.html?", accommodation_url)
         self.assertIn("ss=Bali%2C+Indonesia", accommodation_url)
+        # No party size known on this path (a plain "Choose this trip"
+        # click, not an accommodation request) - never guessed.
+        self.assertNotIn("group_adults", accommodation_url)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_accommodation_search_url_reflects_a_known_party_size(self, mock_stream):
+        # Direct user report (2026-09-24): asked for 3 people, got a link
+        # built for Booking.com's own default of 2, because the search
+        # omitted a count entirely. accommodation_party_size threads
+        # through from ai.orchestration's is_accommodation_request branch.
+        destination = Destination.objects.create(
+            slug="bali-id",
+            name="Bali",
+            country="Indonesia",
+            latitude="-8.34000",
+            longitude="115.09000",
+            trip_type="beach",
+            cost_of_living=1,
+            best_season="Apr-Oct",
+            worst_season="Dec-Mar",
+            short_description="A tropical island.",
+            points_of_interest=[],
+        )
+        scored = ScoredDestination(
+            destination=destination,
+            avg_high_c=None,
+            avg_low_c=None,
+            preference_fit=0,
+            budget_fit=0,
+            temperature_fit=0,
+            repetition_penalty=0,
+            score=0,
+        )
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[scored],
+            reply_chunks=iter(["Here's more about Bali."]),
+            is_destination_detail=True,
+            accommodation_party_size=3,
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"),
+            {"message": "hospedagens em Bali para 3 pessoas"},
+        )
+
+        content = b"".join(response.streaming_content).decode()
+        _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
+        parsed = json.loads(json_part)
+        self.assertIn("group_adults=3", parsed[0]["accommodation_search_url"])
 
     @patch("ai.views.stream_travel_recommendation")
     def test_browse_stage_cards_have_no_accommodation_search_url(self, mock_stream):
