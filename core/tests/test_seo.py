@@ -1,3 +1,5 @@
+import re
+
 from django.test import TestCase, override_settings
 
 from users.models import User
@@ -44,6 +46,47 @@ class SitemapXmlTests(TestCase):
         self.assertNotIn("/trips/", content)
         self.assertNotIn("/users/account/", content)
         self.assertNotIn("/users/profile/", content)
+
+    def test_never_lists_internal_or_non_content_routes(self):
+        # _SITEMAP_ENTRIES is a hand-curated allowlist, not a dump of
+        # every urlpattern - this locks that in as a regression guard,
+        # not just a design intent in a comment. Covers each category
+        # the sitemap must never expose: auth flows, staff-only tools,
+        # API/health endpoints, and logout.
+        response = self.client.get("/sitemap.xml")
+
+        content = response.content.decode()
+        for path in [
+            "/users/login/",
+            "/users/register/",
+            "/users/logout/",
+            "/admin/",
+            "/analytics/",
+            "/travel/",
+            "/api/",
+            "/health/",
+        ]:
+            self.assertNotIn(path, content)
+
+    def test_never_leaks_a_non_production_domain(self):
+        # Every <loc> must be built from SITE_DOMAIN alone - never the
+        # host that actually served the request (a Render-assigned
+        # hostname, a non-www apex, or a local/dev host), which
+        # SiteDomainOverrideTests below already proves structurally.
+        # This is the direct, literal regression guard: whatever domain
+        # served this test request, it must never show up in the body.
+        response = self.client.get("/sitemap.xml", HTTP_HOST="testserver")
+
+        content = response.content.decode()
+        self.assertNotIn("testserver", content)
+        self.assertNotIn("onrender.com", content)
+        # Not a bare "http://" ban - the XML namespace URI itself is
+        # legitimately http:// per the sitemaps.org protocol spec, unrelated
+        # to page URLs. Checking every <loc> specifically instead.
+        locations = re.findall(r"<loc>(.*?)</loc>", content)
+        self.assertTrue(locations)
+        for location in locations:
+            self.assertTrue(location.startswith("https://www.wanderes.com"))
 
 
 class CanonicalUrlTests(TestCase):
