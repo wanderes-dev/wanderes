@@ -37,7 +37,6 @@ class SitemapXmlTests(TestCase):
         self.assertEqual(response["Content-Type"], "application/xml")
         content = response.content.decode()
         self.assertIn("<loc>https://www.wanderes.com/</loc>", content)
-        self.assertIn("<loc>https://www.wanderes.com/chat/</loc>", content)
 
     def test_never_lists_login_gated_pages(self):
         response = self.client.get("/sitemap.xml")
@@ -67,6 +66,27 @@ class SitemapXmlTests(TestCase):
             "/health/",
         ]:
             self.assertNotIn(path, content)
+
+    def test_chat_is_not_listed(self):
+        # /chat/ is publicly accessible and indexable (see
+        # RobotsMetaTagTests below - still index,follow), but it's an
+        # interactive product route the traveler is sent into, not an
+        # organic search landing page - deliberately excluded from the
+        # sitemap itself (2026-09-24, direct instruction), independent
+        # of whether it's otherwise crawlable.
+        response = self.client.get("/sitemap.xml")
+
+        self.assertNotIn("/chat/", response.content.decode())
+
+    def test_entries_have_no_priority_or_changefreq(self):
+        # Neither was backed by a real signal (an actual change cadence,
+        # a deliberate ranking-priority decision) - just a plausible-
+        # looking guess (2026-09-24, direct instruction to remove them).
+        response = self.client.get("/sitemap.xml")
+
+        content = response.content.decode()
+        self.assertNotIn("<priority>", content)
+        self.assertNotIn("<changefreq>", content)
 
     def test_never_leaks_a_non_production_domain(self):
         # Every <loc> must be built from SITE_DOMAIN alone - never the

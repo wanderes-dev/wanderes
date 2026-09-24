@@ -14,17 +14,19 @@ from travel.models import Destination
 
 logger = logging.getLogger(__name__)
 
-# Genuinely public, content-bearing pages worth telling search engines
-# about - feeds sitemap.xml. Everything else needs a login (account/
-# profile/trips - zero real SEO value there, a crawler would just hit the
-# login redirect), is an API endpoint, or is /admin/, so none of those
-# belong here. register/login are left out too: thin, duplicate-ish forms
-# with no unique content to rank on - robots.txt doesn't disallow them, so
-# a crawler that finds them via the nav can still index them, they just
-# aren't listed explicitly.
+# Genuinely public, content-bearing, organic-landing pages worth telling
+# search engines about - feeds sitemap.xml. /chat/ is deliberately NOT
+# here despite being publicly accessible - it's an interactive product
+# route the traveler is sent into, not a page meant to rank for its own
+# search query (2026-09-24, direct instruction). Everything else needs a
+# login (account/profile/trips - zero real SEO value there, a crawler
+# would just hit the login redirect), is an API endpoint, or is /admin/,
+# so none of those belong here either. register/login are left out too:
+# thin, duplicate-ish forms with no unique content to rank on -
+# robots.txt doesn't disallow them, so a crawler that finds them via the
+# nav can still index them, they just aren't listed explicitly.
 _SITEMAP_ENTRIES = [
-    {"url_name": "core:landing", "changefreq": "weekly", "priority": "1.0"},
-    {"url_name": "ai:chat", "changefreq": "weekly", "priority": "0.9"},
+    {"url_name": "core:landing"},
 ]
 
 
@@ -150,16 +152,21 @@ def robots_txt(request):
 
 def sitemap_xml(request):
     """A hand-written sitemap rather than django.contrib.sitemaps - with
-    only two genuinely public pages right now, the framework's extra
+    only one genuinely public page right now, the framework's extra
     moving parts (django.contrib.sites, per-model Sitemap classes) aren't
     worth it, and its default URL generation reads the domain off the
     incoming request/Site object - exactly the duplicate-hostname problem
     SITE_DOMAIN exists to avoid. Revisit once the app has real
-    per-destination pages worth listing individually."""
+    per-destination pages worth listing individually.
+
+    No <changefreq>/<priority> per entry (2026-09-24, direct instruction)
+    - neither was backed by a real signal (an actual change cadence, a
+    deliberate ranking-priority decision), just a plausible-looking
+    guess, and Google has long since said it mostly ignores both anyway.
+    No <lastmod> either - there's no real modification-time source for
+    these pages to report honestly."""
     urls = "".join(
-        f"<url><loc>https://{settings.SITE_DOMAIN}{reverse(entry['url_name'])}</loc>"
-        f"<changefreq>{entry['changefreq']}</changefreq>"
-        f"<priority>{entry['priority']}</priority></url>"
+        f"<url><loc>https://{settings.SITE_DOMAIN}{reverse(entry['url_name'])}</loc></url>"
         for entry in _SITEMAP_ENTRIES
     )
     xml = (

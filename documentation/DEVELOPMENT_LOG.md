@@ -2680,3 +2680,13 @@ No code changed - a data reload plus verification.
 **Verification**: 544/544 tests passing (2 new), `ruff check .` clean, no code/migration changes to the sitemap/robots.txt implementation itself.
 
 **Files changed**: `core/tests/test_seo.py`. No production code changed.
+
+## 2026-09-24 — Same day: /chat/ removed from the sitemap, priority/changefreq dropped
+
+**Direct instruction, narrow and explicit**: drop `/chat/` from `_SITEMAP_ENTRIES` (it's an interactive product route the traveler is sent into, not an organic search landing page - a distinction worth preserving even though it's still publicly indexable and crawlable via internal links) and drop `<priority>`/`<changefreq>` from every entry (neither was backed by a real signal - not an actual change cadence, not a deliberate ranking-priority decision, just a plausible-looking guess from the 2026-09-18 SEO pass). Sitemap now lists exactly one URL: `https://www.wanderes.com/`.
+
+**Deliberately did not touch**: `/chat/`'s own `index, follow` meta robots tag or its canonical link - those are the page's own indexability/canonicalization, unrelated to whether it's manually listed in the sitemap (a page can be legitimately crawlable/indexable without needing a sitemap entry - the sitemap is a discovery hint, not the only path in). `robots.txt` also untouched - it never disallowed `/chat/` and still doesn't.
+
+**Verification**: 546/546 tests passing (2 new: `/chat/` absent from the sitemap, no `<priority>`/`<changefreq>` anywhere in it), `ruff check .` clean, no migrations. Live-checked the actual XML output: `<url><loc>https://www.wanderes.com/</loc></url>` and nothing else.
+
+**Files changed**: `core/views.py`, `core/tests/test_seo.py`.
