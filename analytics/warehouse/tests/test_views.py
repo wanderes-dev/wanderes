@@ -17,6 +17,7 @@ from django.utils import timezone
 from analytics.models import Event
 from analytics.warehouse.models import (
     DimDestination,
+    FactAcquisitionFunnel,
     FactAiRequest,
     FactConversation,
     FactFeedback,
@@ -343,3 +344,91 @@ class FactAiRequestsTests(TestCase):
 
         event_types = set(FactAiRequest.objects.values_list("event_type", flat=True))
         self.assertEqual(event_types, {"llm_request_completed"})
+
+
+class FactAcquisitionFunnelTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email="traveler@example.com", password="x")
+        self.key = f"chat-history:user:{self.user.pk}"
+        self.base = timezone.now() - datetime.timedelta(hours=1)
+
+    def test_reached_flags_reflect_real_downstream_events_in_the_same_episode(self):
+        _event_at(
+            "acquisition_captured",
+            offset_minutes=0,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={
+                "touch_type": "first",
+                "source": "tiktok",
+                "medium": "organic_social",
+                "campaign": "warm_november",
+                "content": "video1",
+                "term": None,
+            },
+        )
+        _event_at(
+            "travel_question_submitted",
+            offset_minutes=1,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+        )
+        _event_at(
+            "recommendation_generated",
+            offset_minutes=2,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"destination_slugs": []},
+        )
+
+        row = FactAcquisitionFunnel.objects.get(conversation_key=self.key)
+        self.assertEqual(row.touch_type, "first")
+        self.assertEqual(row.source, "tiktok")
+        self.assertEqual(row.campaign, "warm_november")
+        self.assertTrue(row.reached_planning)
+        self.assertTrue(row.reached_recommendation)
+        self.assertFalse(row.reached_accommodation_click)
+
+    def test_a_touch_with_no_downstream_activity_has_every_flag_false(self):
+        _event_at(
+            "acquisition_captured",
+            offset_minutes=0,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"touch_type": "first", "source": "direct", "medium": "direct"},
+        )
+
+        row = FactAcquisitionFunnel.objects.get(conversation_key=self.key)
+        self.assertFalse(row.reached_planning)
+        self.assertFalse(row.reached_recommendation)
+        self.assertFalse(row.reached_accommodation_click)
+
+    def test_first_and_latest_touch_in_the_same_episode_are_separate_rows(self):
+        _event_at(
+            "acquisition_captured",
+            offset_minutes=0,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"touch_type": "first", "source": "tiktok", "medium": "organic_social"},
+        )
+        _event_at(
+            "acquisition_captured",
+            offset_minutes=5,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"touch_type": "latest", "source": "google", "medium": "organic_search"},
+        )
+
+        rows = {
+            row.touch_type: row
+            for row in FactAcquisitionFunnel.objects.filter(conversation_key=self.key)
+        }
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows["first"].source, "tiktok")
+        self.assertEqual(rows["latest"].source, "google")

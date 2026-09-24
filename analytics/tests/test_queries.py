@@ -10,6 +10,8 @@ from django.utils import timezone
 from analytics.models import Event
 from analytics.queries import (
     accommodation_click_through_rate_by_destination,
+    acquisition_by_traveler_preference,
+    acquisition_funnel,
     top_clicked_destinations,
     top_destinations_by_traveler_trip_type,
 )
@@ -171,3 +173,151 @@ class TopDestinationsByTravelerTripTypeTests(TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["metadata__destination_slug"], "bali-id")
         self.assertEqual(results[0]["clicks"], 1)
+
+
+class AcquisitionFunnelTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email="traveler@example.com", password="x")
+        self.key = f"chat-history:user:{self.user.pk}"
+        self.base = timezone.now() - datetime.timedelta(hours=1)
+
+    def test_groups_by_source_medium_campaign_content_with_correct_counts(self):
+        _event_at(
+            "acquisition_captured",
+            offset_minutes=0,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={
+                "touch_type": "first",
+                "source": "tiktok",
+                "medium": "organic_social",
+                "campaign": "warm_november",
+                "content": "video1",
+                "term": None,
+            },
+        )
+        _event_at(
+            "travel_question_submitted",
+            offset_minutes=1,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+        )
+        _event_at(
+            "recommendation_generated",
+            offset_minutes=2,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"destination_slugs": []},
+        )
+
+        today = timezone.now().date()
+        rows = list(
+            acquisition_funnel(start_date=today - datetime.timedelta(days=1), end_date=today)
+        )
+
+        row = next(r for r in rows if r["source"] == "tiktok")
+        self.assertEqual(row["medium"], "organic_social")
+        self.assertEqual(row["campaign"], "warm_november")
+        self.assertEqual(row["sessions"], 1)
+        self.assertEqual(row["planning_starts"], 1)
+        self.assertEqual(row["recommendations"], 1)
+        self.assertEqual(row["accommodation_clicks"], 0)
+
+    def test_touch_type_filters_first_vs_latest(self):
+        _event_at(
+            "acquisition_captured",
+            offset_minutes=0,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"touch_type": "first", "source": "tiktok", "medium": "organic_social"},
+        )
+        _event_at(
+            "acquisition_captured",
+            offset_minutes=5,
+            base=self.base,
+            user=self.user,
+            conversation_key=self.key,
+            metadata={"touch_type": "latest", "source": "google", "medium": "organic_search"},
+        )
+
+        today = timezone.now().date()
+        first_rows = list(
+            acquisition_funnel(
+                start_date=today - datetime.timedelta(days=1), end_date=today, touch_type="first"
+            )
+        )
+        latest_rows = list(
+            acquisition_funnel(
+                start_date=today - datetime.timedelta(days=1), end_date=today, touch_type="latest"
+            )
+        )
+
+        self.assertEqual([r["source"] for r in first_rows], ["tiktok"])
+        self.assertEqual([r["source"] for r in latest_rows], ["google"])
+
+
+class AcquisitionByTravelerPreferenceTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email="traveler@example.com", password="x")
+
+    def test_filters_by_cost_of_living_and_groups_by_source(self):
+        Event.objects.create(
+            event_type="accommodation_outbound_click",
+            user=self.user,
+            metadata={
+                "traveler_preferred_cost_of_living": 2,
+                "acquisition": {
+                    "first_touch": {"source": "tiktok", "campaign": "budget_trips", "content": None}
+                },
+            },
+        )
+        Event.objects.create(
+            event_type="accommodation_outbound_click",
+            user=self.user,
+            metadata={"traveler_preferred_cost_of_living": 5},
+        )
+
+        today = timezone.now().date()
+        results = list(
+            acquisition_by_traveler_preference(
+                start_date=today - datetime.timedelta(days=1),
+                end_date=today,
+                cost_of_living=2,
+            )
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["metadata__acquisition__first_touch__source"], "tiktok")
+        self.assertEqual(results[0]["clicks"], 1)
+
+    def test_filters_by_trip_type(self):
+        Event.objects.create(
+            event_type="accommodation_outbound_click",
+            user=self.user,
+            metadata={
+                "traveler_preferred_trip_types": ["beach"],
+                "acquisition": {"first_touch": {"source": "instagram"}},
+            },
+        )
+
+        today = timezone.now().date()
+        results = list(
+            acquisition_by_traveler_preference(
+                start_date=today - datetime.timedelta(days=1),
+                end_date=today,
+                trip_type="beach",
+            )
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["metadata__acquisition__first_touch__source"], "instagram")
+
+    def test_requires_at_least_one_dimension(self):
+        today = timezone.now().date()
+
+        with self.assertRaises(ValueError):
+            list(acquisition_by_traveler_preference(start_date=today, end_date=today))

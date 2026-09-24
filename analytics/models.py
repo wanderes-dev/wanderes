@@ -19,6 +19,12 @@ from django.db import models
 # out too: no separate results page for the former, no reject/dismiss UI
 # action for the latter, so "rejection" would be a derived metric, not a
 # raw event (see documentation/16_ANALYTICS_ARCHITECTURE.md).
+#
+# acquisition_captured fires from analytics.acquisition.capture_acquisition()
+# - once per session for the first-touch channel that brought a visitor
+# here, and again only when a genuinely new UTM-bearing visit updates the
+# latest touch. Never fires on a plain page refresh or internal
+# navigation - see that module's own docstring.
 EVENT_TYPE_CHOICES = [
     ("user_registered", "User registered"),
     ("profile_completed", "Traveler profile completed"),
@@ -32,6 +38,7 @@ EVENT_TYPE_CHOICES = [
     ("llm_request_completed", "LLM request completed"),
     ("provider_request_completed", "External provider request completed"),
     ("accommodation_outbound_click", "Accommodation search link clicked"),
+    ("acquisition_captured", "Acquisition touch captured"),
 ]
 
 # System telemetry about the AI/provider layers, not user behavior - no
@@ -174,6 +181,7 @@ class DailyProductMetrics(models.Model):
 from .warehouse.models import (  # noqa: E402, F401
     DimDestination,
     DimUser,
+    FactAcquisitionFunnel,
     FactAiRequest,
     FactConversation,
     FactFeedback,

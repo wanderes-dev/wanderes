@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils.translation import check_for_language
 from django.views.i18n import set_language as django_set_language
 
+from analytics.acquisition import capture_acquisition
 from travel.models import Destination
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,10 @@ def landing(request):
     §7's "never invent travel data" principle applies to marketing
     surfaces too, not just AI replies.
     """
+    # The bare domain root is where every campaign convention in
+    # documentation/16_ANALYTICS_ARCHITECTURE.md points - the one place
+    # this genuinely needs to run.
+    capture_acquisition(request)
     featured_destinations = Destination.objects.order_by("id")[:3]
     # A single example destination for the "see it in action" preview -
     # reuses the same .chat-bubble/.recommendation-card markup as the

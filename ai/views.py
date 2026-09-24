@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404, render
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
+from analytics.acquisition import capture_acquisition, get_acquisition_snapshot
 from analytics.services import record_event
 from integrations.accommodations import get_accommodation_search_link_provider
 from travel.models import Destination
@@ -78,6 +79,10 @@ def _chat_i18n_json() -> str:
 
 
 def chat_page(request):
+    # A traveler can land directly on /chat/ from a shared link or an ad,
+    # not just via the homepage - the other real "someone could arrive
+    # here from a campaign" surface, see core.views.landing for the other.
+    capture_acquisition(request)
     return render(
         request,
         "ai/chat.html",
@@ -183,13 +188,22 @@ def recommendations_stream(request):
         request.session.save()
     conversation_key = memory.conversation_key(user=user, session_key=request.session.session_key)
     locale = request.LANGUAGE_CODE
+    # A frozen snapshot, not a live pointer into the session - this
+    # event's acquisition attribution must never change retroactively if
+    # the same visitor's session later picks up a different latest_touch.
+    # None when this session never went through capture_acquisition() at
+    # all (e.g. a conversation resumed long after the session's own data
+    # expired) - omitted below rather than padded with nulls.
+    acquisition = get_acquisition_snapshot(request)
 
     # Any chat interaction counts here, regardless of what it turns out to
     # be - recommendation, feedback, future intent, or off-topic.
+    travel_question_metadata = {"acquisition": acquisition} if acquisition else None
     record_event(
         "travel_question_submitted",
         user=user,
         request=request,
+        metadata=travel_question_metadata,
         conversation_key=conversation_key,
         locale=locale,
     )
@@ -244,17 +258,20 @@ def recommendations_stream(request):
                 locale=locale,
             )
         else:
+            recommendation_metadata = {
+                "result_count": len(result.recommendations),
+                "destination_slugs": [
+                    r.destination.slug for r in result.recommendations[:MAX_RECOMMENDATIONS]
+                ],
+                "constraints": result.recommendation_constraints,
+            }
+            if acquisition:
+                recommendation_metadata["acquisition"] = acquisition
             record_event(
                 "recommendation_generated",
                 user=user,
                 request=request,
-                metadata={
-                    "result_count": len(result.recommendations),
-                    "destination_slugs": [
-                        r.destination.slug for r in result.recommendations[:MAX_RECOMMENDATIONS]
-                    ],
-                    "constraints": result.recommendation_constraints,
-                },
+                metadata=recommendation_metadata,
                 conversation_key=conversation_key,
                 locale=locale,
             )
@@ -350,6 +367,10 @@ def accommodation_click(request):
         if profile is not None:
             metadata["traveler_preferred_trip_types"] = profile.preferred_trip_types
             metadata["traveler_preferred_cost_of_living"] = profile.preferred_cost_of_living
+
+    acquisition = get_acquisition_snapshot(request)
+    if acquisition:
+        metadata["acquisition"] = acquisition
 
     record_event(
         "accommodation_outbound_click",

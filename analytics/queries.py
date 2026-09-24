@@ -16,7 +16,7 @@ from datetime import date
 from django.db.models import Count, Q
 
 from .models import Event
-from .warehouse.models import FactRecommendation
+from .warehouse.models import FactAcquisitionFunnel, FactRecommendation
 
 
 def top_clicked_destinations(*, start_date: date, end_date: date, limit: int = 10):
@@ -53,6 +53,76 @@ def accommodation_click_through_rate_by_destination(
         )
         .filter(impressions__gte=min_impressions)
         .order_by("-clicks")
+    )
+
+
+def acquisition_funnel(*, start_date: date, end_date: date, touch_type: str = "first"):
+    """Acquisition performance by source/medium/campaign/content - the raw
+    counts behind planning-start rate, recommendation rate, and
+    accommodation-intent rate (divide these yourself with whatever
+    denominator the question actually calls for - e.g. planning_starts /
+    sessions). touch_type="first" (the default) answers "which channel
+    originally brought these visitors here"; "latest" answers "which
+    channel most recently reminded them to come back" - see
+    fact_acquisition_funnel's own grain note for why almost every episode
+    only ever has a "first" row.
+
+    Deliberately "accommodation_clicks", never "conversions" or
+    "bookings" - reached_accommodation_click only means the traveler
+    clicked outbound to Booking.com, never that a booking happened."""
+    return (
+        FactAcquisitionFunnel.objects.filter(
+            touch_type=touch_type,
+            touched_at__date__gte=start_date,
+            touched_at__date__lte=end_date,
+        )
+        .values("source", "medium", "campaign", "content")
+        .annotate(
+            sessions=Count("id"),
+            planning_starts=Count("id", filter=Q(reached_planning=True)),
+            recommendations=Count("id", filter=Q(reached_recommendation=True)),
+            accommodation_clicks=Count("id", filter=Q(reached_accommodation_click=True)),
+        )
+        .order_by("-sessions")
+    )
+
+
+def acquisition_by_traveler_preference(
+    *,
+    start_date: date,
+    end_date: date,
+    trip_type: str | None = None,
+    cost_of_living: int | None = None,
+    limit: int = 10,
+):
+    """Accommodation-click acquisition breakdown segmented by a real
+    traveler-preference dimension already captured on the click event's
+    own frozen snapshot - never a live TravelerProfile join, never an
+    inferred demographic trait. Answers "which channel/campaign/content
+    attracts travelers with this preference" (e.g. cost_of_living=2 for
+    "which source attracts budget travelers", trip_type="beach" for
+    "which content attracts beach travelers"). Pass either or both."""
+    if trip_type is None and cost_of_living is None:
+        raise ValueError("Pass trip_type and/or cost_of_living.")
+
+    events = Event.objects.filter(
+        event_type="accommodation_outbound_click",
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date,
+    )
+    if trip_type is not None:
+        events = events.filter(metadata__traveler_preferred_trip_types__contains=[trip_type])
+    if cost_of_living is not None:
+        events = events.filter(metadata__traveler_preferred_cost_of_living=cost_of_living)
+
+    return (
+        events.values(
+            "metadata__acquisition__first_touch__source",
+            "metadata__acquisition__first_touch__campaign",
+            "metadata__acquisition__first_touch__content",
+        )
+        .annotate(clicks=Count("id"))
+        .order_by("-clicks")[:limit]
     )
 
 
