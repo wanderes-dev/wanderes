@@ -1,8 +1,36 @@
+import json
 import re
 
 from django.test import TestCase, override_settings
 
 from users.models import User
+
+
+class HomepageIndexabilityTests(TestCase):
+    """2026-09-24 technical SEO/indexability audit - these codify what the
+    audit verified live in production, as a regression guard, not because
+    anything was actually broken (see DEVELOPMENT_LOG.md for the full
+    audit: every one of these was already correct before this pass)."""
+
+    def test_returns_200(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_no_noindex_directive(self):
+        response = self.client.get("/")
+
+        self.assertNotIn("noindex", response.content.decode())
+
+    def test_no_x_robots_tag_header(self):
+        # Nothing in this codebase sets this header anywhere - confirmed
+        # by inspection, not just assumed. An HTTP-level noindex here
+        # would override the in-page meta robots tag entirely, and
+        # neither Django nor any middleware in MIDDLEWARE has a reason
+        # to set it for a public page.
+        response = self.client.get("/")
+
+        self.assertNotIn("X-Robots-Tag", response.headers)
 
 
 class RobotsTxtTests(TestCase):
@@ -27,6 +55,17 @@ class RobotsTxtTests(TestCase):
         response = self.client.get("/robots.txt")
 
         self.assertIn("Sitemap: https://www.wanderes.com/sitemap.xml", response.content.decode())
+
+    def test_allows_the_public_homepage_and_static_assets(self):
+        response = self.client.get("/robots.txt")
+
+        content = response.content.decode()
+        self.assertIn("Allow: /", content)
+        # The blanket "Allow: /" plus no Disallow rule matching /static/
+        # is what actually permits crawling the CSS/JS/images the
+        # homepage needs to render - this is the direct, literal check
+        # for that rather than just trusting the Allow: / line covers it.
+        self.assertNotIn("Disallow: /static/", content)
 
 
 class SitemapXmlTests(TestCase):
@@ -163,6 +202,34 @@ class StructuredDataTests(TestCase):
         self.assertContains(response, '"applicationCategory": "TravelApplication"')
         self.assertContains(response, '"operatingSystem": "Web"')
         self.assertContains(response, '"url": "https://www.wanderes.com/"')
+
+    def test_json_ld_blocks_are_syntactically_valid(self):
+        response = self.client.get("/")
+        content = response.content.decode()
+
+        blocks = re.findall(
+            r'<script type="application/ld\+json">(.*?)</script>', content, re.DOTALL
+        )
+        self.assertEqual(len(blocks), 2)
+        for block in blocks:
+            json.loads(block)  # raises if malformed - the actual assertion
+
+    def test_never_fabricates_ratings_reviews_or_other_unverifiable_facts(self):
+        # 2026-09-24 audit's explicit constraint: structured data must
+        # never claim something Wanderes can't actually back up.
+        response = self.client.get("/")
+        content = response.content.decode()
+
+        for fabricated_field in [
+            "aggregateRating",
+            "review",
+            "priceRange",
+            "founder",
+            "address",
+            "sameAs",
+            "award",
+        ]:
+            self.assertNotIn(fabricated_field, content)
 
 
 class SocialPreviewImageTests(TestCase):
