@@ -1,5 +1,6 @@
 from django.db.models import Q
 
+from .geography_aliases import canonicalize_country_name
 from .models import CountryEntryRequirement, Destination
 
 # Must accompany CountryEntryRequirement data wherever it's shown or
@@ -47,14 +48,22 @@ def resolve_country_name(place_name: str) -> str | None:
 
 
 def is_known_country(country_name: str) -> bool:
-    """Whether country_name (case-insensitive) is an actual value stored in
-    Destination.country somewhere in the catalog - a real single country we
-    have data for, as opposed to a multi-country region or colloquial term
-    ("Scandinavia", "the Balkans") that got captured as if it were one
-    country. Deliberately just a real-data membership check, not a curated
-    synonym list, so it generalizes to any such term without being taught
-    each one by hand."""
-    return Destination.objects.filter(country__iexact=country_name.strip()).exists()
+    """Whether country_name (case-insensitive, alias-canonicalized) is an
+    actual value stored in Destination.country somewhere in the catalog -
+    a real single country we have data for, as opposed to a multi-country
+    region or colloquial term ("Scandinavia", "the Balkans") that got
+    captured as if it were one country.
+
+    Runs the input through canonicalize_country_name() first - "United
+    States" (a perfectly reasonable English name the AI itself produces)
+    never matched this catalog's own stored value ("USA") until a real,
+    reported case forced this (2026-09-25 evaluation baseline). Still not
+    a fuzzy/general-purpose synonym system - only the explicit aliases in
+    travel.geography_aliases resolve; anything else is still judged as a
+    plain real-data membership check, same as before."""
+    return Destination.objects.filter(
+        country__iexact=canonicalize_country_name(country_name).strip()
+    ).exists()
 
 
 def find_destination_slugs_by_name(place_names: list[str]) -> frozenset:
@@ -65,6 +74,15 @@ def find_destination_slugs_by_name(place_names: list[str]) -> frozenset:
     Case-insensitive substring match against name/country - good enough
     for the current dataset size; a much bigger catalog would need
     something more precise.
+
+    Each term is run through canonicalize_country_name() before
+    matching - a country-level exclusion given in Portuguese ("excluir a
+    Tailândia") never matched this catalog's English "Thailand" before
+    (2026-09-25 evaluation baseline: is_accommodation_request wasn't
+    involved at all here, this is plain exclusion resolution). Harmless
+    for an actual city name (e.g. "Bali") - canonicalize_country_name()
+    only ever rewrites a recognized country alias, and passes anything
+    else through unchanged.
     """
     if not place_names:
         return frozenset()
@@ -72,7 +90,7 @@ def find_destination_slugs_by_name(place_names: list[str]) -> frozenset:
     query = Q()
     has_terms = False
     for term in place_names:
-        term = term.strip()
+        term = canonicalize_country_name(term)
         if not term:
             continue
         query |= Q(name__icontains=term) | Q(country__icontains=term)

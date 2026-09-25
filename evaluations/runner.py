@@ -13,6 +13,21 @@ scenario by whether the caller asked for deterministic-only mode:
   real AIProvider, so intent extraction, branching, scoring, and
   explanation generation all run exactly as they do for a live
   traveler. Costs real AI calls (see evaluations.cost).
+
+Both modes default to evaluations.weather_fixtures.FixtureWeatherProvider,
+never the live integrations.climate provider (Cycle 1.5, 2026-09-25):
+"is Wanderes' recommendation logic correct" and "is Open-Meteo up right
+now" are different questions, and answering them with the same live
+network call is exactly what let Cycle 1's own comparison run get
+contaminated by an exhausted third-party rate limit. A scenario whose
+required (destination, month) isn't in the fixture raises
+MissingWeatherFixtureError, which this module catches and tags as
+is_infrastructure_failure - excluded from the quality pass/fail
+denominator entirely (evaluations.persistence), never miscounted as a
+SCORING/HARD_CONSTRAINT/etc failure. The one place that's still
+supposed to touch the real network is
+`python manage.py check_external_integrations --weather` - a live
+health check, never run by pytest/CI or by this module's default path.
 """
 
 from __future__ import annotations
@@ -23,7 +38,6 @@ from dataclasses import dataclass, field, replace
 
 from ai.orchestration import stream_travel_recommendation
 from ai.provider import AIProvider, AIProviderError, get_ai_provider
-from integrations.climate import get_climate_provider
 from recommendations.scoring import ScoredDestination
 
 from .cost import CostTracker
@@ -39,6 +53,7 @@ from .profiles import synthetic_traveler
 from .requests import build_request
 from .scenarios import Scenario
 from .trace import RecommendationTrace, trace_recommendations
+from .weather_fixtures import FixtureWeatherProvider, MissingWeatherFixtureError
 
 
 # The real pipeline's own branch priority (ai.orchestration.stream_travel_recommendation,
@@ -116,13 +131,27 @@ class ScenarioResult:
     trace: RecommendationTrace | None = None
     error: str | None = None
     latency_ms: float = 0.0
+    # Cycle 1.5: set only for a MissingWeatherFixtureError (or, in
+    # --live-weather mode, a real ClimateProviderError) - a third
+    # party's/fixture's own availability, never a recommendation-quality
+    # signal. evaluable=False excludes this scenario from the quality
+    # pass/fail denominator entirely (see evaluations.persistence),
+    # rather than counting it as a product failure or silently as a pass.
+    is_infrastructure_failure: bool = False
+    infrastructure_failure_reason: str | None = None
 
     @property
     def scored_slugs(self) -> list[str]:
         return [s.destination.slug for s in self.scored]
 
     @property
+    def evaluable(self) -> bool:
+        return not self.is_infrastructure_failure
+
+    @property
     def passed(self) -> bool:
+        if self.is_infrastructure_failure:
+            return False
         if self.error is not None:
             return False
         if not self.flow_matched:
@@ -136,6 +165,8 @@ class ScenarioResult:
         return True
 
     def failed_check_names(self) -> list[str]:
+        if self.is_infrastructure_failure:
+            return ["dependency_failure"]
         names = []
         if self.error is not None:
             names.append("error")
@@ -156,6 +187,9 @@ class ScenarioResult:
             "category": self.scenario.category,
             "mode": self.mode,
             "passed": self.passed,
+            "evaluable": self.evaluable,
+            "is_infrastructure_failure": self.is_infrastructure_failure,
+            "infrastructure_failure_reason": self.infrastructure_failure_reason,
             "flow_matched": self.flow_matched,
             "expected_flow": self.scenario.expected_flow,
             "reply": self.reply,
@@ -187,31 +221,53 @@ def _run_deterministic(scenario: Scenario, *, climate_provider) -> ScenarioResul
         # scenario testing either one needs the same throwaway synthetic
         # traveler the full-pipeline path uses, even though this path
         # never touches the AI at all.
-        with synthetic_traveler(scenario.id, scenario.profile_overrides) as user:
-            request = build_request(scenario.deterministic_request, user=user)
-            scored, trace = trace_recommendations(request, climate_provider=climate_provider)
-            invariants = run_scenario_invariants(scenario, scored)
-            # Re-runs scoring once more with the identical request - cheap
-            # in practice since integrations.climate caches (7-day TTL),
-            # so this second pass is normally a cache hit, not a second
-            # round of network calls. Skipped when the first pass hit its
-            # own time budget: recommendations.scoring's
-            # CLIMATE_LOOKUP_TIME_BUDGET_SECONDS is a real wall-clock
-            # race by design (a deliberate production safety valve, not a
-            # hidden-randomness bug) - a second, freshly-timed pass can
-            # legitimately reach further into an unordered, only
-            # partially-cached candidate queryset than the first one did,
-            # which would flag this check red for a reason that has
-            # nothing to do with whether ranking itself is deterministic.
-            # Confirmed empirically: every scenario that failed this
-            # check in the first real run was one that had also hit the
-            # time budget.
-            if not trace.time_budget_exceeded:
-                invariants.append(
-                    check_ranking_deterministic_for_identical_input(
-                        request, climate_provider=climate_provider
+        try:
+            with synthetic_traveler(scenario.id, scenario.profile_overrides) as user:
+                request = build_request(scenario.deterministic_request, user=user)
+                scored, trace = trace_recommendations(request, climate_provider=climate_provider)
+                invariants = run_scenario_invariants(scenario, scored)
+                # Re-runs scoring once more with the identical request -
+                # cheap in practice since integrations.climate caches
+                # (7-day TTL), so this second pass is normally a cache
+                # hit, not a second round of network calls. Skipped when
+                # the first pass hit its own time budget:
+                # recommendations.scoring's
+                # CLIMATE_LOOKUP_TIME_BUDGET_SECONDS is a real wall-clock
+                # race by design (a deliberate production safety valve,
+                # not a hidden-randomness bug) - a second, freshly-timed
+                # pass can legitimately reach further into an unordered,
+                # only partially-cached candidate queryset than the
+                # first one did, which would flag this check red for a
+                # reason that has nothing to do with whether ranking
+                # itself is deterministic. Confirmed empirically: every
+                # scenario that failed this check in the first real run
+                # was one that had also hit the time budget.
+                #
+                # Deliberately still inside the `with` block: `user` is
+                # only a live, saved row while synthetic_traveler's
+                # context is open (its `finally` sets `user.pk = None`
+                # via .delete() on exit) - a scenario whose first pass
+                # has zero DB-level candidates never calls the climate
+                # provider at all, so it can reach this recheck without
+                # ever going through the except clause below, and a
+                # second scoring pass querying Trip/TravelHistoryEntry
+                # by an already-deleted user instance raises a Django
+                # ORM error, not a real determinism finding.
+                if not trace.time_budget_exceeded:
+                    invariants.append(
+                        check_ranking_deterministic_for_identical_input(
+                            request, climate_provider=climate_provider
+                        )
                     )
-                )
+        except MissingWeatherFixtureError as exc:
+            return ScenarioResult(
+                scenario=scenario,
+                mode="deterministic",
+                flow_matched=True,
+                reply="",
+                is_infrastructure_failure=True,
+                infrastructure_failure_reason=str(exc),
+            )
     return ScenarioResult(
         scenario=scenario,
         mode="deterministic",
@@ -245,6 +301,17 @@ def _run_full_pipeline(
                 intent_sink=intent_sink,
             )
             reply = "".join(result.reply_chunks)
+        except MissingWeatherFixtureError as exc:
+            latency_ms = (time.perf_counter() - started_at) * 1000
+            return ScenarioResult(
+                scenario=scenario,
+                mode="full",
+                flow_matched=True,
+                reply="",
+                latency_ms=latency_ms,
+                is_infrastructure_failure=True,
+                infrastructure_failure_reason=str(exc),
+            )
         except AIProviderError as exc:
             latency_ms = (time.perf_counter() - started_at) * 1000
             return ScenarioResult(
@@ -313,7 +380,12 @@ def run_scenarios(
     ai_provider: AIProvider | None = None,
     climate_provider=None,
 ) -> tuple[list[ScenarioResult], CostTracker]:
-    climate_provider = climate_provider or get_climate_provider()
+    # Defaults to the deterministic weather fixture, never the live
+    # integrations.climate provider - see this module's own docstring
+    # and evaluations.weather_fixtures. A caller wanting the real
+    # network (only check_external_integrations should) passes
+    # climate_provider explicitly.
+    climate_provider = climate_provider or FixtureWeatherProvider()
     # AIProvider implementations (e.g. OpenAIProvider) don't expose the
     # configured model name as a public attribute - settings.AI_MODEL is
     # the one reliable source, same value the provider itself reads.

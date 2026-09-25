@@ -5,8 +5,19 @@ from django.test import TestCase
 from ai.provider.base import AIProviderError
 from evaluations.runner import run_scenarios, select_scenarios
 from evaluations.scenarios import Scenario
+from evaluations.weather_fixtures import FixtureWeatherProvider, MissingWeatherFixtureError
 from integrations.climate.base import MonthlyClimateSummary
 from travel.models import Destination
+
+
+class _MissingFixtureClimate:
+    """Mirrors what evaluations.weather_fixtures.FixtureWeatherProvider
+    does for a coordinate/month with no captured entry - used to test
+    the runner's own MissingWeatherFixtureError handling without
+    depending on the real fixture file's actual coverage."""
+
+    def get_monthly_climate(self, *, latitude, longitude, month, year=None):
+        raise MissingWeatherFixtureError(latitude, longitude, month)
 
 
 class _StubClimate:
@@ -217,6 +228,156 @@ class DeterministicRunTests(TestCase):
         self.assertTrue(results[0].trace.time_budget_exceeded)
         check_names = [inv.name for inv in results[0].invariants]
         self.assertNotIn("ranking_deterministic_for_identical_input", check_names)
+
+    def test_determinism_recheck_works_for_a_profile_scenario_with_zero_candidates(self):
+        # Real bug found while running the whole corpus deterministic-
+        # only: a scenario with profile_overrides (so it gets a real,
+        # synthetic_traveler-created User) whose deterministic_request
+        # happens to match zero DB-level candidates never calls the
+        # climate provider at all - so it reaches the determinism
+        # recheck below without ever hitting run_scenarios' own
+        # MissingWeatherFixtureError handling. The recheck used to run
+        # AFTER `with synthetic_traveler(...) as user:` had already
+        # exited, by which point synthetic_traveler's own `finally`
+        # block had called user.delete() - and Django resets a deleted
+        # instance's .pk to None, so the second scoring pass's
+        # Trip/TravelHistoryEntry queries (filtered by that same user
+        # object) crashed with "Model instances passed to related
+        # filters must be saved." No real destination is tagged
+        # trip_type="nonexistent-type" here, so the request always
+        # resolves to zero candidates regardless of catalog contents.
+        scenario = Scenario(
+            id="T-1",
+            split="dev",
+            category="straightforward",
+            message="x",
+            deterministic_request={"month": 6, "trip_type": "nonexistent-type"},
+            profile_overrides={"preferred_trip_types": ["beach"]},
+        )
+
+        results, _ = run_scenarios(
+            [scenario], deterministic_only=True, climate_provider=_StubClimate()
+        )
+
+        result = results[0]
+        self.assertFalse(result.is_infrastructure_failure)
+        self.assertEqual(result.scored, [])
+        check_names = [inv.name for inv in result.invariants]
+        self.assertIn("ranking_deterministic_for_identical_input", check_names)
+
+    def test_missing_weather_fixture_is_tagged_as_infrastructure_failure_not_quality_failure(self):
+        # Cycle 1.5's core distinction: "is Wanderes' recommendation
+        # logic correct" and "is the weather fixture complete" are
+        # different questions - a missing fixture must never be reported
+        # as a SCORING/HARD_CONSTRAINT product-quality failure.
+        _destination("somewhere", cost_of_living=1)
+        scenario = Scenario(
+            id="T-1",
+            split="dev",
+            category="straightforward",
+            message="x",
+            deterministic_request={"month": 6},
+        )
+
+        results, _ = run_scenarios(
+            [scenario], deterministic_only=True, climate_provider=_MissingFixtureClimate()
+        )
+
+        result = results[0]
+        self.assertTrue(result.is_infrastructure_failure)
+        self.assertFalse(result.evaluable)
+        self.assertFalse(result.passed)
+        self.assertEqual(result.failed_check_names(), ["dependency_failure"])
+        self.assertIsNotNone(result.infrastructure_failure_reason)
+
+    def test_empty_fixture_provider_never_falls_through_to_the_live_provider(self):
+        # The sharper version of test_weather_fixtures's own truthiness
+        # regression test: proves the fix holds through the real
+        # production call site, not just in isolation. recommendations.
+        # scoring.generate_recommendations does
+        # `climate_provider = climate_provider or get_climate_provider()`
+        # - before FixtureWeatherProvider defined __bool__, passing one
+        # with zero entries (the real state of a fresh checkout before
+        # refresh_weather_fixtures ever runs) was falsy, silently
+        # routing every deterministic evaluation scenario to the real,
+        # live Open-Meteo provider instead of the fixture.
+        _destination("somewhere", cost_of_living=1)
+        scenario = Scenario(
+            id="T-1",
+            split="dev",
+            category="straightforward",
+            message="x",
+            deterministic_request={"month": 6},
+        )
+        import tempfile
+        from pathlib import Path
+
+        empty_fixture = FixtureWeatherProvider(Path(tempfile.mkdtemp()) / "empty.json")
+        self.assertEqual(len(empty_fixture), 0)
+
+        with patch("recommendations.scoring.get_climate_provider") as mock_get_live:
+            mock_get_live.side_effect = AssertionError(
+                "must never construct the live climate provider in deterministic mode"
+            )
+            results, _ = run_scenarios(
+                [scenario], deterministic_only=True, climate_provider=empty_fixture
+            )
+
+        mock_get_live.assert_not_called()
+        self.assertTrue(results[0].is_infrastructure_failure)
+
+    def test_run_scenarios_defaults_to_the_fixture_provider_not_live_network(self):
+        # evaluations.runner.run_scenarios()'s climate_provider defaults
+        # to FixtureWeatherProvider() for BOTH deterministic-only and
+        # full-pipeline modes when the caller passes none - this is what
+        # keeps "is scoring correct" and "is Open-Meteo up right now"
+        # from ever being answered by the same live call again.
+        with patch("evaluations.runner.FixtureWeatherProvider") as mock_provider_cls:
+            mock_provider_cls.return_value = _StubClimate()
+            scenario = Scenario(id="T-1", split="dev", category="ambiguous", message="x")
+            run_scenarios([scenario], deterministic_only=True)
+        mock_provider_cls.assert_called_once_with()
+
+    def test_deterministic_rerun_with_same_input_produces_identical_scored_slugs(self):
+        # §7: the deterministic portion must be reproducible run over
+        # run against the exact same commit/corpus/fixtures.
+        _destination("a", cost_of_living=1, trip_type="beach")
+        _destination("b", cost_of_living=2, trip_type="beach")
+        scenario = Scenario(
+            id="T-1",
+            split="dev",
+            category="straightforward",
+            message="x",
+            deterministic_request={"month": 6, "trip_type": "beach"},
+        )
+
+        first, _ = run_scenarios(
+            [scenario], deterministic_only=True, climate_provider=_StubClimate()
+        )
+        second, _ = run_scenarios(
+            [scenario], deterministic_only=True, climate_provider=_StubClimate()
+        )
+
+        self.assertEqual(first[0].scored_slugs, second[0].scored_slugs)
+
+
+class FullPipelineInfrastructureFailureTests(TestCase):
+    def test_missing_weather_fixture_in_full_pipeline_is_infrastructure_failure(self):
+        _destination("beach-1", trip_type="beach", cost_of_living=1)
+        scenario = Scenario(id="T-1", split="dev", category="straightforward", message="x")
+        provider = StubAIProvider(intent=_intent(trip_type="beach"))
+
+        results, _ = run_scenarios(
+            [scenario],
+            deterministic_only=False,
+            ai_provider=provider,
+            climate_provider=_MissingFixtureClimate(),
+        )
+
+        result = results[0]
+        self.assertTrue(result.is_infrastructure_failure)
+        self.assertFalse(result.passed)
+        self.assertIsNone(result.error)
 
 
 class FullPipelineRunTests(TestCase):

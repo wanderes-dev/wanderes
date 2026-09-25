@@ -42,6 +42,17 @@ class ClassifyFailureTests(SimpleTestCase):
             FailureCategory.INTENT_EXTRACTION,
         )
 
+    def test_dependency_failure_check_maps_to_dependency_failure_category(self):
+        # Cycle 1.5: a missing weather fixture (or a live provider
+        # timeout/429/5xx, in --live-weather mode) must never be counted
+        # as a SCORING/HARD_CONSTRAINT/etc product-quality failure - this
+        # is exactly the mapping evaluations.runner's ScenarioResult
+        # relies on via failed_check_names() == ["dependency_failure"].
+        self.assertEqual(
+            classify_failure(check_name="dependency_failure", scenario_category="straightforward"),
+            FailureCategory.DEPENDENCY_FAILURE,
+        )
+
 
 class CountByCategoryTests(SimpleTestCase):
     def test_counts_grouped_correctly(self):

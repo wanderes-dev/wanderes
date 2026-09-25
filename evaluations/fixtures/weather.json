@@ -1,0 +1,20 @@
+{
+  "entries": {},
+  "provenance": [
+    {
+      "captured_at": "2026-09-25T00:00:00+00:00",
+      "captured_by": "python manage.py refresh_weather_fixtures",
+      "entries_added": 0,
+      "note": "Initial capture attempt blocked: Open-Meteo's free-tier daily request quota was already exhausted from earlier live testing this same session (confirmed via a direct HTTP call returning 429 'Daily API request limit exceeded. Please try again tomorrow.'). No values in this file are fabricated - zero entries were captured rather than guessing. Re-run this command once the quota resets to populate real data.",
+      "source": "https://archive-api.open-meteo.com/v1/archive"
+    },
+    {
+      "captured_at": "2026-09-25T15:11:39.783625+00:00",
+      "captured_by": "python manage.py refresh_weather_fixtures",
+      "entries_added": 0,
+      "entries_failed": 3,
+      "source": "https://archive-api.open-meteo.com/v1/archive"
+    }
+  ],
+  "schema_version": "v1"
+}

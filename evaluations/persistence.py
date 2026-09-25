@@ -47,6 +47,16 @@ def save_run(
     run_dir = runs_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    # §11 denominator (Cycle 1.5): a scenario that never got evaluated
+    # because of a missing weather fixture must not silently count
+    # against - or, worse, silently count for - recommendation quality.
+    # scenario_count/pass_count/fail_count are the raw, unfiltered
+    # numbers (always preserved); evaluable_count/quality_pass_count
+    # exclude infrastructure failures entirely, which is the number that
+    # should actually be read as "how good is Wanderes' recommendation
+    # logic right now."
+    evaluable = [r for r in results if r.evaluable]
+    infrastructure_failures = [r for r in results if r.is_infrastructure_failure]
     meta = {
         "run_id": run_id,
         "label": label,
@@ -57,6 +67,12 @@ def save_run(
         "scenario_count": len(results),
         "pass_count": sum(r.passed for r in results),
         "fail_count": sum(not r.passed for r in results),
+        "evaluable_count": len(evaluable),
+        "infrastructure_failure_count": len(infrastructure_failures),
+        "quality_pass_count": sum(r.passed for r in evaluable),
+        "quality_pass_rate": (
+            (sum(r.passed for r in evaluable) / len(evaluable)) if evaluable else None
+        ),
         "cost": cost.to_json(),
         "failure_taxonomy": count_by_category(
             [(name, r.scenario.category) for r in results for name in r.failed_check_names()]
@@ -93,14 +109,21 @@ def load_run(run_dir: Path) -> tuple[dict, list[dict]]:
 def render_summary(
     meta: dict, results: list[ScenarioResult], metamorphic: list[MetamorphicComparison]
 ) -> str:
+    quality_rate = meta.get("quality_pass_rate")
+    quality_rate_str = f"{quality_rate:.1%}" if quality_rate is not None else "n/a"
     lines = [
         "# Wanderes Recommendation Evaluation",
         "",
         f"- Run: `{meta['run_id']}` ({meta['mode']} mode)",
         f"- Corpus version: `{meta['corpus_version']}`",
         f"- Git commit: `{meta['git_sha']}`",
-        f"- Scenarios: {meta['scenario_count']} "
-        f"({meta['pass_count']} passed, {meta['fail_count']} failed)",
+        f"- Scenarios: {meta['scenario_count']} total, "
+        f"{meta.get('evaluable_count', meta['scenario_count'])} evaluable, "
+        f"{meta.get('infrastructure_failure_count', 0)} infrastructure failure(s)",
+        f"- Quality result: {meta.get('quality_pass_count', meta['pass_count'])}/"
+        f"{meta.get('evaluable_count', meta['scenario_count'])} evaluable scenarios passed "
+        f"({quality_rate_str})",
+        f"- Raw (unfiltered) result: {meta['pass_count']}/{meta['scenario_count']} passed",
         f"- Estimated cost: ${meta['cost']['estimated_usd']} "
         f"({meta['cost']['pipeline_scenarios']} pipeline calls, "
         f"{meta['cost']['judge_calls']} judge calls)",
@@ -119,8 +142,14 @@ def render_summary(
     for r in results:
         by_split.setdefault(r.scenario.split, []).append(r)
     for split, split_results in sorted(by_split.items()):
-        passed = sum(r.passed for r in split_results)
-        lines.append(f"## {split.title()} split: {passed}/{len(split_results)} passed")
+        split_evaluable = [r for r in split_results if r.evaluable]
+        passed = sum(r.passed for r in split_evaluable)
+        infra = len(split_results) - len(split_evaluable)
+        infra_note = f", {infra} infrastructure failure(s)" if infra else ""
+        lines.append(
+            f"## {split.title()} split: {passed}/{len(split_evaluable)} evaluable "
+            f"passed{infra_note}"
+        )
         lines.append("")
 
     intent_results = [r.intent_eval for r in results if r.intent_eval is not None]
@@ -131,15 +160,28 @@ def render_summary(
             lines.append(f"- `{field_name}`: {accuracy:.0%}")
         lines.append("")
 
-    failed = [r for r in results if not r.passed]
-    if failed:
-        lines.append("## Failed scenarios")
+    infrastructure_failed = [r for r in results if r.is_infrastructure_failure]
+    if infrastructure_failed:
+        lines.append("## Infrastructure failures (excluded from quality result above)")
         lines.append("")
-        for r in failed[:50]:
+        for r in infrastructure_failed[:50]:
+            lines.append(
+                f"- `{r.scenario.id}` ({r.scenario.category}): "
+                f"{r.infrastructure_failure_reason}"
+            )
+        if len(infrastructure_failed) > 50:
+            lines.append(f"- ... and {len(infrastructure_failed) - 50} more (see results.jsonl)")
+        lines.append("")
+
+    quality_failed = [r for r in results if r.evaluable and not r.passed]
+    if quality_failed:
+        lines.append("## Failed scenarios (quality)")
+        lines.append("")
+        for r in quality_failed[:50]:
             checks = ", ".join(r.failed_check_names())
             lines.append(f"- `{r.scenario.id}` ({r.scenario.category}): {checks}")
-        if len(failed) > 50:
-            lines.append(f"- ... and {len(failed) - 50} more (see results.jsonl)")
+        if len(quality_failed) > 50:
+            lines.append(f"- ... and {len(quality_failed) - 50} more (see results.jsonl)")
         lines.append("")
 
     if metamorphic:
