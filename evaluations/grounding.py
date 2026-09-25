@@ -19,6 +19,8 @@ from dataclasses import dataclass
 
 from recommendations.scoring import ScoredDestination
 
+from .destination_equivalence import mentions_destination
+
 # Phrases that would only make sense if the model had actually queried a
 # live pricing/availability/booking source - which stream_travel_recommendation
 # never does (integrations.accommodations only ever builds a Booking.com
@@ -69,15 +71,27 @@ def _no_pattern_matches(reply: str, patterns: list[str], check_name: str) -> Gro
 
 
 def check_winner_mentioned(reply: str, scored: list[ScoredDestination]) -> GroundingResult:
+    """Cycle 1.5 (2026-09-25): uses destination_equivalence.mentions_destination
+    instead of a raw substring check - Cycle 1's comparison run found
+    two false positives (Fix A correctly presented the real #1 first in
+    both cases) purely from textual representation differences: "Brasov"
+    vs the AI's "Brașov" (a diacritic), and "Rome" vs the AI's "Roma" (a
+    Portuguese exonym). Still conservative, never unrestricted fuzzy
+    matching - see that module's docstring for exactly what it does and
+    doesn't accept."""
     if not scored:
         return GroundingResult("winner_mentioned", True, "no recommendations to check against")
     winner = scored[0].destination
-    reply_lower = reply.lower()
-    mentioned = winner.name.lower() in reply_lower or winner.country.lower() in reply_lower
+    mentioned = mentions_destination(
+        reply, slug=winner.slug, name=winner.name, country=winner.country
+    )
     if mentioned:
         detail = "clean"
     else:
-        detail = f"neither {winner.name!r} nor {winner.country!r} appears in the reply"
+        detail = (
+            f"neither {winner.name!r} nor {winner.country!r} "
+            "(nor a known alias) appears in the reply"
+        )
     return GroundingResult("winner_mentioned", mentioned, detail)
 
 

@@ -19,6 +19,16 @@ class FailureCategory(str, Enum):
     EXPLANATION_GROUNDING = "EXPLANATION_GROUNDING"
     MISSING_INFORMATION = "MISSING_INFORMATION"
     ROBUSTNESS = "ROBUSTNESS"
+    # Cycle 1.5 (2026-09-25): a third party's own availability/rate limit
+    # (missing weather fixture, a live provider timeout/429/5xx when
+    # explicitly run against the network) - never counted toward product-
+    # quality categories above, and excluded from the quality pass/fail
+    # denominator entirely (evaluations.runner/persistence). Exists
+    # because Cycle 1's own comparison run got contaminated exactly this
+    # way: Open-Meteo's daily quota ran out mid-run and several scenarios
+    # were reported as SCORING failures despite perfect extraction and
+    # unrelated production code.
+    DEPENDENCY_FAILURE = "DEPENDENCY_FAILURE"
     UNKNOWN = "UNKNOWN"
 
 
@@ -46,6 +56,7 @@ _CHECK_CATEGORY = {
     "no_fabricated_rating_or_review": FailureCategory.EXPLANATION_GROUNDING,
     "flow_mismatch": FailureCategory.INTENT_EXTRACTION,
     "clarification_expectation": FailureCategory.MISSING_INFORMATION,
+    "dependency_failure": FailureCategory.DEPENDENCY_FAILURE,
 }
 
 

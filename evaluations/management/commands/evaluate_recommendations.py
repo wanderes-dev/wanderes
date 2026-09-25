@@ -6,7 +6,7 @@ from evaluations.requests import build_request
 from evaluations.runner import run_scenarios, select_scenarios
 from evaluations.scenarios import load_corpus, metamorphic_pairs
 from evaluations.trace import trace_recommendations
-from integrations.climate import get_climate_provider
+from evaluations.weather_fixtures import FixtureWeatherProvider, MissingWeatherFixtureError
 
 
 class Command(BaseCommand):
@@ -93,12 +93,26 @@ class Command(BaseCommand):
         )
 
         metamorphic_results = []
-        climate_provider = get_climate_provider()
+        metamorphic_infrastructure_failures = 0
+        climate_provider = FixtureWeatherProvider()
         for scenario_a, scenario_b in metamorphic_pairs(scenarios):
             if split is not None and split not in (scenario_a.split, scenario_b.split):
                 continue
-            metamorphic_results.append(
-                run_metamorphic_pair(scenario_a, scenario_b, climate_provider=climate_provider)
+            try:
+                metamorphic_results.append(
+                    run_metamorphic_pair(scenario_a, scenario_b, climate_provider=climate_provider)
+                )
+            except MissingWeatherFixtureError as exc:
+                metamorphic_infrastructure_failures += 1
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  metamorphic pair {scenario_a.metamorphic_pair!r} skipped: {exc}"
+                    )
+                )
+        if metamorphic_infrastructure_failures:
+            self.stdout.write(
+                f"{metamorphic_infrastructure_failures} metamorphic pair(s) skipped "
+                "(missing weather fixture - not a structural failure)."
             )
 
         run_dir = save_run(
@@ -109,9 +123,23 @@ class Command(BaseCommand):
             cost=cost,
         )
 
-        passed = sum(r.passed for r in results)
-        style = self.style.SUCCESS if passed == len(results) else self.style.WARNING
-        self.stdout.write(style(f"{passed}/{len(results)} scenarios passed."))
+        # §11 denominator: infrastructure failures (missing weather
+        # fixture) are reported separately, never folded silently into
+        # a "132/150" that hides why 3 of them never got a real answer.
+        evaluable = [r for r in results if r.evaluable]
+        infrastructure_failures = len(results) - len(evaluable)
+        quality_passed = sum(r.passed for r in evaluable)
+        self.stdout.write(f"{len(results)} scenario(s) total, {len(evaluable)} evaluable.")
+        if infrastructure_failures:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"{infrastructure_failures} infrastructure failure(s) (missing weather "
+                    "fixture - run `python manage.py refresh_weather_fixtures` to fill "
+                    "these in) - excluded from the quality result below."
+                )
+            )
+        style = self.style.SUCCESS if quality_passed == len(evaluable) else self.style.WARNING
+        self.stdout.write(style(f"{quality_passed}/{len(evaluable)} evaluable scenarios passed."))
         if not deterministic_only:
             self.stdout.write(f"Estimated cost: ${cost.estimated_usd:.4f}")
         self.stdout.write(f"Artifacts written to {run_dir}")
@@ -123,6 +151,9 @@ class Command(BaseCommand):
         if scenario.deterministic_request is None:
             raise CommandError(f"Scenario {scenario_id!r} has no deterministic_request to trace.")
         request = build_request(scenario.deterministic_request)
-        _, trace = trace_recommendations(request, climate_provider=get_climate_provider())
+        try:
+            _, trace = trace_recommendations(request, climate_provider=FixtureWeatherProvider())
+        except MissingWeatherFixtureError as exc:
+            raise CommandError(str(exc)) from exc
         self.stdout.write(f"Scenario {scenario_id}: {scenario.message!r}\n")
         self.stdout.write(trace.render())
