@@ -12,6 +12,7 @@ from recommendations.scoring import (
     generate_recommendations,
 )
 from travel.geography import CONTINENT_CHOICES
+from travel.geography_aliases import canonicalize_country_name
 from travel.models import (
     COST_OF_LIVING_CHOICES,
     TRIP_TYPE_CHOICES,
@@ -291,8 +292,22 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "continent alone still applies in that case.\n"
     "If the user asks to avoid or exclude specific places, countries, or "
     "regions, list the place/country names they mentioned in "
-    "excluded_place_names (e.g. ['Marrakech', 'Morocco']). Leave it as an "
-    "empty list if they mentioned no exclusions.\n\n"
+    "excluded_place_names (e.g. ['Marrakech', 'Morocco']). This also "
+    "covers a place the traveler says they've ALREADY VISITED when "
+    "they're now asking for somewhere DIFFERENT/NEW/ELSE this time - "
+    "e.g. 'ja fui pra Roma e Praga antes, quero outro lugar' -> "
+    "excluded_place_names=['Rome', 'Prague']; 'I've already been to "
+    "Tokyo and Osaka, want a different city' -> "
+    "excluded_place_names=['Tokyo', 'Osaka']. Do NOT treat a past visit "
+    "as an exclusion when the traveler describes it positively and asks "
+    "for something SIMILAR or in the same spirit instead - 'I've been "
+    "to Rome and loved it, something similar would be great' must NOT "
+    "exclude Rome or anything related to it, since they're asking to "
+    "repeat that experience, not avoid it. Always give each name in its "
+    "standard English form (e.g. 'Tailandia' -> 'Thailand'), the same "
+    "way as the country field above - a name left in another language "
+    "would silently fail to match our English-language catalog. Leave "
+    "it as an empty list if they mentioned no exclusions.\n\n"
     "--- Fields for message_type = 'feedback' ---\n"
     "feedback_destination_name: the name of the place they're giving "
     "feedback about, as they wrote it. Null if unclear.\n"
@@ -2087,8 +2102,19 @@ def _validate_intent(data: dict) -> dict:
     # country." Check that here against the actual catalog: a value that
     # isn't a real country never becomes a doomed exact-match filter -
     # it's nulled out and kept as unmatched_region_name so the caller can
-    # fall back to a general-knowledge answer and log the term. Deliberately
-    # not a hardcoded region dictionary, so it generalizes to any such term.
+    # fall back to a general-knowledge answer and log the term.
+    #
+    # Canonicalized before the catalog check (2026-09-25 evaluation
+    # baseline finding): the AI reasonably extracts "United States", but
+    # this catalog stores "USA" - is_known_country() alone would say
+    # True (it canonicalizes internally too), but the RecommendationRequest
+    # built downstream needs the CATALOG's own value, not the traveler's
+    # phrasing, or country__icontains="United States" would still match
+    # nothing. travel.geography_aliases is a small, explicit table (not a
+    # general region/synonym dictionary) - an unrecognized name just
+    # passes through unchanged for the same catalog check as before.
+    if country is not None:
+        country = canonicalize_country_name(country)
     if country is not None and not is_known_country(country):
         data["unmatched_region_name"] = country
         country = None
@@ -2226,10 +2252,17 @@ def _build_explanation_messages(
     total_matches: int | None = None,
 ) -> list[AIMessage]:
     top_results = results[:MAX_RECOMMENDATIONS]
+    # Numbered by deterministic rank (#1 = the real winner), not a bare
+    # bullet list - the explicit rank label is what the ranking-fidelity
+    # instruction below refers back to. A plain unordered list left the
+    # model free to feature whichever candidates it personally judged
+    # most relevant, silently dropping the actual #1 (2026-09-25
+    # evaluation baseline: ~26 scenarios where the presented "top pick"
+    # wasn't deterministic rank #1 at all).
     candidates_summary = "\n".join(
-        f"- {r.destination.name}, {r.destination.country}: avg high {r.avg_high_c}C, "
+        f"{i}. {r.destination.name}, {r.destination.country}: avg high {r.avg_high_c}C, "
         f"cost tier {r.destination.cost_of_living}/5, trip type {r.destination.trip_type}"
-        for r in top_results
+        for i, r in enumerate(top_results, start=1)
     )
     assumed_month_note = (
         f"\n\nThe traveler didn't say what month, so we assumed month {month} "
@@ -2264,8 +2297,10 @@ def _build_explanation_messages(
             content=(
                 f'The traveler asked: "{message}"\n\n'
                 "Here are the top matching destinations, already filtered and "
-                "ranked by the application. Do not invent any other destinations "
-                "or facts beyond what is listed here:\n"
+                "ranked by the application in this exact order - #1 is the "
+                "real winner, not a suggestion you're free to reorder. Do "
+                "not invent any other destinations or facts beyond what is "
+                "listed here:\n"
                 f"{candidates_summary}"
                 f"{assumed_month_note}"
                 f"{traveler_note}"
@@ -2283,14 +2318,26 @@ def _build_explanation_messages(
                 "presented destinations from unrelated countries as the "
                 "answer to a region-specific request, without flagging the "
                 "mismatch at all)."
-                "\n\nPresent the best 1-3 options as a compact Markdown table "
-                "(standard pipe syntax) comparing them side by side - pick "
-                "columns that actually matter here (e.g. destination, "
-                "climate, cost, a standout pro, a real downside or "
-                "trade-off to weigh) rather than a fixed template every "
-                "time. A short sentence or two of context before or after "
-                "the table is fine, but the comparison itself belongs in "
-                "the table, not paragraphs of prose. After the table, "
+                "\n\nPresent the top 1-3 options from the numbered list above "
+                "as a compact Markdown table (standard pipe syntax) comparing "
+                "them side by side, IN THE SAME ORDER as the numbered list - "
+                "the destination you present first/as the primary "
+                "recommendation must be #1 from that list. Never silently "
+                "swap in a lower-ranked candidate as if it were the top "
+                "pick just because it seems like a better conversational "
+                "fit - the application already decided the ranking, your "
+                "job is to explain it, not to re-run it. If #1 has a real "
+                "downside worth flagging (e.g. it doesn't perfectly match "
+                "something the traveler asked for), say so honestly IN "
+                "ADDITION to presenting it first - explaining a trade-off "
+                "is not the same as dropping the destination for a "
+                "different one you like better. Pick table columns that "
+                "actually matter here (e.g. destination, climate, cost, a "
+                "standout pro, a real downside or trade-off to weigh) "
+                "rather than a fixed template every time. A short sentence "
+                "or two of context before or after the table is fine, but "
+                "the comparison itself belongs in the table, not "
+                "paragraphs of prose. After the table, "
                 "don't just stop at the options - close with ONE genuine "
                 "next step: normally a follow-up question that would help "
                 "narrow the search further (something not yet known: a "

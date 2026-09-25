@@ -7,6 +7,7 @@ from ai.orchestration import (
     FALLBACK_REPLY,
     MAX_RECOMMENDATIONS,
     NEEDS_LOGIN_REPLY,
+    _build_explanation_messages,
     _extract_climate_budget_signal,
     _resolve_destination,
     _sanitized_history_messages,
@@ -17,6 +18,7 @@ from ai.orchestration import (
 from ai.provider.base import AIProviderError, AIResponse
 from analytics.models import Event
 from integrations.climate.base import ClimateProviderError, MonthlyClimateSummary
+from recommendations.scoring import ScoredDestination
 from travel.models import CountryEntryRequirement, Destination
 from travel.services import ENTRY_REQUIREMENT_DISCLAIMER
 from trips.models import Feedback, TravelHistoryEntry, Trip
@@ -1043,6 +1045,72 @@ class CountryTests(TestCase):
 
         slugs = {r.destination.slug for r in result.recommendations}
         self.assertEqual(slugs, {"bangkok"})
+
+
+class CountryAliasCanonicalizationTests(TestCase):
+    """Evaluation Improvement Cycle 1, Fix B (2026-09-25 baseline,
+    STR-032): the AI reasonably extracts country='United States' - a
+    perfectly standard English name - but this catalog stores 'USA'.
+    Before this fix, is_known_country('United States') returned False,
+    so the request silently fell into the unmatched-region fallback
+    despite the US being very much in the catalog. _validate_intent now
+    canonicalizes through travel.geography_aliases before both the
+    catalog check AND the value that ends up in the validated intent
+    (and from there, RecommendationRequest.country) - country__icontains
+    needs the catalog's own spelling, not just a True/False check."""
+
+    def setUp(self):
+        self.new_york = _make_destination(
+            "new-york", lat=40.71, lon=-74.01, trip_type="city", country="USA"
+        )
+        self.climate = StubClimateProvider(
+            {(40.71, -74.01): MonthlyClimateSummary(2025, 7, 28.0, 20.0, 10.0)}
+        )
+
+    def test_united_states_canonicalizes_and_matches_real_destinations(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=7, country="United States"),
+            reply_text="Here are some options in the US!",
+        )
+
+        result = get_travel_recommendation(
+            "road trip pelos Estados Unidos", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"new-york"})
+
+    def test_validated_intent_stores_the_catalogs_own_spelling(self):
+        ai_provider = StubAIProvider(structured_response=_intent(month=7, country="United States"))
+        intent_sink = {}
+
+        stream_travel_recommendation(
+            "road trip pelos Estados Unidos",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+            intent_sink=intent_sink,
+        )
+
+        # The stored value must be the catalog's own spelling ("USA"),
+        # not the traveler's/extraction's phrasing - RecommendationRequest.country
+        # feeds a country__icontains filter that needs the real value.
+        self.assertEqual(intent_sink["country"], "USA")
+
+    def test_unmatched_region_name_is_never_set_for_a_recognized_alias(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(month=7, country="United States"),
+            reply_text="Here are some options in the US!",
+        )
+
+        get_travel_recommendation(
+            "road trip pelos Estados Unidos", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        # A real match was found, so the general-knowledge fallback path
+        # (which logs unmatched_region_name) must never have fired.
+        self.assertEqual(len(ai_provider.stream_reply_calls), 1)
+        prompt = ai_provider.stream_reply_calls[0][-1].content
+        self.assertNotIn("isn't in our curated catalog", prompt)
 
 
 class UnmatchedRegionNameTests(TestCase):
@@ -2545,6 +2613,191 @@ class PromptReinforcementTests(TestCase):
         prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertIn("exact current price", prompt)
         self.assertIn("keep the answer general", prompt)
+
+
+class RankingFidelityTests(TestCase):
+    """Evaluation Improvement Cycle 1, Fix A (2026-09-25 baseline: ~26
+    EXPLANATION_GROUNDING failures where the deterministic engine's real
+    #1-ranked destination never appeared in the AI's reply at all - the
+    explanation had silently re-picked its own "best 1-3" from the
+    candidate list instead of presenting the actual winner). The
+    deterministic engine owns ranking; the LLM owns presentation - these
+    lock in that the candidate list handed to the model makes rank
+    explicit (numbered, not a bare bullet list) and that the instruction
+    to preserve that order is actually in the prompt. Whether a live
+    model reliably follows it is a live-only concern, same as every
+    other prompt-reinforcement test in this file."""
+
+    def _scored(self, slug, *, score, name=None, country="Testland"):
+        destination = _make_destination(slug, lat=10.0, lon=10.0, country=country)
+        if name:
+            destination.name = name
+        return ScoredDestination(
+            destination=destination,
+            avg_high_c=25.0,
+            avg_low_c=18.0,
+            preference_fit=0.0,
+            budget_fit=0.0,
+            temperature_fit=0.0,
+            repetition_penalty=0.0,
+            score=score,
+        )
+
+    def test_candidates_are_numbered_by_rank(self):
+        results = [
+            self._scored("winner", score=10.0, name="Dubrovnik"),
+            self._scored("second", score=5.0, name="Nice"),
+            self._scored("third", score=1.0, name="Cinque Terre"),
+        ]
+
+        messages = _build_explanation_messages("somewhere nice", results)
+
+        prompt = messages[-1].content
+        self.assertIn("1. Dubrovnik", prompt)
+        self.assertIn("2. Nice", prompt)
+        self.assertIn("3. Cinque Terre", prompt)
+
+    def test_prompt_states_number_one_is_the_real_winner(self):
+        results = [self._scored("winner", score=10.0, name="Dubrovnik")]
+
+        messages = _build_explanation_messages("somewhere nice", results)
+
+        prompt = messages[-1].content
+        self.assertIn("#1 is the real winner, not a suggestion you're free to reorder", prompt)
+
+    def test_prompt_forbids_silently_swapping_in_a_different_top_pick(self):
+        results = [
+            self._scored("winner", score=10.0, name="Dubrovnik"),
+            self._scored("second", score=5.0, name="Nice"),
+        ]
+
+        messages = _build_explanation_messages("somewhere nice", results)
+
+        prompt = messages[-1].content
+        self.assertIn("must be #1 from that list", prompt)
+        self.assertIn("Never silently swap in a lower-ranked candidate", prompt)
+
+    def test_prompt_allows_flagging_a_real_downside_without_dropping_the_winner(self):
+        # The required behavior explicitly allows communicating poor fit
+        # or uncertainty - the fix is about presentation ORDER, not about
+        # forbidding honesty when #1 is an imperfect match (e.g. an
+        # adversarial/impossible request where nothing really fits).
+        results = [self._scored("winner", score=-5.0, name="Dubrovnik")]
+
+        messages = _build_explanation_messages("somewhere impossibly cold", results)
+
+        prompt = messages[-1].content
+        self.assertIn("has a real downside worth flagging", prompt)
+        self.assertIn("say so honestly IN ADDITION to presenting it first", prompt)
+
+
+class PreviousVisitExclusionPromptTests(TestCase):
+    """Evaluation Improvement Cycle 1, Fix C (2026-09-25 baseline, MTT-002
+    and MTT-010): "ja fui pra Roma e Praga antes, quero outro lugar" and
+    "ja fui a Toquio e Osaka, quero outra" never became
+    excluded_place_names - only an explicit "exclude X"/"not X"
+    instruction was ever recognized, not an implicit already-visited-so-
+    avoid-it framing. The extraction prompt now explicitly covers this,
+    while explicitly preserving the opposite case ("loved X, want
+    something similar" must NOT exclude X) - locks in that both
+    instructions actually reach the prompt."""
+
+    def test_prompt_covers_already_visited_wants_something_else(self):
+        from ai.orchestration import INTENT_EXTRACTION_SYSTEM_PROMPT
+
+        self.assertIn("ALREADY VISITED", INTENT_EXTRACTION_SYSTEM_PROMPT)
+        self.assertIn("DIFFERENT/NEW/ELSE", INTENT_EXTRACTION_SYSTEM_PROMPT)
+        self.assertIn(
+            "excluded_place_names=['Rome', 'Prague']", INTENT_EXTRACTION_SYSTEM_PROMPT
+        )
+
+    def test_prompt_preserves_the_wants_something_similar_exception(self):
+        from ai.orchestration import INTENT_EXTRACTION_SYSTEM_PROMPT
+
+        self.assertIn(
+            "Do NOT treat a past visit as an exclusion when the traveler "
+            "describes it positively and asks for something SIMILAR",
+            INTENT_EXTRACTION_SYSTEM_PROMPT,
+        )
+        self.assertIn("must NOT exclude Rome", INTENT_EXTRACTION_SYSTEM_PROMPT)
+
+    def test_prompt_still_requires_the_english_name_for_exclusions(self):
+        from ai.orchestration import INTENT_EXTRACTION_SYSTEM_PROMPT
+
+        self.assertIn("'Tailandia' -> 'Thailand'", INTENT_EXTRACTION_SYSTEM_PROMPT)
+
+
+class ExplicitAndImplicitExclusionExtractionTests(TestCase):
+    """End-to-end coverage (stubbed extraction, since whether a live
+    model reliably follows the strengthened Fix C prompt is a live-only
+    concern) that excluded_place_names correctly threads through to
+    RecommendationRequest.excluded_slugs regardless of how the
+    exclusion was worded - explicit, implicit-already-visited, multiple
+    destinations, or Portuguese phrasing. The "wants something similar"
+    case is covered separately since it's an extraction judgment call,
+    not a plumbing question - covered above by the prompt test instead."""
+
+    def setUp(self):
+        self.rome = _make_destination(
+            "rome", lat=41.9, lon=12.5, trip_type="culture", country="Italy"
+        )
+        self.florence = _make_destination(
+            "florence", lat=43.77, lon=11.26, trip_type="culture", country="Italy"
+        )
+        self.climate = StubClimateProvider(
+            {
+                (41.9, 12.5): MonthlyClimateSummary(2025, 5, 22.0, 14.0, 5.0),
+                (43.77, 11.26): MonthlyClimateSummary(2025, 5, 23.0, 13.0, 4.0),
+            }
+        )
+
+    def test_explicit_exclusion_still_works(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                month=5, trip_type="culture", country="Italy", excluded_place_names=["Rome"]
+            )
+        )
+
+        result = get_travel_recommendation(
+            "cultura na italia, sem roma", ai_provider=ai_provider, climate_provider=self.climate
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"florence"})
+
+    def test_implicit_already_visited_wants_else_excludes(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                month=5, trip_type="culture", country="Italy", excluded_place_names=["Rome"]
+            )
+        )
+
+        result = get_travel_recommendation(
+            "ja fui pra roma antes, quero outro lugar na italia",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertEqual(slugs, {"florence"})
+
+    def test_multiple_previously_visited_destinations_all_excluded(self):
+        ai_provider = StubAIProvider(
+            structured_response=_intent(
+                month=5,
+                trip_type="culture",
+                country="Italy",
+                excluded_place_names=["Rome", "Florence"],
+            )
+        )
+
+        result = get_travel_recommendation(
+            "ja fui a roma e florença, quero outro lugar na italia",
+            ai_provider=ai_provider,
+            climate_provider=self.climate,
+        )
+
+        self.assertEqual(result.recommendations, [])
 
 
 class UnhandledRequestLoggingTests(TestCase):

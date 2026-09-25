@@ -66,6 +66,37 @@ class FindDestinationSlugsByNameTests(TestCase):
 
         self.assertEqual(slugs, frozenset({"marrakech-ma", "lisbon-pt"}))
 
+    def test_a_portuguese_country_alias_resolves_before_matching(self):
+        # Evaluation Improvement Cycle 1, Fix B (2026-09-25 baseline,
+        # ADV-007): "excluir a Tailândia" never matched the catalog's
+        # "Thailand" - a literal substring match against untranslated
+        # Portuguese, since no canonicalization step existed at all.
+        bangkok = Destination.objects.create(
+            slug="bangkok-th",
+            name="Bangkok",
+            country="Thailand",
+            latitude=13.75,
+            longitude=100.5,
+            trip_type="city",
+            cost_of_living=2,
+            best_season="Nov-Feb",
+            worst_season="Apr-May",
+            short_description="A vibrant riverside capital.",
+            points_of_interest=[],
+        )
+
+        slugs = find_destination_slugs_by_name(["Tailândia"])
+
+        self.assertEqual(slugs, frozenset({bangkok.slug}))
+
+    def test_an_actual_city_name_is_unaffected_by_alias_canonicalization(self):
+        # canonicalize_country_name() only ever rewrites a recognized
+        # country alias - a real city name like "Marrakech" must still
+        # match normally, not get silently altered.
+        slugs = find_destination_slugs_by_name(["Marrakech"])
+
+        self.assertEqual(slugs, frozenset({"marrakech-ma"}))
+
 
 class GetEntryRequirementsTests(TestCase):
     def setUp(self):
@@ -157,3 +188,47 @@ class IsKnownCountryTests(TestCase):
 
     def test_false_for_an_unrelated_string(self):
         self.assertFalse(is_known_country("Nowhereland"))
+
+
+class IsKnownCountryAliasTests(TestCase):
+    """Evaluation Improvement Cycle 1, Fix B (2026-09-25 baseline,
+    STR-032): the AI reasonably extracts country='United States', but
+    this catalog stores 'USA' - is_known_country('United States') used
+    to return False even though the US is very much in the catalog with
+    real scoring data, silently routing a legitimate US request into
+    the general-knowledge fallback."""
+
+    def setUp(self):
+        Destination.objects.create(
+            slug="nova-york-us",
+            name="New York",
+            country="USA",
+            latitude=40.71,
+            longitude=-74.01,
+            trip_type="city",
+            cost_of_living=5,
+            best_season="Apr-Jun",
+            worst_season="Jan-Feb",
+            short_description="A dense, iconic metropolis.",
+            points_of_interest=[],
+        )
+
+    def test_united_states_resolves_to_the_catalogs_usa(self):
+        self.assertTrue(is_known_country("United States"))
+
+    def test_us_abbreviation_resolves(self):
+        self.assertTrue(is_known_country("US"))
+
+    def test_portuguese_estados_unidos_resolves(self):
+        self.assertTrue(is_known_country("Estados Unidos"))
+
+    def test_portuguese_eua_resolves(self):
+        self.assertTrue(is_known_country("EUA"))
+
+    def test_the_catalogs_own_value_still_matches_directly(self):
+        self.assertTrue(is_known_country("USA"))
+
+    def test_unrecognized_alias_still_returns_false(self):
+        # Not a fuzzy match - an alias not in the explicit table is
+        # judged on its own, same as before this fix.
+        self.assertFalse(is_known_country("The States"))
