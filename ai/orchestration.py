@@ -687,6 +687,7 @@ def stream_travel_recommendation(
     climate_provider=None,
     history_override: list[dict] | None = None,
     focus_destination_slug: str | None = None,
+    intent_sink: dict | None = None,
 ) -> StreamingOrchestrationResult:
     """Handle one chat message: a recommendation request, feedback about a
     past visit, a stated future travel intention, or an off-topic message.
@@ -724,6 +725,15 @@ def stream_travel_recommendation(
     and goes straight there instead of asking the AI to re-guess what
     "tell me more" refers to. A stale/bogus slug just falls through to
     normal message handling, as if it were never sent.
+
+    `intent_sink`: when given a dict, gets updated with the final
+    validated intent this call actually used (post climate/budget
+    overwrite on the recommendation path) - lets evaluations.runner
+    measure real extraction accuracy without a second, possibly
+    non-deterministic, separate extraction call. None (the default)
+    costs nothing extra and changes no behavior for any other caller;
+    never populated on the focus_destination_slug path, which skips
+    extraction entirely.
     """
     ai_provider = ai_provider or get_ai_provider()
     profile = _traveler_profile(user)
@@ -761,6 +771,8 @@ def stream_travel_recommendation(
         logger.warning("Could not extract intent - AI provider failure. message=%r", message)
         _remember(FALLBACK_REPLY)
         return StreamingOrchestrationResult([], iter([FALLBACK_REPLY]))
+    if intent_sink is not None:
+        intent_sink.update(intent)
 
     # Checked before message_type branching - a request to recall what we
     # already said is orthogonal to message_type, and re-running
@@ -1067,6 +1079,8 @@ def stream_travel_recommendation(
     intent["min_temp_c"] = climate_budget["min_temp_c"]
     intent["max_temp_c"] = climate_budget["max_temp_c"]
     intent["max_cost_of_living"] = climate_budget["max_cost_of_living"]
+    if intent_sink is not None:
+        intent_sink.update(intent)
 
     has_enough_signal = (
         intent["min_temp_c"] is not None

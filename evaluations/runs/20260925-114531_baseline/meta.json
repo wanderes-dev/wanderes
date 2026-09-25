@@ -1,0 +1,26 @@
+{
+  "run_id": "20260925-114531_baseline",
+  "label": "baseline",
+  "mode": "full",
+  "corpus_version": "v1",
+  "git_sha": null,
+  "timestamp": "2026-09-25T11:45:31.447275+00:00",
+  "scenario_count": 150,
+  "pass_count": 113,
+  "fail_count": 37,
+  "cost": {
+    "model_name": "gpt-4o-mini",
+    "pipeline_scenarios": 150,
+    "judge_calls": 0,
+    "estimated_input_tokens": 209152,
+    "estimated_output_tokens": 42443,
+    "estimated_usd": 0.0568,
+    "note": "Rough estimate from prompt/reply character length, not real token counts - neither generate_structured_reply nor stream_reply expose usage data today."
+  },
+  "failure_taxonomy": {
+    "SCORING": 2,
+    "EXPLANATION_GROUNDING": 26,
+    "INTENT_EXTRACTION": 13,
+    "HARD_CONSTRAINT": 4
+  }
+}

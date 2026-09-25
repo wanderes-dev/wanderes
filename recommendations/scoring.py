@@ -121,7 +121,7 @@ class ScoredDestination:
 
 
 def generate_recommendations(
-    request: RecommendationRequest, *, climate_provider=None
+    request: RecommendationRequest, *, climate_provider=None, trace: dict | None = None
 ) -> list[ScoredDestination]:
     """Filter candidate destinations by hard constraints, then score and rank the rest.
 
@@ -129,6 +129,15 @@ def generate_recommendations(
     "Recommendation Logic"): Candidate Destination -> Hard Constraints ->
     Basic Score -> Ranking. AI Explanation is a later step this function
     does not perform.
+
+    `trace`, when given a dict, gets populated with counts the returned
+    `scored` list alone can't reconstruct (how many survived the DB-level
+    hard filters before any climate lookup, how many climate lookups
+    failed, how many got rejected on temperature, whether the time budget
+    cut the loop short) - dev-only diagnostics for evaluations.trace, kept
+    as a plain dict rather than a typed class so this module has no
+    reason to import anything from evaluations/. None (the default) costs
+    nothing extra - no behavior change for any existing caller.
     """
     climate_provider = climate_provider or get_climate_provider()
 
@@ -161,6 +170,12 @@ def generate_recommendations(
         # never quietly widen to its whole continent/region.
         candidates = candidates.filter(country__icontains=request.country)
 
+    if trace is not None:
+        trace["eligible_after_hard_filters"] = candidates.count()
+        trace["climate_errors"] = 0
+        trace["temperature_rejected"] = 0
+        trace["time_budget_exceeded"] = False
+
     preferred_trip_types = _preferred_trip_types(request.user)
     visited_slugs = _visited_destination_slugs(request.user)
 
@@ -177,6 +192,8 @@ def generate_recommendations(
                 request.month,
                 request.trip_type,
             )
+            if trace is not None:
+                trace["time_budget_exceeded"] = True
             break
         try:
             climate = climate_provider.get_monthly_climate(
@@ -188,11 +205,17 @@ def generate_recommendations(
             # Graceful degradation (10_EXTERNAL_INTEGRATIONS.md §5): skip a
             # destination we can't get climate data for instead of failing
             # the whole request.
+            if trace is not None:
+                trace["climate_errors"] += 1
             continue
 
         if request.min_temp_c is not None and climate.avg_high_c < request.min_temp_c:
+            if trace is not None:
+                trace["temperature_rejected"] += 1
             continue
         if request.max_temp_c is not None and climate.avg_high_c > request.max_temp_c:
+            if trace is not None:
+                trace["temperature_rejected"] += 1
             continue
 
         preference_fit = (

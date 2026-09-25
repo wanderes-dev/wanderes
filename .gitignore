@@ -52,3 +52,10 @@ Thumbs.db
 # runtime artifact, not source (2026-09-02, celery cache pre-warming task)
 celerybeat-schedule
 celerybeat.pid
+
+# evaluate_recommendations run artifacts - one directory per run,
+# ad hoc and disposable by default. A baseline run worth keeping as a
+# durable reference is committed explicitly (git add -f), same as any
+# other deliberately-kept artifact - see documentation/17_EVALUATION_FRAMEWORK.md §13.
+evaluations/runs/*
+!evaluations/runs/.gitkeep
