@@ -643,12 +643,20 @@
             // shows the actual "Save this trip" link - deterministic, not
             // a guess about whether the traveler seems ready.
             if (destination.detail_shown) {
-                const link = document.createElement("a");
-                link.className = "btn btn-secondary";
-                link.href = "/trips/create/?destination=" + encodeURIComponent(destination.slug) +
-                    "&source=chat_recommendation";
-                link.textContent = CHAT_I18N.saveThisTrip;
-                card.appendChild(link);
+                // freeform: true means this card came from a name/country
+                // the AI confirmed as a real place, not a catalog
+                // Destination row - there's no slug and no Trip it could
+                // be saved as (trips.Trip.destination is a hard FK to
+                // travel.Destination), so "Save this trip" is skipped
+                // rather than shown with a broken/empty link.
+                if (!destination.freeform) {
+                    const link = document.createElement("a");
+                    link.className = "btn btn-secondary";
+                    link.href = "/trips/create/?destination=" + encodeURIComponent(destination.slug) +
+                        "&source=chat_recommendation";
+                    link.textContent = CHAT_I18N.saveThisTrip;
+                    card.appendChild(link);
+                }
 
                 if (destination.accommodation_search_url) {
                     const stayLink = document.createElement("a");
@@ -665,16 +673,23 @@
                     // it - keepalive keeps the request alive past the
                     // navigation this link is about to cause, and nothing
                     // here waits for or reacts to its result.
-                    stayLink.addEventListener("click", function () {
-                        const body = new FormData();
-                        body.append("destination_slug", destination.slug);
-                        body.append("csrfmiddlewaretoken", csrfToken);
-                        fetch("/api/v1/accommodation-click/", {
-                            method: "POST",
-                            body: body,
-                            keepalive: true,
-                        }).catch(function () {});
-                    });
+                    //
+                    // Skipped for a freeform card - there's no
+                    // destination_slug to key the event by, and the
+                    // accommodation-click view already no-ops on one it
+                    // can't resolve (see ai/views.py:accommodation_click).
+                    if (!destination.freeform) {
+                        stayLink.addEventListener("click", function () {
+                            const body = new FormData();
+                            body.append("destination_slug", destination.slug);
+                            body.append("csrfmiddlewaretoken", csrfToken);
+                            fetch("/api/v1/accommodation-click/", {
+                                method: "POST",
+                                body: body,
+                                keepalive: true,
+                            }).catch(function () {});
+                        });
+                    }
                     card.appendChild(stayLink);
                 }
             } else {

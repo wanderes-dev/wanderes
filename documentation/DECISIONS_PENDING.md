@@ -284,6 +284,20 @@ Create the Purelymail account, agree to its terms, or edit `wanderes.com`'s DNS 
 
 ---
 
+## 10. Recommendation Evaluation Framework — scope decisions — ✅ RESOLVED 2026-09-25 (no new ML/eval infrastructure; production behavior unchanged)
+
+**Direct request**: build a systematic evaluation/learning loop for recommendation quality (`evaluations/`, `python manage.py evaluate_recommendations`) - synthetic scenario corpus, deterministic invariants, intent-extraction accuracy, explanation grounding, metamorphic tests, failure taxonomy, run persistence/comparison. The spec itself pre-decided most of the scope-creep risks explicitly (no autonomous production learning, no ranking-weight changes from synthetic tests, no fine-tuning/RL/vector DB/external eval platforms unless genuinely required) - logged here per this project's own convention of recording every "should a new technology be introduced" call, even when the answer is "no."
+
+**Technologies considered and explicitly NOT added**: dbt, Airflow, a vector database, a fine-tuning/RL pipeline, an external evaluation platform (e.g. a hosted LLM-eval SaaS), a dedicated eval database table. None of these were needed - the corpus is 150 scenarios (JSONL, hand-authored via a deterministic Python build script), run artifacts are JSON/Markdown files under `evaluations/runs/` (gitignored by default, committed explicitly for a baseline worth keeping), and the runner is a plain Django management command reusing the existing `AIProvider`/`ClimateProvider` abstractions. Matches the same reasoning already applied to `documentation/16_ANALYTICS_ARCHITECTURE.md`'s dbt-deferral (§7 there): the real trigger for heavier infrastructure - large model/scenario count, multiple independent contributors, genuine data volume - isn't present yet.
+
+**Production code touched, but only additively**: `recommendations.scoring.generate_recommendations` gained an optional `trace: dict | None = None` parameter (dev-diagnostics only, zero behavior change when omitted - existing 18 scoring tests unaffected); `ai.orchestration.stream_travel_recommendation` gained an optional `intent_sink: dict | None = None` parameter (lets the evaluator measure the *actual* intent a call used, instead of a second, possibly non-deterministic, separately-issued extraction call - existing ~104 orchestration tests unaffected). Neither is called by any production code path (`ai/views.py` unchanged) - both are purely for `evaluations/` to consume.
+
+**Decision**: proceed exactly as scoped. No further human decision needed to build the framework itself; the baseline run's *findings* (top improvement proposals) remain separately gated behind human review before any production recommendation-quality change, per the spec's own explicit instruction not to implement them this pass.
+
+**Reference:** `documentation/17_EVALUATION_FRAMEWORK.md`; `evaluations/`; `recommendations/scoring.py`; `ai/orchestration.py`.
+
+---
+
 ## How to unblock
 
 Reply with your decision(s) — even a partial one (e.g., "let's start with just a destination dataset and Anthropic Claude, defer flights/hotels") is enough to resume work. Claude Code will then:

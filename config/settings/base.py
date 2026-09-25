@@ -56,6 +56,11 @@ INSTALLED_APPS = [
     "ai",
     "recommendations",
     "analytics",
+    # No models - a management-command-driven synthetic evaluation
+    # framework (evaluate_recommendations), never in the request path.
+    # Registered as an app only so Django discovers its management
+    # commands the normal way.
+    "evaluations",
     # allauth adds Google login on top of the existing email/password flow
     # (users.forms.UserRegistrationForm etc.) - doesn't replace it. See the
     # ACCOUNT_*/SOCIALACCOUNT_* settings below for the wiring.
