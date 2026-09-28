@@ -13,9 +13,10 @@ from integrations.climate.base import ClimateProviderError
 from integrations.climate.open_meteo import OpenMeteoClimateProvider
 from travel.geography import countries_in_continent
 from travel.models import Destination
+from travel.services import find_destination_slugs_by_name
 
 
-def _candidate_destinations_for(deterministic_request: dict):
+def _candidate_destinations_for(request: dict):
     """Mirrors recommendations.scoring.generate_recommendations's
     DB-level (pre-climate) filter chain - trip_type/max_cost_of_living/
     continent/country/excluded_slugs - so the fixture only needs to
@@ -23,39 +24,100 @@ def _candidate_destinations_for(deterministic_request: dict):
     384-destination catalog. Deliberately duplicated rather than
     importing a slice of generate_recommendations: that function has no
     "candidates only" seam to call into without changing production
-    code, which this cycle is explicitly not allowed to do. If that
-    filter chain ever changes, update this to match.
+    code. If that filter chain ever changes, update this to match.
     """
-    candidates = Destination.objects.exclude(
-        slug__in=deterministic_request.get("excluded_slugs") or []
-    )
-    if deterministic_request.get("trip_type") is not None:
-        candidates = candidates.filter(trip_type=deterministic_request["trip_type"])
-    if deterministic_request.get("max_cost_of_living") is not None:
-        candidates = candidates.filter(
-            cost_of_living__lte=deterministic_request["max_cost_of_living"]
-        )
-    if deterministic_request.get("continent") is not None:
-        candidates = candidates.filter(
-            country__in=countries_in_continent(deterministic_request["continent"])
-        )
-    if deterministic_request.get("country") is not None:
-        candidates = candidates.filter(country__icontains=deterministic_request["country"])
+    candidates = Destination.objects.exclude(slug__in=request.get("excluded_slugs") or [])
+    if request.get("trip_type") is not None:
+        candidates = candidates.filter(trip_type=request["trip_type"])
+    if request.get("max_cost_of_living") is not None:
+        candidates = candidates.filter(cost_of_living__lte=request["max_cost_of_living"])
+    if request.get("continent") is not None:
+        candidates = candidates.filter(country__in=countries_in_continent(request["continent"]))
+    if request.get("country") is not None:
+        candidates = candidates.filter(country__icontains=request["country"])
     return candidates
+
+
+def _effective_base_request(scenario) -> dict | None:
+    """A deterministic_request-shaped dict to target fixture capture
+    around, even for a scenario that has no deterministic_request of its
+    own (a multi-turn or mind-changed scenario whose real request only
+    exists inside conversation history/context). Falls back to whatever
+    expected_intent fields the scenario does assert - an omitted field
+    reads as unconstrained, same as it would from a bare
+    deterministic_request. None for a scenario that never reaches
+    scoring at all (its expected_flow isn't "recommendation"), since
+    nothing needs capturing for those regardless of the AI's own
+    classification on a given run.
+    """
+    if scenario.deterministic_request is not None:
+        return scenario.deterministic_request
+    if scenario.expected_flow != "recommendation":
+        return None
+    intent = scenario.expected_intent
+    excluded_names = intent.get("excluded_place_names") or []
+    return {
+        "month": intent.get("month"),
+        "trip_type": intent.get("trip_type"),
+        "max_cost_of_living": intent.get("max_cost_of_living"),
+        "continent": intent.get("continent"),
+        "country": intent.get("country"),
+        "excluded_slugs": list(find_destination_slugs_by_name(excluded_names)),
+    }
+
+
+def _relaxed_requests(base_request: dict) -> list[dict]:
+    """A scenario's own deterministic_request/expected_intent records
+    what a *correct* extraction should produce - but a real, full-
+    pipeline run's live extraction is what actually decides which
+    destinations get scored, and it can land one tier off on a numeric
+    field (a "mid-range" budget read as 3 instead of 4) or skip a soft
+    category the scenario's own ground truth asserts (a destination
+    tagged "culture" reached even though the scenario names trip_type
+    "city"). trip_type and max_cost_of_living are exactly the two
+    fields this codebase has repeatedly seen drift this way; continent/
+    country aren't included here since they're a much more binary match
+    and relaxing them would multiply the needed-key count for little
+    real benefit. Returns the exact request alone when there's nothing
+    to relax.
+    """
+    has_trip_type = base_request.get("trip_type") is not None
+    has_budget = base_request.get("max_cost_of_living") is not None
+    variants = [base_request]
+    if has_trip_type or has_budget:
+        variants.append({**base_request, "trip_type": None, "max_cost_of_living": None})
+    return variants
+
+
+def _months_to_check(request: dict) -> list[int]:
+    # A scenario whose effective month is never actually asserted (a
+    # mind-changed or context-only turn where the app would fall back to
+    # "the current month") can't be pinned to one specific month ahead of
+    # time - cover every month it could conceivably land on instead.
+    month = request.get("month")
+    return [month] if month is not None else list(range(1, 13))
 
 
 def compute_needed_keys(scenarios) -> dict[str, tuple[float, float, int]]:
     """Returns {fixture_key: (latitude, longitude, month)} for every
-    (destination, month) pair the corpus's deterministic_request-bearing
-    scenarios could touch."""
+    (destination, month) pair a full-pipeline evaluation run could
+    plausibly reach for scoring - not just the narrow set each
+    scenario's own ground truth names literally, since real extraction
+    doesn't always land exactly on that ground truth (see
+    _relaxed_requests/_effective_base_request)."""
     needed = {}
     for scenario in scenarios:
-        if scenario.deterministic_request is None:
+        base_request = _effective_base_request(scenario)
+        if base_request is None:
             continue
-        month = scenario.deterministic_request["month"]
-        for destination in _candidate_destinations_for(scenario.deterministic_request):
-            key = fixture_key(float(destination.latitude), float(destination.longitude), month)
-            needed[key] = (float(destination.latitude), float(destination.longitude), month)
+        months = _months_to_check(base_request)
+        destinations = set()
+        for request in _relaxed_requests(base_request):
+            destinations.update(_candidate_destinations_for(request))
+        for destination in destinations:
+            for month in months:
+                key = fixture_key(float(destination.latitude), float(destination.longitude), month)
+                needed[key] = (float(destination.latitude), float(destination.longitude), month)
     return needed
 
 
