@@ -121,6 +121,30 @@ def compute_needed_keys(scenarios) -> dict[str, tuple[float, float, int]]:
     return needed
 
 
+def compute_conversation_needed_keys(conversations) -> dict[str, tuple[float, float, int]]:
+    """Same idea as compute_needed_keys, applied to the Cycle 2 multi-turn
+    corpus's checkpoint turns instead of single-request scenarios - each
+    checkpoint's expected_state is already RecommendationRequest-shaped
+    (evaluations.conversation_scenarios), so the same candidate/relaxation
+    logic applies directly with no adapter needed."""
+    needed = {}
+    for conversation in conversations:
+        for turn in conversation.turns:
+            if turn.expected_state is None:
+                continue
+            months = _months_to_check(turn.expected_state)
+            destinations = set()
+            for request in _relaxed_requests(turn.expected_state):
+                destinations.update(_candidate_destinations_for(request))
+            for destination in destinations:
+                for month in months:
+                    key = fixture_key(
+                        float(destination.latitude), float(destination.longitude), month
+                    )
+                    needed[key] = (float(destination.latitude), float(destination.longitude), month)
+    return needed
+
+
 class Command(BaseCommand):
     help = (
         "Captures real MonthlyClimateSummary data from Open-Meteo into the "
@@ -136,14 +160,26 @@ class Command(BaseCommand):
             "--dry-run",
             action="store_true",
             help=(
-                "Only report how many (destination, month) pairs are "
-                "needed/missing - no requests."
+                "Only report how many (destination, month) pairs are needed/missing - no requests."
             ),
         )
 
     def handle(self, *args, **options):
         scenarios = load_corpus()
         needed = compute_needed_keys(scenarios)
+
+        try:
+            from evaluations.conversation_scenarios import load_conversation_corpus
+
+            conversations = load_conversation_corpus()
+            needed.update(compute_conversation_needed_keys(conversations))
+        except FileNotFoundError:
+            # A checkout without the Cycle 2 conversation corpus yet (or
+            # before it existed at all) just has nothing extra to add -
+            # same "missing file is a normal starting state" tolerance
+            # load_fixture_file already applies to the fixture itself.
+            pass
+
         document = load_fixture_file()
         if document.get("schema_version") != FIXTURE_SCHEMA_VERSION:
             self.stdout.write(

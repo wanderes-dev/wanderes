@@ -29,6 +29,23 @@ class FailureCategory(str, Enum):
     # were reported as SCORING failures despite perfect extraction and
     # unrelated production code.
     DEPENDENCY_FAILURE = "DEPENDENCY_FAILURE"
+    # Cycle 2 (multi-turn conversation evaluation) - a single-request
+    # scenario has no notion of "the traveler already told us this," so
+    # these categories didn't exist until a conversation corpus needed to
+    # distinguish *why* state was wrong at a given turn, not just that it
+    # was.
+    LOST_CONTEXT = "LOST_CONTEXT"  # an unsuperseded earlier value silently reverted to null/default
+    STALE_STATE = "STALE_STATE"  # a superseded value reappeared as if never superseded
+    CORRECTION_FAILURE = "CORRECTION_FAILURE"  # a same-turn-family correction didn't take
+    CONTRADICTION_RESOLUTION = (
+        "CONTRADICTION_RESOLUTION"  # a later, contradicting statement didn't win
+    )
+    REFERENCE_RESOLUTION = (
+        "REFERENCE_RESOLUTION"  # "the second option" etc. resolved wrong or not at all
+    )
+    EXCLUSION_PERSISTENCE = (
+        "EXCLUSION_PERSISTENCE"  # an explicit exclusion didn't hold at a later turn
+    )
     UNKNOWN = "UNKNOWN"
 
 
@@ -57,6 +74,18 @@ _CHECK_CATEGORY = {
     "flow_mismatch": FailureCategory.INTENT_EXTRACTION,
     "clarification_expectation": FailureCategory.MISSING_INFORMATION,
     "dependency_failure": FailureCategory.DEPENDENCY_FAILURE,
+    # Cycle 2 conversation-level checks whose category is fixed regardless
+    # of which turn/field they fired on. checkpoint_state:<field> is
+    # deliberately NOT here - its category depends on comparing the wrong
+    # value against the conversation's own earlier checkpoints (stale vs.
+    # lost vs. a plain miss), which only evaluations.conversation_runner
+    # has the context to resolve; see classify_checkpoint_failure there.
+    "correction_field_superseded": FailureCategory.CORRECTION_FAILURE,
+    "contradiction_resolved": FailureCategory.CONTRADICTION_RESOLUTION,
+    "reference_resolved": FailureCategory.REFERENCE_RESOLUTION,
+    "exclusion_still_persists": FailureCategory.EXCLUSION_PERSISTENCE,
+    "irrelevant_information_stable": FailureCategory.INTENT_EXTRACTION,
+    "clarification_not_forced": FailureCategory.MISSING_INFORMATION,
 }
 
 

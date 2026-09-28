@@ -42,6 +42,27 @@ class ClassifyFailureTests(SimpleTestCase):
             FailureCategory.INTENT_EXTRACTION,
         )
 
+    def test_cycle_2_conversation_checks_map_to_their_own_categories(self):
+        # Cycle 2: a single-request scenario has no notion of a
+        # correction/contradiction/reference/exclusion persisting or
+        # failing across turns - these categories, and the static checks
+        # that map to them directly, didn't exist before the conversation
+        # corpus needed them (checkpoint_state:<field> is deliberately NOT
+        # tested here - its category is resolved dynamically by
+        # evaluations.conversation_persistence, which has the cross-turn
+        # context this static table doesn't).
+        cases = {
+            "correction_field_superseded": FailureCategory.CORRECTION_FAILURE,
+            "contradiction_resolved": FailureCategory.CONTRADICTION_RESOLUTION,
+            "reference_resolved": FailureCategory.REFERENCE_RESOLUTION,
+            "exclusion_still_persists": FailureCategory.EXCLUSION_PERSISTENCE,
+        }
+        for check_name, expected_category in cases.items():
+            self.assertEqual(
+                classify_failure(check_name=check_name, scenario_category="drift"),
+                expected_category,
+            )
+
     def test_dependency_failure_check_maps_to_dependency_failure_category(self):
         # Cycle 1.5: a missing weather fixture (or a live provider
         # timeout/429/5xx, in --live-weather mode) must never be counted
