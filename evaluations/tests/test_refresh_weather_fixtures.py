@@ -1,10 +1,12 @@
 from django.core.management import call_command
 from django.test import TestCase
 
+from evaluations.conversation_scenarios import ConversationScenario, ConversationTurn
 from evaluations.management.commands.refresh_weather_fixtures import (
     _effective_base_request,
     _months_to_check,
     _relaxed_requests,
+    compute_conversation_needed_keys,
     compute_needed_keys,
 )
 from evaluations.scenarios import Scenario, load_corpus
@@ -165,8 +167,7 @@ class ComputeNeededKeysTests(TestCase):
         needed = compute_needed_keys([scenario])
         self.assertTrue(any(key.endswith(f",{month}") for key in needed for month in range(1, 13)))
         found = any(
-            key
-            == fixture_key(float(destination.latitude), float(destination.longitude), month)
+            key == fixture_key(float(destination.latitude), float(destination.longitude), month)
             for key in needed
             for month in range(1, 13)
         )
@@ -215,3 +216,29 @@ class RealCorpusRegressionTests(TestCase):
         ]
         for key in previously_missing:
             self.assertIn(key, needed, f"{key} still not targeted for capture")
+
+
+class ComputeConversationNeededKeysTests(TestCase):
+    def test_targets_a_checkpoint_turns_candidate_destinations(self):
+        destination = _destination("beach-1", trip_type="beach", latitude=5.0, longitude=5.0)
+        conversation = ConversationScenario(
+            id="X-1",
+            split="dev",
+            family="drift",
+            turns=(
+                ConversationTurn(message="a", expected_state={"month": 6, "trip_type": "beach"}),
+                ConversationTurn(message="b"),
+            ),
+        )
+        needed = compute_conversation_needed_keys([conversation])
+        key = fixture_key(float(destination.latitude), float(destination.longitude), 6)
+        self.assertIn(key, needed)
+
+    def test_ignores_turns_with_no_checkpoint(self):
+        conversation = ConversationScenario(
+            id="X-1",
+            split="dev",
+            family="drift",
+            turns=(ConversationTurn(message="a"), ConversationTurn(message="b")),
+        )
+        self.assertEqual(compute_conversation_needed_keys([conversation]), {})
