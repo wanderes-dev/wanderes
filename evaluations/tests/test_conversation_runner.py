@@ -26,10 +26,20 @@ class _StubProvider:
         reply_text: str = "Beachtown is a great pick.",
     ):
         self.intent = intent
+        # Defaults to mirroring intent's own trip_type/continent/country/
+        # excluded_place_names, not just the three original climate/budget
+        # fields - the isolated state-delta call now covers all seven, and
+        # a fixed all-None default here would wipe trip_type on every
+        # turn via the real Redis accumulator these tests deliberately
+        # exercise (see test_real_redis_backed_state_persists...).
         self.climate_budget = climate_budget or {
             "min_temp_c": None,
             "max_temp_c": None,
             "max_cost_of_living": None,
+            "trip_type": intent.get("trip_type"),
+            "continent": intent.get("continent"),
+            "country": intent.get("country"),
+            "excluded_place_names_add": intent.get("excluded_place_names") or [],
         }
         self.reply_text = reply_text
         self.calls = []

@@ -24,14 +24,14 @@ _PRICE_PER_1M_OUTPUT_TOKENS_USD = 0.60
 # estimate, not meant to be exact.
 _CHARS_PER_TOKEN = 4.0
 
-# A recommendation-flow scenario makes up to 3 real calls
-# (extract_intent + extract_climate_budget_signal + the final
-# explanation stream); most other flows make fewer. This tracker doesn't
-# know ahead of time which branch will fire, so it charges a flat
-# per-scenario estimate calibrated to that worst case rather than trying
-# to predict the branch - meaning the total is a conservative
-# (over-, not under-) estimate.
-_ESTIMATED_CALLS_PER_PIPELINE_SCENARIO = 3
+# A recommendation-flow scenario makes up to 4 real calls
+# (extract_intent + extract_climate_budget_signal + extract_state_clear_
+# signal + the final explanation stream); most other flows make fewer.
+# This tracker doesn't know ahead of time which branch will fire, so it
+# charges a flat per-scenario estimate calibrated to that worst case
+# rather than trying to predict the branch - meaning the total is a
+# conservative (over-, not under-) estimate.
+_ESTIMATED_CALLS_PER_PIPELINE_SCENARIO = 4
 _ESTIMATED_PROMPT_OVERHEAD_CHARS = 1800  # system prompt + schema + a few history turns, rough
 
 
