@@ -1,0 +1,112 @@
+{
+  "run_id": "20260928-132216_conversation_baseline",
+  "label": "conversation_baseline",
+  "corpus_version": "v1",
+  "git_sha": null,
+  "timestamp": "2026-09-28T13:22:16.035188+00:00",
+  "conversation_count": 53,
+  "evaluable_count": 53,
+  "infrastructure_failure_count": 0,
+  "quality_pass_count": 25,
+  "quality_pass_rate": 0.4716981132075472,
+  "checkpoint_total": 120,
+  "checkpoint_passed": 79,
+  "checkpoint_pass_rate": 0.6583333333333333,
+  "cost": {
+    "model_name": "gpt-4o-mini",
+    "pipeline_scenarios": 137,
+    "judge_calls": 0,
+    "estimated_input_tokens": 188761,
+    "estimated_output_tokens": 37904,
+    "estimated_usd": 0.0511,
+    "note": "Rough estimate from prompt/reply character length, not real token counts - neither generate_structured_reply nor stream_reply expose usage data today."
+  },
+  "failure_taxonomy": {
+    "INTENT_EXTRACTION": 21,
+    "CORRECTION_FAILURE": 1,
+    "CONTRADICTION_RESOLUTION": 3,
+    "LOST_CONTEXT": 45,
+    "EXCLUSION_PERSISTENCE": 4,
+    "REFERENCE_RESOLUTION": 1,
+    "EXPLANATION_GROUNDING": 2
+  },
+  "metrics": {
+    "retained_field_accuracy": 0.7628865979381443,
+    "retained_field_total": 194,
+    "correction_accuracy": 0.9473684210526315,
+    "correction_total": 19,
+    "supersession_accuracy": 0.6896551724137931,
+    "supersession_total": 29,
+    "exclusion_persistence_accuracy": 0.7647058823529411,
+    "exclusion_persistence_total": 17,
+    "contradiction_resolution_accuracy": 0.7857142857142857,
+    "contradiction_resolution_total": 14,
+    "reference_resolution_accuracy": 0.9,
+    "reference_resolution_total": 10,
+    "irrelevant_information_stability": 0.4,
+    "irrelevant_information_total": 20
+  },
+  "multilingual_continuity": {
+    "conversations": 2,
+    "evaluable": 2,
+    "passed": 1
+  },
+  "by_split": {
+    "dev": {
+      "total": 45,
+      "evaluable": 45,
+      "passed": 21,
+      "pass_rate": 0.4666666666666667
+    },
+    "holdout": {
+      "total": 8,
+      "evaluable": 8,
+      "passed": 4,
+      "pass_rate": 0.5
+    }
+  },
+  "by_family": {
+    "contradiction": {
+      "total": 7,
+      "evaluable": 7,
+      "passed": 4,
+      "pass_rate": 0.5714285714285714
+    },
+    "correction": {
+      "total": 9,
+      "evaluable": 9,
+      "passed": 8,
+      "pass_rate": 0.8888888888888888
+    },
+    "cross_family": {
+      "total": 7,
+      "evaluable": 7,
+      "passed": 1,
+      "pass_rate": 0.14285714285714285
+    },
+    "drift": {
+      "total": 7,
+      "evaluable": 7,
+      "passed": 3,
+      "pass_rate": 0.42857142857142855
+    },
+    "irrelevant_info": {
+      "total": 9,
+      "evaluable": 9,
+      "passed": 0,
+      "pass_rate": 0.0
+    },
+    "memory": {
+      "total": 7,
+      "evaluable": 7,
+      "passed": 2,
+      "pass_rate": 0.2857142857142857
+    },
+    "reference": {
+      "total": 7,
+      "evaluable": 7,
+      "passed": 7,
+      "pass_rate": 1.0
+    }
+  }
+}
