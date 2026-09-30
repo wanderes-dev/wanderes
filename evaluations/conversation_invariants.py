@@ -56,21 +56,32 @@ class CheckpointResult:
         }
 
 
-def build_actual_state(intent: dict, *, excluded_slugs: list[str]) -> dict:
-    """The real, structured state a given turn's extraction actually
-    produced, in the same field shape as a checkpoint's expected_state -
-    excluded_slugs is passed in already resolved (the caller mirrors
-    ai.orchestration's own find_destination_slugs_by_name resolution),
-    since intent itself only ever carries excluded_place_names (raw
-    text), never slugs."""
+def build_actual_state(intent: dict, effective_state: dict, *, excluded_slugs: list[str]) -> dict:
+    """The structured state the conversation actually holds after a turn,
+    in the same field shape as a checkpoint's expected_state.
+
+    The persisted accumulator fields (the temperature bounds, budget,
+    trip_type, continent, country) come from `effective_state` - what
+    ai.orchestration's state_sink reports as persisted - not from `intent`.
+    Reading them off the turn's extraction made any turn that returns
+    before the accumulator merge (small talk, a stated future trip, a
+    visa question...) look like it had wiped the state, when nothing had
+    touched it, and made a turn whose extraction was right but never
+    persisted look fine.
+
+    `month` isn't part of the persisted state, so it's the one field
+    still read from this turn's own `intent`. excluded_slugs is passed in
+    already resolved (the caller mirrors ai.orchestration's own
+    find_destination_slugs_by_name resolution), since the state itself only
+    ever carries excluded_place_names (raw text), never slugs."""
     return {
         "month": intent.get("month"),
-        "min_temp_c": intent.get("min_temp_c"),
-        "max_temp_c": intent.get("max_temp_c"),
-        "max_cost_of_living": intent.get("max_cost_of_living"),
-        "trip_type": intent.get("trip_type"),
-        "continent": intent.get("continent"),
-        "country": intent.get("country"),
+        "min_temp_c": effective_state.get("min_temp_c"),
+        "max_temp_c": effective_state.get("max_temp_c"),
+        "max_cost_of_living": effective_state.get("max_cost_of_living"),
+        "trip_type": effective_state.get("trip_type"),
+        "continent": effective_state.get("continent"),
+        "country": effective_state.get("country"),
         "excluded_slugs": sorted(excluded_slugs),
     }
 

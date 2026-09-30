@@ -1,6 +1,8 @@
+from django.core.cache import cache
 from django.test import TestCase
 
 from ai import memory
+from ai.tests.helpers import remaining_ttl_seconds
 from users.models import User
 
 
@@ -330,3 +332,77 @@ class ResolveStateDeltaTests(TestCase):
         self.assertEqual(
             memory.get_climate_budget("chat-history:session:resolve-does-not-persist"), _NO_STATE
         )
+
+
+class StateLifetimeTests(TestCase):
+    """The accumulated traveler state and the turn history are one
+    conversation, so they age out together - however the turns in between
+    were handled."""
+
+    def _age_state(self, key, seconds=5):
+        cache.touch(memory._climate_budget_key(key), seconds)
+        self.assertLessEqual(remaining_ttl_seconds(memory._climate_budget_key(key)), seconds)
+
+    def test_append_turn_refreshes_the_states_lifetime(self):
+        key = "chat-history:session:ttl-refresh"
+        memory.update_climate_budget(key, trip_type="beach")
+        self._age_state(key)
+
+        memory.append_turn(key, user_message="hi", assistant_reply="hello")
+
+        self.assertGreater(
+            remaining_ttl_seconds(memory._climate_budget_key(key)),
+            memory.CONVERSATION_TTL_SECONDS - 60,
+        )
+
+    def test_state_and_history_lifetimes_stay_in_step_over_many_turns(self):
+        key = "chat-history:session:ttl-in-step"
+        memory.update_climate_budget(key, country="Italy")
+        self._age_state(key)
+
+        # Turns that never touch the state itself (nothing to merge).
+        for i in range(4):
+            memory.append_turn(key, user_message=f"aside {i}", assistant_reply="ok")
+
+        state_ttl = remaining_ttl_seconds(memory._climate_budget_key(key))
+        history_ttl = remaining_ttl_seconds(key)
+        self.assertAlmostEqual(state_ttl, history_ttl, delta=5)
+
+    def test_append_turn_does_not_invent_state_for_a_conversation_without_any(self):
+        key = "chat-history:session:ttl-no-state"
+
+        memory.append_turn(key, user_message="hi", assistant_reply="hello")
+
+        self.assertIsNone(remaining_ttl_seconds(memory._climate_budget_key(key)))
+        self.assertEqual(memory.get_climate_budget(key), _NO_STATE)
+
+    def test_clear_history_still_removes_both_keys(self):
+        key = "chat-history:session:ttl-clear"
+        memory.update_climate_budget(key, trip_type="beach")
+        memory.append_turn(key, user_message="hi", assistant_reply="hello")
+
+        memory.clear_history(key)
+
+        self.assertIsNone(remaining_ttl_seconds(key))
+        self.assertIsNone(remaining_ttl_seconds(memory._climate_budget_key(key)))
+
+    def test_refreshing_the_lifetime_leaves_set_unchanged_and_clear_semantics_alone(self):
+        key = "chat-history:session:ttl-semantics"
+        memory.update_climate_budget(key, country="Italy", trip_type="culture")
+
+        # UNCHANGED: a turn with nothing to say about the state.
+        memory.append_turn(key, user_message="aside", assistant_reply="ok")
+        state = memory.get_climate_budget(key)
+        self.assertEqual((state["country"], state["trip_type"]), ("Italy", "culture"))
+
+        # SET replaces one field and leaves the rest.
+        memory.update_climate_budget(key, country="Spain")
+        memory.append_turn(key, user_message="aside", assistant_reply="ok")
+        state = memory.get_climate_budget(key)
+        self.assertEqual((state["country"], state["trip_type"]), ("Spain", "culture"))
+
+        # CLEAR drops exactly the cleared field.
+        memory.update_climate_budget(key, country_cleared=True)
+        memory.append_turn(key, user_message="aside", assistant_reply="ok")
+        state = memory.get_climate_budget(key)
+        self.assertEqual((state["country"], state["trip_type"]), (None, "culture"))

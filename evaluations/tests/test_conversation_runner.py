@@ -2,6 +2,7 @@ from django.test import TestCase
 
 from ai import memory
 from ai.provider.base import AIResponse
+from ai.tests.helpers import FixedClimateProvider, ScriptedProvider, intent, make_destination
 from evaluations.conversation_runner import run_conversation, select_conversations
 from evaluations.conversation_scenarios import ConversationScenario, ConversationTurn
 from evaluations.cost import CostTracker
@@ -219,6 +220,101 @@ class RunConversationMechanicsTests(TestCase):
         self.assertEqual(len(history), 4)
         self.assertEqual(history[0]["content"], "turn one")
         self.assertEqual(history[2]["content"], "turn two")
+
+
+class CheckpointsReadPersistedStateTests(TestCase):
+    """Checkpoints assert on the state the conversation holds after a turn
+    (ai.orchestration's state_sink), not on what that one message's
+    extraction happened to yield."""
+
+    def setUp(self):
+        make_destination("rome-it", name="Rome", country="Italy", trip_type="culture")
+        self.climate_provider = FixedClimateProvider()
+
+    def _run(self, turns, script):
+        return run_conversation(
+            _conversation(turns=turns),
+            ai_provider=ScriptedProvider(script),
+            climate_provider=self.climate_provider,
+            cost=CostTracker("stub"),
+        )
+
+    def test_a_turn_that_returns_before_the_merge_still_reports_the_held_state(self):
+        result = self._run(
+            [
+                ConversationTurn(
+                    message="cultura na Itália",
+                    expected_state={"trip_type": "culture", "country": "Italy"},
+                ),
+                ConversationTurn(
+                    message="meu chefe está de férias",
+                    expected_state={"trip_type": "culture", "country": "Italy"},
+                    expected_transitions={"trip_type": "retained", "country": "retained"},
+                ),
+            ],
+            [
+                {"intent": intent(trip_type="culture", country="Italy")},
+                {"intent": intent(message_type="off_topic")},
+            ],
+        )
+
+        aside = result.turns[1]
+        self.assertIsNone(aside.intent["trip_type"])  # the raw extraction was empty
+        self.assertEqual(aside.effective_state["trip_type"], "culture")
+        self.assertEqual(aside.effective_state["country"], "Italy")
+        self.assertTrue(aside.checkpoint.all_match)
+        self.assertEqual(result.lost_context_findings, [])
+        self.assertTrue(result.passed)
+
+    def test_extraction_that_was_never_persisted_does_not_satisfy_a_checkpoint(self):
+        # A stated future trip is extracted correctly but returns before the
+        # merge, so nothing is held for the next turn. Reading the raw
+        # extraction used to make this look fine.
+        result = self._run(
+            [
+                ConversationTurn(
+                    message="quero conhecer a Itália", expected_state={"country": "Italy"}
+                ),
+                ConversationTurn(message="obrigado"),
+            ],
+            [
+                {"intent": intent(message_type="future_intent", country="Italy")},
+                {"intent": intent(message_type="off_topic")},
+            ],
+        )
+
+        turn = result.turns[0]
+        self.assertEqual(turn.intent["country"], "Italy")  # extracted...
+        self.assertIsNone(turn.effective_state["country"])  # ...not persisted
+        self.assertFalse(turn.checkpoint.all_match)
+        self.assertIn("checkpoint_state:country", result.failed_check_names())
+
+    def test_month_is_still_read_from_the_turns_own_extraction(self):
+        result = self._run(
+            [
+                ConversationTurn(message="em novembro", expected_state={"month": 11}),
+                ConversationTurn(message="obrigado"),
+            ],
+            [
+                {"intent": intent(trip_type="culture", country="Italy", month=11)},
+                {"intent": intent(message_type="off_topic")},
+            ],
+        )
+
+        self.assertTrue(result.turns[0].checkpoint.all_match)
+
+    def test_effective_state_is_written_to_the_turn_json(self):
+        result = self._run(
+            [ConversationTurn(message="cultura na Itália"), ConversationTurn(message="obrigado")],
+            [
+                {"intent": intent(trip_type="culture", country="Italy")},
+                {"intent": intent(message_type="off_topic")},
+            ],
+        )
+
+        turn_json = result.turns[0].to_json()
+        self.assertEqual(turn_json["effective_state"]["country"], "Italy")
+        self.assertIn("intent", turn_json)  # the raw extraction is still recorded too
 
 
 class SelectConversationsTests(TestCase):

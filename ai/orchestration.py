@@ -820,6 +820,7 @@ def stream_travel_recommendation(
     history_override: list[dict] | None = None,
     focus_destination_slug: str | None = None,
     intent_sink: dict | None = None,
+    state_sink: dict | None = None,
 ) -> StreamingOrchestrationResult:
     """Handle one chat message: a recommendation request, feedback about a
     past visit, a stated future travel intention, or an off-topic message.
@@ -865,8 +866,53 @@ def stream_travel_recommendation(
     non-deterministic, separate extraction call. None (the default)
     costs nothing extra and changes no behavior for any other caller;
     never populated on the focus_destination_slug path, which skips
-    extraction entirely.
+    extraction entirely. It is extraction, not persisted state: on every
+    branch that returns before the accumulator merge it's just what this
+    one message yielded - see state_sink for what actually persists.
+
+    `state_sink`: when given a dict, gets updated with the accumulated
+    traveler state (the seven fields ai.memory.update_climate_budget
+    merges) exactly as it's persisted once this turn's own writes are
+    done, whichever branch handled the message. Where intent_sink shows
+    what this one message yielded, this shows what the conversation will
+    carry into the next turn - the thing a state-retention check actually
+    cares about. Stays empty when nothing is persisted for the call
+    (history_override). One cache read, no model calls.
     """
+    result = _route_turn(
+        message,
+        user=user,
+        session_key=session_key,
+        ai_provider=ai_provider,
+        climate_provider=climate_provider,
+        history_override=history_override,
+        focus_destination_slug=focus_destination_slug,
+        intent_sink=intent_sink,
+    )
+    if state_sink is not None and history_override is None:
+        persisted = memory.get_climate_budget(
+            memory.conversation_key(user=user, session_key=session_key)
+        )
+        # Copied so a caller can't reach back into the shared blank-state
+        # default through the exclusions list.
+        state_sink.update(persisted, excluded_place_names=list(persisted["excluded_place_names"]))
+    return result
+
+
+def _route_turn(
+    message: str,
+    *,
+    user=None,
+    session_key: str | None = None,
+    ai_provider: AIProvider | None = None,
+    climate_provider=None,
+    history_override: list[dict] | None = None,
+    focus_destination_slug: str | None = None,
+    intent_sink: dict | None = None,
+) -> StreamingOrchestrationResult:
+    """The routing and handling behind stream_travel_recommendation(), split
+    out so that function can report the post-turn state once, after
+    whichever of the many return paths below was taken."""
     ai_provider = ai_provider or get_ai_provider()
     profile = _traveler_profile(user)
     if history_override is not None:
