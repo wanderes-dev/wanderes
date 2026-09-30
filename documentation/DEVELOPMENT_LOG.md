@@ -2947,3 +2947,69 @@ The isolated per-turn signal that feeds this (`CLIMATE_BUDGET_SCHEMA`/`CLIMATE_B
 **Files changed beyond the original Improvement 1 diff**: `ai/orchestration.py` (`STATE_CLEAR_SCHEMA`/`STATE_CLEAR_SYSTEM_PROMPT`/`_extract_state_clear_signal`/`_validate_state_clear` new; `_validate_state_delta` removed; `CLIMATE_BUDGET_SCHEMA`/`CLIMATE_BUDGET_SYSTEM_PROMPT` reverted to pre-Cycle-2 exactly; merge call site updated to call both isolated functions), `ai/tests/test_orchestration.py` (stub updates for the new second call, `ClimateBudgetPromptCalibrationRegressionTests` guarding the value-extraction text/schema against drifting again, `ValidateStateClearTests` replacing `ValidateStateDeltaTests`), `evaluations/cost.py` (`_ESTIMATED_CALLS_PER_PIPELINE_SCENARIO` 3→4 for the new real call), `evaluations/tests/test_runner.py` (stub handles the new schema name). New run artifacts: `det_final_fix_1`/`det_final_fix_2`/`conversation_cycle1_fix`/`singleturn_fix_final` (committed). All prior historical runs preserved unchanged, including the superseded, now-known-buggy intermediate runs `cycle2_improvement1_singleturn_check_v5`/`conversation_cycle1`/`det_final_1`/`det_final_2` - kept as the historical record of the regression-then-fix story, matching this project's established immutable-run convention.
 
 **Improvement Cycle 2's next step (Improvement 2) was explicitly not started.**
+
+
+## 2026-09-30 — Cycle 2, Improvement 2: observe the persisted state, and fix the state TTL lifecycle
+
+**Scope (human decision).** The Improvement 2 investigation found that the `off_topic` "state-update gap" was mostly a *reporting* gap: nothing erases the Redis accumulator on an early-return turn, but the conversation runner read each turn's raw extraction (`intent_sink`), which on every branch that returns before the accumulator merge is just what that one message yielded. The user chose Option A with a narrower scope. This improvement is an evaluation-instrumentation correction plus one real state-lifecycle fix. It is **not** an intent-extraction improvement, and it deliberately fixes none of the failures it exposes. Not done, on purpose: hoisting the isolated extraction calls, any model call on an early-return branch, persisting combined-call values from `off_topic`/other early returns, prompt/schema/extraction changes, adding `month` to the persistent state, fixing `IRR-006`/`future_intent`/contradiction persistence/`MTT-010`/`DRIFT-004`/reference resolution/accommodation routing/`profile-confirmed`/`history_override`, or changing any scenario expectation.
+
+### 1. Production behavior change - the structured-state TTL lifecycle fix, only
+
+`memory.append_turn()` now also `touch()`es the accumulated-state key. Before, only the recommendation path (and the feedback exclusion write) refreshed that key, so a run of early-return turns (small talk, a visa question, a saved trip...) kept the history alive while the state's own 30-minute clock ran down underneath it. It is fixed in the one place every branch already funnels through, not per branch; `touch()` is a no-op for a missing key, so it never invents state, and `clear_history()` still removes both keys. That is the whole of the production change. Extraction, routing, the accumulator merge and the SET/UNCHANGED/CLEAR semantics are untouched; no prompt or schema changed; `month` is still not persisted.
+
+The only other production-code addition is opt-in observation: `stream_travel_recommendation()` gained an optional `state_sink` (the ~600-line routing body is unchanged and now lives in `_route_turn()`; the public function is a thin wrapper). `ai/views.py` does not pass it, so a real request's only added work is one Redis `EXPIRE`. **Zero added model calls** - the production diff adds no provider call (13 call sites in `ai/` before and after), and it was measured live in both benchmark runs from the `llm_request_completed` events: `extract_intent` = 137 (one per turn), and `extract_climate_budget_signal`/`extract_state_clear_signal` each equal the number of merge-path turns (111 and 109), i.e. zero on any early-return turn.
+
+### 2. Evaluation/instrumentation correction
+
+Checkpoints now observe the *effective persisted* structured state rather than treating the raw extraction of the current turn as conversational state. `state_sink` reports the accumulated seven-field state (`min_temp_c`, `max_temp_c`, `max_cost_of_living`, `trip_type`, `continent`, `country`, exclusions) as it is persisted once the turn's own writes are done, on every return path (one cache read; left empty under `history_override`, where nothing is persisted). The conversation runner records it per turn as `TurnResult.effective_state` and builds checkpoints from it. `intent_sink` keeps its meaning - raw/current-turn extraction (its docstring now says so) - and is still recorded as `TurnResult.intent`. `month` is not part of the persisted state, so it is still read from the current turn's extraction. This change is deterministic in meaning: for the same recorded turn it always yields the same verdict; it does not depend on the model.
+
+Consequence: per-turn state-retention numbers from runs made before this change (through `conversation_cycle1_fix`) measured raw extraction on early-return turns and are **not directly comparable** with later ones. The same-run rescoring below is the like-for-like bridge.
+
+### 3. Newly exposed pre-existing failures
+
+These passed under the old instrument only because it read the raw extraction; nothing in production regressed. Each was confirmed in both runs.
+- **`DRIFT-005`, `CORR-004`, `CONTRA-003`** - every turn is classified `future_intent`, which returns before the accumulator merge and never persists. Extraction is correct (`europe`->`asia`; `Italy`->`Spain`; `asia`->`europe`) but the persisted continent/country is `None` at both turns in both runs, so nothing would carry into a following search.
+- **`CONTRA-004`** - turn 2 ("actually cold" after "hot"): the request used `min_temp_c=None`, but Redis persisted `min_temp_c=28`, because the cross-turn temperature-contradiction resolution is applied after the state is persisted (see the deferred defects).
+
+Related instances of the same root causes, not additional conversations in the list above: `MEM-005` turn 1 (a feedback message that also states `trip_type`/`country` persists only the exclusion; it already failed `trip_type` before), and, in run 2 only, `XFAM-002` turn 4 ("quero ficar na Ásia mesmo") was routed to `future_intent`, leaving the persisted continent at `europe` - a genuine `STALE_STATE`, triggered by routing variance and invisible through the old instrument (the run-2 count of 2 is this one finding, counted under both `checkpoint_state:continent` and `no_stale_state_resurrection`).
+
+### 4. Known newly observed defects - deferred, none fixed here
+
+1. **`future_intent` does not persist legitimate state updates**, and cannot safely be fixed by persisting the extracted values blindly: `IRR-007`'s turn 2 (a traveler mentioning that their mother wants to see Peru) returns `country='Peru'` from the very same branch. Fixing it needs a way to tell the traveler's own goal from an aside.
+2. **Contradiction resolution happens after persistence.** `_resolve_cross_turn_temperature_contradiction()` mutates the resolved state after `update_climate_budget()` has stored it, so the persisted state can disagree with the effective request. Reproduced with a scripted probe: "hot" persists `min=28`; "actually cold" makes the request use `min=None, max=15` while Redis keeps `(28, 15)`; on the next turn that never mentions temperature the resolver sees a contradictory pair with no side "just stated" and drops **both**, losing the cold preference.
+3. **`profile-confirmed` has a similar TTL-lifecycle concern.** `memory.mark_profile_confirmed()` sets its key with the TTL once and nothing refreshes it, the same independent-clock shape the state key had. Found by reading the code; no user-visible failure was observed or tested, and it was not changed.
+4. **`history_override` has no accumulator coverage.** A resumed saved conversation runs with `conv_key=None`, so there is no accumulated state at all, and no conversation scenario exercises that path.
+
+### 5. Verified results - two runs, reported together; neither is a definitive quality score
+
+The Improvement 1 reference is preserved as recorded. All four run directories are committed (see §7). "Old source" is the *same run* rescored with the pre-change state source, using the project's own scoring code (the rescoring reproduces the reference's recorded numbers exactly, including the whole taxonomy).
+
+| | Improvement 1 reference (recorded, unchanged) | Improvement 2 run 1 | Improvement 2 run 2 |
+|---|---|---|---|
+| Full-conversation pass | 29/53 (54.7%) | 33/53 (62.3%) | 31/53 (58.5%) |
+| Checkpoint pass | 83/120 (69.2%) | 88/120 (73.3%) | 84/120 (70.0%) |
+| Irrelevant-information stability | 7/20 (35.0%) | 14/20 (70.0%) | 14/20 (70.0%) |
+| `LOST_CONTEXT` (taxonomy) | 42 | 19 | 19 |
+| `STALE_STATE` (taxonomy) | 0 | 0 | 2 |
+| Retained-field accuracy | 77.3% | 85.6% | 84.0% |
+| Exclusion persistence | 88.2% | 94.1% | 94.1% |
+| Correction / contradiction accuracy | 94.7% / 92.9% | 84.2% / 78.6% | 84.2% / 71.4% |
+| *Same run, old source: conversations / checkpoints / `LOST_CONTEXT`* | *n/a* | *30/53, 85/120, 41* | *29/53, 81/120, 45* |
+
+Attribution of the differences from the reference:
+- **Instrumentation corrections (fail -> pass)**: `IRR-001`..`IRR-005` and `IRR-007` in both runs, plus `XFAM-002` in run 1. Redis held the right state all along (22 checkpoint fields across 12 turns in run 1 were misreported). `IRR-006` still fails, on `month` alone.
+- **Newly exposed failures (pass -> fail)**: `DRIFT-005`, `CORR-004`, `CONTRA-003`, `CONTRA-004` in both runs (§3). The drop in correction/contradiction accuracy is exposure, not degradation. The instrument alone moves run 1 from 30 to 33 conversations (+7 fixed, -4 exposed) and run 2 from 29 to 31 (+6, -4).
+- **Ordinary LLM variance, not the change**: production behavior is identical across these runs, yet on the old source they differ by 2-4 of 120 checkpoint verdicts (`CONTRA-005`, `XFAM-001` T5, `MEM-005` T3, `XFAM-002` T4) and one conversation verdict (`CONTRA-005`, already documented as variance-prone: fail in the reference, pass in run 1, fail in run 2). Routing also flips between runs (`CMET-001a/b`, `MEM-003`, `REF-006`, `XFAM-002`). That is why two runs are recorded and neither is a definitive score.
+- **What still fails after the correction** (7 distinct lost-context findings per run): 3 are the exposed `future_intent` non-persistence, 2 are `month` (`IRR-006`, `XFAM-001` T2 - not persisted by design), 2 are merge-path (`MTT-010`-family `trip_type` - `MEM-001` in run 1, `MEM-005` in run 2 - and `XFAM-003` T4 exclusions). The 6 irrelevant-information checkpoints still failing are `IRR-006` T2 (`month`) and the five `CMET-001a/b` checkpoints (`max_cost_of_living` extracted as 3 for "barata" at turn 1 - value calibration, unrelated to state handling).
+
+### 6. Other verification
+
+Tests 883 -> 908 (+25), all passing; `ruff check .` clean. New: `ai/tests/test_persisted_state.py` (raw `intent_sink` and persisted `state_sink` are distinct; an `off_topic` turn with null extraction still exposes the previously persisted state; another person's country in an `off_topic`/`future_intent`/recall turn never overwrites the persisted country and the next search still uses the traveler's own; feedback still persists exclusions only; early-return turns keep the state lifetime in step with history; SET/UNCHANGED/CLEAR unchanged through real merge-path turns; results identical with and without the sinks; `state_sink` empty under `history_override`; per-path model-call counts pinned and identical with/without the sink), `StateLifetimeTests` in `ai/tests/test_memory.py` (TTL read straight from Redis), and runner/invariant tests. Mutation-checked by breaking production code on purpose: dropping the `touch` fails exactly the three lifetime tests; reading raw extraction again fails the runner/invariant tests; persisting the combined-call country on the `off_topic` branch fails the "another person's country" tests; adding a model call on the `off_topic` branch fails the call-count test. Deterministic single-turn layer: 150/150 evaluable, two fresh runs byte-identical to each other and to the committed Improvement 1 reference (`det_final_fix_1`/`_2`).
+
+### 7. Committed evaluation record
+
+`det_impr2_1`, `det_impr2_2`, `conversation_impr2_run1`, `conversation_impr2_run2` (under `evaluations/runs/`). Before committing they were checked to be exactly the runs above (run ids and recorded metrics match; each directory has exactly the file set of the corresponding committed reference run) and to contain no secrets, credentials, PII, environment data, local paths or scratch output. The Improvement 1 reference runs are preserved unchanged.
+
+**Correction to the Improvement 2 investigation report**: the feedback and `future_intent` quick paths call `_localize_reply()` (an AI call), so they cost 2 model calls, not 1; the estimate for hoisting the isolated extractions onto early-return turns over-stated the relative increase on those turns slightly, and the cost conclusion is otherwise unchanged.
+
+Improvement 3 was not started. Nothing has been pushed.

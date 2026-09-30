@@ -49,6 +49,10 @@ class TurnResult:
     message: str
     reply: str = ""
     intent: dict = field(default_factory=dict)
+    # The accumulated state as persisted after this turn (ai.orchestration's
+    # state_sink) - what checkpoints assert on, as opposed to `intent`,
+    # which is only what this one message's extraction yielded.
+    effective_state: dict = field(default_factory=dict)
     scored_slugs: list[str] = field(default_factory=list)
     checkpoint: CheckpointResult | None = None
     reference_resolved: bool | None = None  # None when the turn isn't a reference turn
@@ -62,6 +66,7 @@ class TurnResult:
             "message": self.message,
             "reply": self.reply,
             "intent": self.intent,
+            "effective_state": self.effective_state,
             "scored_slugs": self.scored_slugs,
             "checkpoint": self.checkpoint.to_json() if self.checkpoint else None,
             "reference_resolved": self.reference_resolved,
@@ -193,6 +198,7 @@ class ConversationResult:
             lines.append(f"\nTurn {t.turn_index + 1}")
             lines.append(f'  User: "{t.message}"')
             lines.append(f"  Extracted state: {t.intent}")
+            lines.append(f"  Persisted state: {t.effective_state}")
             lines.append(f"  Scored: {t.scored_slugs}")
             if t.checkpoint:
                 for c in t.checkpoint.comparisons:
@@ -225,6 +231,7 @@ def run_conversation(
 
         for turn_index, turn in enumerate(scenario.turns):
             intent_sink: dict = {}
+            state_sink: dict = {}
             try:
                 streaming = stream_travel_recommendation(
                     turn.message,
@@ -233,6 +240,7 @@ def run_conversation(
                     ai_provider=ai_provider,
                     climate_provider=climate_provider,
                     intent_sink=intent_sink,
+                    state_sink=state_sink,
                 )
                 reply = "".join(streaming.reply_chunks)
             except MissingWeatherFixtureError as exc:
@@ -250,18 +258,21 @@ def run_conversation(
             cost.record_pipeline_call(scenario_message=turn.message, reply=reply)
 
             excluded_slugs = sorted(
-                find_destination_slugs_by_name(intent_sink.get("excluded_place_names") or [])
+                find_destination_slugs_by_name(state_sink.get("excluded_place_names") or [])
             )
             turn_result = TurnResult(
                 turn_index=turn_index,
                 message=turn.message,
                 reply=reply,
                 intent=dict(intent_sink),
+                effective_state=dict(state_sink),
                 scored_slugs=[s.destination.slug for s in scored],
             )
 
             if turn.expected_state is not None:
-                actual_state = build_actual_state(intent_sink, excluded_slugs=excluded_slugs)
+                actual_state = build_actual_state(
+                    intent_sink, state_sink, excluded_slugs=excluded_slugs
+                )
                 checkpoint = evaluate_checkpoint(
                     turn.expected_state, actual_state, turn_index=turn_index
                 )

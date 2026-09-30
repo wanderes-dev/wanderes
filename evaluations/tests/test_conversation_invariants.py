@@ -30,12 +30,33 @@ def _destination(slug, **kwargs):
 
 
 class BuildActualStateTests(TestCase):
-    def test_uses_raw_intent_fields_and_resolved_slugs(self):
-        intent = {"month": 10, "trip_type": "beach", "country": "Japan"}
-        state = build_actual_state(intent, excluded_slugs=["b-slug", "a-slug"])
+    def test_reads_persisted_fields_from_effective_state_and_sorts_slugs(self):
+        intent = {"month": 10}
+        effective_state = {"trip_type": "beach", "country": "Japan", "max_cost_of_living": 2}
+        state = build_actual_state(intent, effective_state, excluded_slugs=["b-slug", "a-slug"])
         self.assertEqual(state["month"], 10)
         self.assertEqual(state["trip_type"], "beach")
+        self.assertEqual(state["country"], "Japan")
+        self.assertEqual(state["max_cost_of_living"], 2)
         self.assertEqual(state["excluded_slugs"], ["a-slug", "b-slug"])  # sorted
+
+    def test_this_turns_raw_extraction_is_ignored_for_persisted_fields(self):
+        # The whole point of the split: a turn whose extraction came back
+        # empty (or wrong) doesn't change what the conversation holds.
+        intent = {"month": None, "trip_type": None, "country": "Peru"}
+        effective_state = {"trip_type": "culture", "country": "Italy"}
+        state = build_actual_state(intent, effective_state, excluded_slugs=[])
+        self.assertEqual(state["trip_type"], "culture")
+        self.assertEqual(state["country"], "Italy")
+
+    def test_month_still_comes_from_this_turns_extraction(self):
+        # month isn't part of the persisted structured state.
+        state = build_actual_state({"month": 11}, {}, excluded_slugs=[])
+        self.assertEqual(state["month"], 11)
+
+    def test_missing_effective_state_reads_as_null_not_as_raw_extraction(self):
+        state = build_actual_state({"trip_type": "beach"}, {}, excluded_slugs=[])
+        self.assertIsNone(state["trip_type"])
 
 
 class EvaluateCheckpointTests(TestCase):

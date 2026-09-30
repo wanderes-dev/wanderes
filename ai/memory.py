@@ -66,6 +66,14 @@ def append_turn(key: str, *, user_message: str, assistant_reply: str) -> None:
     history.append({"role": "assistant", "content": assistant_reply})
     history = history[-MAX_HISTORY_MESSAGES:]
     cache.set(key, history, CONVERSATION_TTL_SECONDS)
+    # The accumulated traveler state belongs to this same conversation, so
+    # it has to live exactly as long as the history does. Only the
+    # recommendation path (and the feedback exclusion write) ever rewrites
+    # it, so without this a stretch of other turns - small talk, a visa
+    # question, a saved trip - kept the history alive while the state's own
+    # clock ran down underneath it. touch() is a no-op for a key that isn't
+    # there, so it never invents state for a conversation that has none.
+    cache.touch(_climate_budget_key(key), CONVERSATION_TTL_SECONDS)
 
 
 def clear_history(key: str) -> None:
