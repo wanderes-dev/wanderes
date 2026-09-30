@@ -3,6 +3,8 @@ state as it's persisted after a turn, reported independently of
 intent_sink (which is only what that one message's extraction yielded).
 """
 
+from unittest import mock
+
 from django.core.cache import cache
 from django.test import TestCase
 
@@ -11,6 +13,7 @@ from ai.orchestration import stream_travel_recommendation
 from ai.tests.helpers import (
     FixedClimateProvider,
     ScriptedProvider,
+    StateWriteSpy,
     intent,
     make_destination,
     remaining_ttl_seconds,
@@ -282,3 +285,142 @@ class NoAdditionalModelCallsTests(_StateSinkTestCase):
         off_topic = ScriptedProvider([{"intent": intent(message_type="off_topic")}])
         self._turn(off_topic, "hi", session="other", state_sink={})
         self.assertEqual(self._counts(off_topic), (["travel_message"], 0, 1))
+
+
+def _t(intent_fields=None, climate=None, clear=None):
+    return {
+        "intent": intent(**(intent_fields or {})),
+        "climate_budget": climate or {},
+        "state_clear": clear or {},
+    }
+
+
+_ITALY = {"trip_type": "culture", "country": "Italy"}
+
+
+class ResolvedTemperatureRangeThroughTurnsTests(_StateSinkTestCase):
+    """The temperature pair is reconciled inside the merge, so for every
+    merge-path turn the state the request is built from, the state that's
+    stored, and the state state_sink reports are one and the same."""
+
+    def _play(self, script, *, session="contra"):
+        provider = ScriptedProvider(script)
+        spy = StateWriteSpy(cache)
+        turns = []
+        with mock.patch("ai.memory.cache", spy):
+            for n in range(len(script)):
+                intent_sink, state_sink = {}, {}
+                self._turn(
+                    provider,
+                    f"message {n}",
+                    session=session,
+                    intent_sink=intent_sink,
+                    state_sink=state_sink,
+                )
+                turns.append((intent_sink, state_sink))
+        return turns, spy, provider
+
+    def _range(self, snapshot):
+        return (snapshot["min_temp_c"], snapshot["max_temp_c"])
+
+    def _assert_request_equals_persisted(self, intent_sink, state_sink):
+        for field in memory._NO_CLIMATE_BUDGET:
+            self.assertEqual(state_sink[field], intent_sink[field], field)
+
+    def _assert_ranges(self, turns, spy, expected, *, session="contra"):
+        for n, (intent_sink, state_sink) in enumerate(turns):
+            with self.subTest(turn=n + 1):
+                self.assertEqual(self._range(intent_sink), expected[n])  # what the request used
+                self.assertEqual(self._range(state_sink), expected[n])  # what's persisted
+                self._assert_request_equals_persisted(intent_sink, state_sink)
+        self.assertEqual(memory.get_climate_budget(self._key(session)), turns[-1][1])
+        self.assertEqual(spy.contradictory_writes(), [])
+
+    def test_hot_then_cold_then_an_unrelated_turn(self):
+        turns, spy, _ = self._play(
+            [_t(_ITALY, {"min_temp_c": 28}), _t(None, {"max_temp_c": 15}), _t()]
+        )
+
+        self._assert_ranges(turns, spy, [(28, None), (None, 15), (None, 15)])
+
+    def test_cold_then_hot_then_an_unrelated_turn(self):
+        turns, spy, _ = self._play(
+            [_t(_ITALY, {"max_temp_c": 15}), _t(None, {"min_temp_c": 28}), _t()]
+        )
+
+        self._assert_ranges(turns, spy, [(None, 15), (28, None), (28, None)])
+
+    def test_hot_then_an_explicit_clear_then_an_unrelated_turn(self):
+        turns, spy, _ = self._play(
+            [
+                _t(_ITALY, {"min_temp_c": 28}),
+                _t(None, {}, {"min_temp_c_cleared": True}),
+                _t(),
+            ]
+        )
+
+        self._assert_ranges(turns, spy, [(28, None), (None, None), (None, None)])
+
+    def test_cold_then_an_explicit_clear_then_an_unrelated_turn(self):
+        turns, spy, _ = self._play(
+            [
+                _t(_ITALY, {"max_temp_c": 15}),
+                _t(None, {}, {"max_temp_c_cleared": True}),
+                _t(),
+            ]
+        )
+
+        self._assert_ranges(turns, spy, [(None, 15), (None, None), (None, None)])
+
+    def test_non_contradictory_min_and_max_are_left_alone(self):
+        turns, spy, _ = self._play(
+            [_t(_ITALY, {"min_temp_c": 20}), _t(None, {"max_temp_c": 30}), _t()]
+        )
+
+        self._assert_ranges(turns, spy, [(20, None), (20, 30), (20, 30)])
+
+    def test_min_equal_to_max_is_kept(self):
+        turns, spy, _ = self._play(
+            [_t(_ITALY, {"min_temp_c": 20}), _t(None, {"max_temp_c": 20}), _t()]
+        )
+
+        self._assert_ranges(turns, spy, [(20, None), (20, 20), (20, 20)])
+
+    def test_an_early_return_turn_after_a_resolved_contradiction_reports_the_resolved_state(self):
+        script = [
+            _t(_ITALY, {"min_temp_c": 28}),
+            _t(None, {"max_temp_c": 15}),
+            {"intent": intent(message_type="off_topic")},
+            _t(),
+        ]
+        turns, spy, _ = self._play(script)
+
+        self.assertEqual(self._range(turns[2][0]), (None, None))  # the aside's own extraction
+        self.assertEqual(self._range(turns[2][1]), (None, 15))  # what the conversation still holds
+        self.assertEqual(self._range(turns[3][0]), (None, 15))  # and what the next search uses
+        self.assertEqual(spy.contradictory_writes(), [])
+
+    def test_geography_and_exclusions_are_unaffected(self):
+        turns, spy, _ = self._play(
+            [
+                _t({**_ITALY, "excluded_place_names": ["Paris"]}, {"min_temp_c": 28}),
+                _t(None, {"max_temp_c": 15}),
+                _t(),
+            ]
+        )
+
+        for n, (intent_sink, state_sink) in enumerate(turns):
+            with self.subTest(turn=n + 1):
+                self.assertEqual(state_sink["trip_type"], "culture")
+                self.assertEqual(state_sink["country"], "Italy")
+                self.assertEqual(state_sink["excluded_place_names"], ["Paris"])
+                self._assert_request_equals_persisted(intent_sink, state_sink)
+        self.assertEqual(spy.contradictory_writes(), [])
+
+    def test_a_contradiction_turn_makes_no_additional_model_calls(self):
+        turns, _, provider = self._play(
+            [_t(_ITALY, {"min_temp_c": 28}), _t(None, {"max_temp_c": 15}), _t()]
+        )
+
+        self.assertEqual(provider.structured_calls, _MERGE_PATH_CALLS * 3)
+        self.assertEqual((provider.reply_calls, provider.stream_calls), (0, 3))

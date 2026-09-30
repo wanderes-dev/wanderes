@@ -1,8 +1,10 @@
+from unittest import mock
+
 from django.core.cache import cache
 from django.test import TestCase
 
 from ai import memory
-from ai.tests.helpers import remaining_ttl_seconds
+from ai.tests.helpers import StateWriteSpy, remaining_ttl_seconds
 from users.models import User
 
 
@@ -332,6 +334,214 @@ class ResolveStateDeltaTests(TestCase):
         self.assertEqual(
             memory.get_climate_budget("chat-history:session:resolve-does-not-persist"), _NO_STATE
         )
+
+
+class ResolveCrossTurnTemperatureContradictionTests(TestCase):
+    """The pair-level rule itself, called directly."""
+
+    def test_keeps_the_newly_stated_max_and_drops_the_stale_min(self):
+        state = {"min_temp_c": 28, "max_temp_c": 15}
+        memory._resolve_cross_turn_temperature_contradiction(state, {"max_temp_c": 15})
+
+        self.assertIsNone(state["min_temp_c"])
+        self.assertEqual(state["max_temp_c"], 15)
+
+    def test_keeps_the_newly_stated_min_and_drops_the_stale_max(self):
+        state = {"min_temp_c": 28, "max_temp_c": 15}
+        memory._resolve_cross_turn_temperature_contradiction(state, {"min_temp_c": 28})
+
+        self.assertEqual(state["min_temp_c"], 28)
+        self.assertIsNone(state["max_temp_c"])
+
+    def test_drops_both_when_both_came_from_the_same_turn(self):
+        state = {"min_temp_c": 28, "max_temp_c": 15}
+        memory._resolve_cross_turn_temperature_contradiction(
+            state, {"min_temp_c": 28, "max_temp_c": 15}
+        )
+
+        self.assertIsNone(state["min_temp_c"])
+        self.assertIsNone(state["max_temp_c"])
+
+    def test_leaves_a_non_contradictory_range_untouched(self):
+        state = {"min_temp_c": 18, "max_temp_c": 28}
+        memory._resolve_cross_turn_temperature_contradiction(state, {"max_temp_c": 28})
+
+        self.assertEqual(state["min_temp_c"], 18)
+        self.assertEqual(state["max_temp_c"], 28)
+
+
+class TemperatureRangeMergeTests(TestCase):
+    """The min/max temperature pair is reconciled inside the merge, so what
+    update_climate_budget() returns is exactly what it stored - and what a
+    later turn inherits."""
+
+    def _stored(self, key):
+        # Straight from Redis, not through get_climate_budget()'s blank default.
+        return cache.get(memory._climate_budget_key(key))
+
+    def _range(self, state):
+        return (state["min_temp_c"], state["max_temp_c"])
+
+    def test_hot_then_cold_keeps_the_side_just_stated_and_stores_that(self):
+        key = "chat-history:session:temp-hot-cold"
+        memory.update_climate_budget(key, min_temp_c=28)
+
+        result = memory.update_climate_budget(key, max_temp_c=15)
+
+        self.assertEqual(self._range(result), (None, 15))
+        self.assertEqual(self._stored(key), result)
+
+    def test_cold_then_hot_keeps_the_side_just_stated_and_stores_that(self):
+        key = "chat-history:session:temp-cold-hot"
+        memory.update_climate_budget(key, max_temp_c=15)
+
+        result = memory.update_climate_budget(key, min_temp_c=28)
+
+        self.assertEqual(self._range(result), (28, None))
+        self.assertEqual(self._stored(key), result)
+
+    def test_an_unrelated_turn_after_hot_then_cold_retains_the_resolved_range(self):
+        key = "chat-history:session:temp-hot-cold-unrelated"
+        memory.update_climate_budget(key, min_temp_c=28)
+        memory.update_climate_budget(key, max_temp_c=15)
+
+        later = memory.update_climate_budget(key, trip_type="culture")
+
+        self.assertEqual(self._range(later), (None, 15))
+        self.assertEqual(self._stored(key), later)
+
+    def test_an_unrelated_turn_after_cold_then_hot_retains_the_resolved_range(self):
+        key = "chat-history:session:temp-cold-hot-unrelated"
+        memory.update_climate_budget(key, max_temp_c=15)
+        memory.update_climate_budget(key, min_temp_c=28)
+
+        later = memory.update_climate_budget(key, trip_type="culture")
+
+        self.assertEqual(self._range(later), (28, None))
+
+    def test_hot_then_explicit_clear_leaves_no_temperature_and_stays_that_way(self):
+        key = "chat-history:session:temp-hot-clear"
+        memory.update_climate_budget(key, min_temp_c=28)
+
+        cleared = memory.update_climate_budget(key, min_temp_c_cleared=True)
+        later = memory.update_climate_budget(key, trip_type="culture")
+
+        self.assertEqual(self._range(cleared), (None, None))
+        self.assertEqual(self._range(later), (None, None))
+
+    def test_cold_then_explicit_clear_leaves_no_temperature_and_stays_that_way(self):
+        key = "chat-history:session:temp-cold-clear"
+        memory.update_climate_budget(key, max_temp_c=15)
+
+        cleared = memory.update_climate_budget(key, max_temp_c_cleared=True)
+        later = memory.update_climate_budget(key, trip_type="culture")
+
+        self.assertEqual(self._range(cleared), (None, None))
+        self.assertEqual(self._range(later), (None, None))
+
+    def test_non_contradictory_updates_are_left_alone(self):
+        key = "chat-history:session:temp-fine"
+        memory.update_climate_budget(key, min_temp_c=20)
+
+        added_max = memory.update_climate_budget(key, max_temp_c=30)
+        moved_min = memory.update_climate_budget(key, min_temp_c=25)
+
+        self.assertEqual(self._range(added_max), (20, 30))
+        self.assertEqual(self._range(moved_min), (25, 30))
+        self.assertEqual(self._stored(key), moved_min)
+
+    def test_min_equal_to_max_is_a_valid_range_not_a_contradiction(self):
+        key = "chat-history:session:temp-equal"
+        memory.update_climate_budget(key, min_temp_c=20)
+
+        result = memory.update_climate_budget(key, max_temp_c=20)
+
+        self.assertEqual(self._range(result), (20, 20))
+        self.assertEqual(self._stored(key), result)
+
+    def test_a_stale_contradictory_pair_with_nothing_newly_stated_drops_both(self):
+        # The safety net: a pair that was already stored (nothing can write
+        # one now, so this is seeded directly) and a turn that says nothing
+        # about temperature - neither side is more current than the other.
+        key = "chat-history:session:temp-stale"
+        cache.set(
+            memory._climate_budget_key(key),
+            {**_NO_STATE, "min_temp_c": 28, "max_temp_c": 15},
+            memory.CONVERSATION_TTL_SECONDS,
+        )
+
+        result = memory.update_climate_budget(key, trip_type="beach")
+
+        self.assertEqual(self._range(result), (None, None))
+        self.assertEqual(result["trip_type"], "beach")
+        self.assertEqual(self._stored(key), result)
+
+    def test_a_contradictory_pair_stated_within_one_turn_drops_both(self):
+        key = "chat-history:session:temp-same-turn"
+
+        result = memory.update_climate_budget(key, min_temp_c=28, max_temp_c=15)
+
+        self.assertEqual(self._range(result), (None, None))
+        self.assertEqual(self._stored(key), result)
+
+    def test_stored_state_always_equals_the_returned_state(self):
+        key = "chat-history:session:temp-stored-equals-returned"
+        for delta in (
+            {"min_temp_c": 28},
+            {"max_temp_c": 15},  # contradiction
+            {"trip_type": "culture"},
+            {"min_temp_c": 28},  # contradiction the other way
+            {"max_temp_c_cleared": True},
+            {"country": "Italy"},
+        ):
+            with self.subTest(delta=delta):
+                result = memory.update_climate_budget(key, **delta)
+                self.assertEqual(self._stored(key), result)
+
+    def test_no_contradictory_state_is_ever_written(self):
+        key = "chat-history:session:temp-never-written"
+        spy = StateWriteSpy(cache)
+
+        with mock.patch("ai.memory.cache", spy):
+            memory.update_climate_budget(key, min_temp_c=28)
+            memory.update_climate_budget(key, max_temp_c=15)
+            memory.update_climate_budget(key, min_temp_c=30)
+            memory.update_climate_budget(key, max_temp_c=10)
+            memory.update_climate_budget(key, trip_type="culture")
+
+        self.assertEqual(len(spy.state_writes), 5)
+        self.assertEqual(spy.contradictory_writes(), [])
+
+    def test_resolve_state_delta_applies_the_same_rule_without_persisting(self):
+        key = "chat-history:session:temp-resolve-only"
+        current = {**_NO_STATE, "min_temp_c": 28}
+
+        result = memory.resolve_state_delta(current, max_temp_c=15)
+
+        self.assertEqual(self._range(result), (None, 15))
+        self.assertEqual(current["min_temp_c"], 28)  # the input isn't mutated
+        self.assertIsNone(self._stored(key))
+
+    def test_geography_cost_and_exclusions_are_unaffected_by_a_resolved_contradiction(self):
+        key = "chat-history:session:temp-others"
+        memory.update_climate_budget(
+            key,
+            min_temp_c=28,
+            trip_type="culture",
+            continent="europe",
+            country="Italy",
+            max_cost_of_living=3,
+            excluded_place_names_add=["Paris"],
+        )
+
+        result = memory.update_climate_budget(key, max_temp_c=15)
+
+        self.assertEqual(self._range(result), (None, 15))
+        self.assertEqual(result["trip_type"], "culture")
+        self.assertEqual(result["continent"], "europe")
+        self.assertEqual(result["country"], "Italy")
+        self.assertEqual(result["max_cost_of_living"], 3)
+        self.assertEqual(result["excluded_place_names"], ["Paris"])
 
 
 class StateLifetimeTests(TestCase):
