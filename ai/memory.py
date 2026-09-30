@@ -144,6 +144,38 @@ def _merge_excluded_place_names(current: list, *, add, remove, cleared: bool) ->
     return names
 
 
+def _resolve_cross_turn_temperature_contradiction(traveler_state: dict, state_delta: dict) -> None:
+    """A single message's own min_temp_c/max_temp_c can't contradict itself
+    (ai.orchestration._validate_climate_budget drops both when it does),
+    but merging across turns can produce a contradiction neither turn had
+    on its own: "somewhere hot" persists as min_temp_c=28, then "actually
+    somewhere cold" sets max_temp_c=15 without saying anything about
+    min_temp_c - there's nothing for it to clear from its own point of
+    view. Handing scoring that pair as-is would zero out every
+    destination. The side THIS turn just stated wins; the other, merely
+    carried forward from an earlier turn, is the stale one. Mutates
+    traveler_state in place.
+
+    Runs inside the merge itself, before anything is persisted or used, so
+    the stored state and the state a request is built from can't differ."""
+    min_temp_c = traveler_state["min_temp_c"]
+    max_temp_c = traveler_state["max_temp_c"]
+    if min_temp_c is None or max_temp_c is None or min_temp_c <= max_temp_c:
+        return
+    new_min = state_delta.get("min_temp_c")
+    new_max = state_delta.get("max_temp_c")
+    if new_max is not None and new_min is None:
+        traveler_state["min_temp_c"] = None
+    elif new_min is not None and new_max is None:
+        traveler_state["max_temp_c"] = None
+    else:
+        # Both sides came from this same turn (a fresh contradiction) or
+        # neither did (a stale pair that was already stored) - no single
+        # side is more current than the other, so drop both.
+        traveler_state["min_temp_c"] = None
+        traveler_state["max_temp_c"] = None
+
+
 def update_climate_budget(
     key: str,
     *,
@@ -210,6 +242,9 @@ def update_climate_budget(
         excluded_place_names_remove=excluded_place_names_remove,
         excluded_place_names_cleared=excluded_place_names_cleared,
     )
+    # `merged` is already fully resolved (see resolve_state_delta), so what
+    # gets stored is exactly what's returned - and exactly what the caller
+    # builds its request from.
     cache.set(_climate_budget_key(key), merged, CONVERSATION_TTL_SECONDS)
     return merged
 
@@ -240,9 +275,14 @@ def resolve_state_delta(
     against blank state (dict(_NO_CLIMATE_BUDGET)) instead, getting back a
     plain trip_type/continent/country/excluded_place_names shape rather
     than the raw add/remove/cleared plumbing. current defaults to blank
-    state when omitted, for a caller with nothing to merge against at all."""
+    state when omitted, for a caller with nothing to merge against at all.
+
+    The returned state is final: once the per-field merge has run, the
+    min_temp_c/max_temp_c pair is reconciled against this turn's own
+    temperature values, so a stored state is never one that scoring would
+    have to repair."""
     current = current if current is not None else dict(_NO_CLIMATE_BUDGET)
-    return {
+    resolved = {
         "min_temp_c": _merge_scalar(current["min_temp_c"], min_temp_c, min_temp_c_cleared),
         "max_temp_c": _merge_scalar(current["max_temp_c"], max_temp_c, max_temp_c_cleared),
         "max_cost_of_living": _merge_scalar(
@@ -258,6 +298,10 @@ def resolve_state_delta(
             cleared=excluded_place_names_cleared,
         ),
     }
+    _resolve_cross_turn_temperature_contradiction(
+        resolved, {"min_temp_c": min_temp_c, "max_temp_c": max_temp_c}
+    )
+    return resolved
 
 
 def _profile_confirmed_key(key: str) -> str:

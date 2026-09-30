@@ -1299,7 +1299,6 @@ def _route_turn(
         traveler_state = memory.update_climate_budget(conv_key, **state_delta)
     else:
         traveler_state = memory.resolve_state_delta(**state_delta)
-    _resolve_cross_turn_temperature_contradiction(traveler_state, state_delta)
     intent["min_temp_c"] = traveler_state["min_temp_c"]
     intent["max_temp_c"] = traveler_state["max_temp_c"]
     intent["max_cost_of_living"] = traveler_state["max_cost_of_living"]
@@ -2308,35 +2307,6 @@ def _validate_climate_budget(data: dict) -> dict:
         "max_temp_c": max_temp_c,
         "max_cost_of_living": max_cost_of_living,
     }
-
-
-def _resolve_cross_turn_temperature_contradiction(traveler_state: dict, state_delta: dict) -> None:
-    """A single message's own min_temp_c/max_temp_c can't contradict
-    itself - _validate_climate_budget already drops both when it does -
-    but merging across turns can still produce a contradiction neither
-    turn had on its own: "somewhere hot" persists as min_temp_c=28, then
-    "actually somewhere cold" sets max_temp_c=15 without that turn saying
-    anything about min_temp_c (there's nothing for it to clear, from its
-    own point of view). Handing scoring.py that pair as-is would zero out
-    every destination. The side THIS turn actually just stated wins - the
-    other one, merely carried forward from an earlier turn, is the one
-    that's actually stale. Mutates traveler_state in place."""
-    min_temp_c = traveler_state["min_temp_c"]
-    max_temp_c = traveler_state["max_temp_c"]
-    if min_temp_c is None or max_temp_c is None or min_temp_c <= max_temp_c:
-        return
-    new_min = state_delta.get("min_temp_c")
-    new_max = state_delta.get("max_temp_c")
-    if new_max is not None and new_min is None:
-        traveler_state["min_temp_c"] = None
-    elif new_min is not None and new_max is None:
-        traveler_state["max_temp_c"] = None
-    else:
-        # Both sides came from this same turn (a fresh contradiction) or
-        # neither did (a stale pair from before this mechanism existed) -
-        # no single side is more current than the other, so drop both.
-        traveler_state["min_temp_c"] = None
-        traveler_state["max_temp_c"] = None
 
 
 def _validate_state_clear(data: dict) -> dict:

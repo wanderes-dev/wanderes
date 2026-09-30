@@ -303,6 +303,37 @@ class CheckpointsReadPersistedStateTests(TestCase):
 
         self.assertTrue(result.turns[0].checkpoint.all_match)
 
+    def test_a_cold_correction_after_a_hot_preference_checks_out_against_the_persisted_state(self):
+        # The CONTRA-004 shape: the persisted state is what the checkpoint
+        # sees, so it has to be the resolved (None, 15), not a leftover
+        # (28, 15).
+        result = self._run(
+            [
+                ConversationTurn(
+                    message="quero um lugar quente", expected_state={"min_temp_c": 28}
+                ),
+                ConversationTurn(
+                    message="na verdade prefiro frio",
+                    expected_state={"min_temp_c": None, "max_temp_c": 15},
+                    expected_transitions={"min_temp_c": "superseded", "max_temp_c": "added"},
+                ),
+            ],
+            [
+                {
+                    "intent": intent(trip_type="culture", country="Italy"),
+                    "climate_budget": {"min_temp_c": 28},
+                },
+                {"intent": intent(), "climate_budget": {"max_temp_c": 15}},
+            ],
+        )
+
+        cold = result.turns[1]
+        self.assertEqual(
+            (cold.effective_state["min_temp_c"], cold.effective_state["max_temp_c"]), (None, 15)
+        )
+        self.assertTrue(cold.checkpoint.all_match)
+        self.assertTrue(result.passed)
+
     def test_effective_state_is_written_to_the_turn_json(self):
         result = self._run(
             [ConversationTurn(message="cultura na Itália"), ConversationTurn(message="obrigado")],

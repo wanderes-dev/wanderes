@@ -13,7 +13,6 @@ from ai.orchestration import (
     _build_explanation_messages,
     _extract_climate_budget_signal,
     _extract_state_clear_signal,
-    _resolve_cross_turn_temperature_contradiction,
     _resolve_destination,
     _sanitized_history_messages,
     _validate_climate_budget,
@@ -3685,38 +3684,6 @@ class ValidateStateClearTests(TestCase):
         self.assertTrue(result["trip_type_cleared"])
         self.assertEqual(result["excluded_place_names_remove"], ["Rome"])
         self.assertFalse(result["min_temp_c_cleared"])
-
-
-class ResolveCrossTurnTemperatureContradictionTests(TestCase):
-    def test_keeps_the_newly_stated_max_and_drops_the_stale_min(self):
-        state = {"min_temp_c": 28, "max_temp_c": 15}
-        _resolve_cross_turn_temperature_contradiction(state, {"max_temp_c": 15})
-
-        self.assertIsNone(state["min_temp_c"])
-        self.assertEqual(state["max_temp_c"], 15)
-
-    def test_keeps_the_newly_stated_min_and_drops_the_stale_max(self):
-        state = {"min_temp_c": 28, "max_temp_c": 15}
-        _resolve_cross_turn_temperature_contradiction(state, {"min_temp_c": 28})
-
-        self.assertEqual(state["min_temp_c"], 28)
-        self.assertIsNone(state["max_temp_c"])
-
-    def test_drops_both_when_both_came_from_the_same_turn(self):
-        state = {"min_temp_c": 28, "max_temp_c": 15}
-        _resolve_cross_turn_temperature_contradiction(
-            state, {"min_temp_c": 28, "max_temp_c": 15}
-        )
-
-        self.assertIsNone(state["min_temp_c"])
-        self.assertIsNone(state["max_temp_c"])
-
-    def test_leaves_a_non_contradictory_range_untouched(self):
-        state = {"min_temp_c": 18, "max_temp_c": 28}
-        _resolve_cross_turn_temperature_contradiction(state, {"max_temp_c": 28})
-
-        self.assertEqual(state["min_temp_c"], 18)
-        self.assertEqual(state["max_temp_c"], 28)
 
 
 class TravelerStateAccumulatorEndToEndTests(TestCase):

@@ -116,3 +116,30 @@ def remaining_ttl_seconds(key: str) -> int | None:
     made_key = cache.make_and_validate_key(key)
     ttl = cache._cache.get_client(made_key, write=False).ttl(made_key)
     return None if ttl < 0 else ttl
+
+
+class StateWriteSpy:
+    """Stands in for ai.memory.cache (patch "ai.memory.cache") and records
+    every value written to a conversation's accumulated-state key, so a test
+    can assert on what was ever stored, not just what's stored at the end."""
+
+    def __init__(self, real):
+        self._real = real
+        self.state_writes = []
+
+    def set(self, key, value, *args, **kwargs):
+        if key.endswith(":climate-budget"):
+            self.state_writes.append(dict(value))
+        return self._real.set(key, value, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    def contradictory_writes(self):
+        return [
+            w
+            for w in self.state_writes
+            if w["min_temp_c"] is not None
+            and w["max_temp_c"] is not None
+            and w["min_temp_c"] > w["max_temp_c"]
+        ]
