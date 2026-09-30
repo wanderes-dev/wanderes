@@ -4,14 +4,20 @@ from django.test import TestCase
 
 from ai import memory
 from ai.orchestration import (
+    CLIMATE_BUDGET_SCHEMA,
+    CLIMATE_BUDGET_SYSTEM_PROMPT,
     FALLBACK_REPLY,
     MAX_RECOMMENDATIONS,
     NEEDS_LOGIN_REPLY,
+    STATE_CLEAR_SYSTEM_PROMPT,
     _build_explanation_messages,
     _extract_climate_budget_signal,
+    _extract_state_clear_signal,
+    _resolve_cross_turn_temperature_contradiction,
     _resolve_destination,
     _sanitized_history_messages,
     _validate_climate_budget,
+    _validate_state_clear,
     get_travel_recommendation,
     stream_travel_recommendation,
 )
@@ -50,6 +56,20 @@ class StubAIProvider:
         self, messages, *, json_schema, max_tokens=None, temperature=None
     ):
         self.generate_structured_reply_calls.append(messages)
+        if json_schema["name"] == "climate_budget_signal":
+            # structured_response is shaped like INTENT_SCHEMA's output
+            # (built via _intent(), below), so most of the state-delta
+            # schema's fields line up by name already (trip_type,
+            # continent, country) - excluded_place_names_add is the one
+            # key the isolated call's schema names differently, so a test
+            # that sets excluded_place_names on _intent() still sees it
+            # come back out through RecommendationRequest.excluded_slugs
+            # without every call site needing its own override.
+            return {
+                **self.structured_response,
+                "excluded_place_names_add": self.structured_response.get("excluded_place_names")
+                or [],
+            }
         return self.structured_response
 
     def generate_reply(self, messages, *, max_tokens=None):
@@ -92,6 +112,15 @@ class SchemaAwareStubAIProvider:
         self, messages, *, json_schema, max_tokens=None, temperature=None
     ):
         self.generate_structured_reply_calls.append(messages)
+        if json_schema["name"] not in self.responses_by_schema:
+            # traveler_state_clear_signal is a real third call every
+            # get_travel_recommendation()/stream_travel_recommendation()
+            # now makes, but most tests using this stub predate it and
+            # only care about the other two - {} degrades through
+            # _validate_state_clear to "no clear this turn", the correct
+            # default rather than forcing every existing call site to
+            # name a schema it never meant to test.
+            return {}
         return self.responses_by_schema[json_schema["name"]]
 
     def generate_reply(self, messages, *, max_tokens=None):
@@ -1370,12 +1399,13 @@ class FocusDestinationTests(TestCase):
         )
         list(result.reply_chunks)
 
-        # 2, not 1: normal handling runs both the combined intent
-        # extraction and the isolated climate/budget signal extraction
-        # (see _extract_climate_budget_signal). This test only cares that
-        # a bogus slug reaches normal handling at all, not the exact shape
-        # of that path's calls.
-        self.assertEqual(len(ai_provider.generate_structured_reply_calls), 2)
+        # 3, not 1: normal handling runs the combined intent extraction
+        # plus the two isolated calls (climate/budget signal and
+        # state-clear signal - see _extract_climate_budget_signal/
+        # _extract_state_clear_signal). This test only cares that a bogus
+        # slug reaches normal handling at all, not the exact shape of
+        # that path's calls.
+        self.assertEqual(len(ai_provider.generate_structured_reply_calls), 3)
         self.assertFalse(result.is_destination_detail)
 
     def test_climate_failure_still_returns_a_card(self):
@@ -2862,6 +2892,45 @@ class ConversationalFeedbackAndFutureIntentTests(TestCase):
         self.destination = _make_destination("lisbon", lat=38.72, lon=-9.14, trip_type="city")
         self.climate = StubClimateProvider({})
 
+    def test_feedback_message_exclusion_persists_into_a_later_recommendation_search(self):
+        # "Already been to Lisbon, don't want to go back" is message_type
+        # = feedback, which returns before ever reaching the state-delta
+        # accumulator that a recommendation-flow message goes through -
+        # without this branch persisting the exclusion itself, it just
+        # gets dropped the moment the feedback reply is sent.
+        other_destination = _make_destination("porto", lat=41.15, lon=-8.61, trip_type="city")
+        climate = StubClimateProvider(
+            {
+                (38.72, -9.14): MonthlyClimateSummary(2025, 9, 25.0, 18.0, 5.0),
+                (41.15, -8.61): MonthlyClimateSummary(2025, 9, 24.0, 17.0, 5.0),
+            }
+        )
+        get_travel_recommendation(
+            "ja fui a Lisboa, nao quero voltar",
+            session_key="feedback-exclusion-persist",
+            ai_provider=StubAIProvider(
+                structured_response=_intent(
+                    message_type="feedback",
+                    feedback_destination_name="Lisbon",
+                    excluded_place_names=["Lisbon"],
+                )
+            ),
+            climate_provider=climate,
+        )
+
+        result = get_travel_recommendation(
+            "quero uma viagem de cidade",
+            session_key="feedback-exclusion-persist",
+            ai_provider=StubAIProvider(
+                structured_response=_intent(trip_type="city"), reply_text="Try Porto!"
+            ),
+            climate_provider=climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertIn(other_destination.slug, slugs)
+        self.assertNotIn(self.destination.slug, slugs)
+
     def test_feedback_with_rating_creates_feedback_and_history(self):
         ai_provider = StubAIProvider(
             structured_response=_intent(
@@ -3406,6 +3475,23 @@ class ClimateBudgetSignalTests(TestCase):
             result, {"min_temp_c": None, "max_temp_c": None, "max_cost_of_living": None}
         )
 
+    def test_extract_state_clear_signal_degrades_gracefully_on_provider_failure(self):
+        result = _extract_state_clear_signal("somewhere warm", ai_provider=FailingAIProvider())
+
+        self.assertEqual(
+            result,
+            {
+                "min_temp_c_cleared": False,
+                "max_temp_c_cleared": False,
+                "max_cost_of_living_cleared": False,
+                "trip_type_cleared": False,
+                "continent_cleared": False,
+                "country_cleared": False,
+                "excluded_place_names_remove": [],
+                "excluded_place_names_cleared": False,
+            },
+        )
+
     def test_isolated_call_overrides_a_contaminated_combined_extraction(self):
         # Simulates the reported bug: the combined call (as if
         # contaminated by destination names/descriptions in history) comes
@@ -3480,3 +3566,426 @@ class ClimateBudgetSignalTests(TestCase):
             any(r.temperature_fit > 0 for r in result.recommendations),
             "expected the earlier turn's min_temp_c=22 to still apply",
         )
+
+
+class ClimateBudgetPromptCalibrationRegressionTests(TestCase):
+    """Cycle 2 Improvement 1 first tried interleaving new clearing
+    examples into CLIMATE_BUDGET_SYSTEM_PROMPT's budget bullet itself,
+    which measurably shifted the model's tier calibration on ordinary,
+    previously-correct phrases ("budget-friendly" -> 2 became -> 3,
+    "barata" -> 3 became -> 2, "very expensive and glamorous" -> 5 became
+    -> null; STR-001/STR-026/STR-049 in the evaluation corpus). Moving
+    clear-detection into its own section of the SAME prompt/schema
+    wasn't enough either - even with zero shared wording, the mere
+    presence of extra required schema fields (regardless of content)
+    measurably increased false-positive temperature extraction on some
+    messages (STR-052: "quero relaxar numa praia no marrocos em maio"
+    went from a clean null/null 10/10 times on the original schema to a
+    false min_temp_c=28 several times out of 5 with anything else added
+    to the schema). The fix that held up under direct testing is a
+    wholly separate call (STATE_CLEAR_SCHEMA/STATE_CLEAR_SYSTEM_PROMPT/
+    _extract_state_clear_signal) sharing no schema or prompt text at all
+    with this one - this guards against the regression recurring by
+    pinning CLIMATE_BUDGET_SYSTEM_PROMPT to the exact pre-Cycle-2 text,
+    unchanged and unextended."""
+
+    ORIGINAL_VALUE_EXTRACTION_TEXT = (
+        "Extract a temperature preference and/or a budget preference from THIS "
+        "ONE MESSAGE ALONE. You are deliberately given no conversation history "
+        "and must judge only the words in front of you - if this message alone "
+        "doesn't state a climate or budget preference, leave the corresponding "
+        "field(s) null, even if you suspect earlier turns in the conversation "
+        "might have mentioned one; a separate mechanism outside this call "
+        "carries a real earlier preference forward, so you never need to (and "
+        "should not try to) guess or recall one here.\n"
+        "The traveler may write in any language - understand it and extract "
+        "from it the same way regardless of language.\n"
+        "- Temperature (min_temp_c): 'hot' -> 28, 'warm' -> 22, 'mild' -> 18. "
+        "If the user wants somewhere cool or cold, or says nothing at all "
+        "about temperature, leave min_temp_c null.\n"
+        "- Upper temperature bound (max_temp_c): the mirror image of "
+        "min_temp_c, for when the user wants an upper limit instead of (or as "
+        "well as) a lower one - 'not too hot'/'nothing extreme' -> 30, "
+        "'cool'/'mild, not hot' -> 22, 'cold'/'chilly'/'somewhere cool and "
+        "crisp' -> 15. Only set this from words that are themselves about an "
+        "upper temperature limit or wanting it cool/cold. A message can set "
+        "both min_temp_c and max_temp_c together (e.g. 'mild, not too hot and "
+        "not too cold') or just one.\n"
+        "- Budget (max_cost_of_living, a 1-5 scale where 1 is cheapest): "
+        "'very cheap'/'budget'/'affordable' -> 2, 'cheap'/'not too expensive'/"
+        "'inexpensive' -> 3, 'moderate'/'mid-range' -> 4. If the user wants "
+        "luxury, or says nothing at all about budget, leave max_cost_of_living "
+        "null. Words describing a travel style or atmosphere - 'refined'/"
+        "'refinado', 'upscale', 'elegant', 'sophisticated', 'classy' - are NOT "
+        "budget words: they describe the kind of place someone wants, not "
+        "what they're willing to pay, and fall under the same 'wants luxury' "
+        "case above - leave max_cost_of_living null for these too.\n"
+        "Naming a destination, a trip type (beach/city/nature/culture), or a "
+        "month never by itself implies a temperature or budget, no matter how "
+        "strongly it's stereotypically associated with one - only set these "
+        "fields from words that are themselves about temperature or money. If "
+        "min_temp_c and max_temp_c would contradict each other (min above "
+        "max), leave both null instead."
+    )
+
+    def test_value_extraction_prompt_matches_the_proven_pre_cycle2_wording_exactly(self):
+        self.assertEqual(
+            CLIMATE_BUDGET_SYSTEM_PROMPT,
+            self.ORIGINAL_VALUE_EXTRACTION_TEXT,
+            "CLIMATE_BUDGET_SYSTEM_PROMPT has drifted from the proven "
+            "pre-Cycle-2 wording - explicit-clear detection belongs in "
+            "STATE_CLEAR_SYSTEM_PROMPT's own, wholly separate call, never "
+            "appended to or mixed into this one (see STR-001/STR-026/"
+            "STR-049/STR-052 in the evaluation corpus for what happened "
+            "last time this prompt gained extra fields or text)",
+        )
+
+    def test_value_extraction_schema_has_exactly_the_three_original_fields(self):
+        self.assertEqual(
+            set(CLIMATE_BUDGET_SCHEMA["schema"]["properties"]),
+            {"min_temp_c", "max_temp_c", "max_cost_of_living"},
+        )
+
+    def test_state_clear_prompt_shares_no_wording_with_value_extraction(self):
+        # Not just non-identical - genuinely no overlap in the specific
+        # anchor phrases that caused the regression, confirming this is a
+        # real separate call rather than a copy with edits.
+        for anchor in ("'hot' -> 28", "'very cheap'/'budget'/'affordable' -> 2"):
+            self.assertNotIn(anchor, STATE_CLEAR_SYSTEM_PROMPT)
+
+
+class ValidateStateClearTests(TestCase):
+    """_validate_state_clear is STATE_CLEAR_SCHEMA's own validator - eight
+    booleans/one list, no enum or catalog checks needed since this call
+    never picks a value, only ever answers yes/no. Missing keys all read
+    as "no clear this turn"."""
+
+    def test_missing_keys_all_default_to_no_signal(self):
+        result = _validate_state_clear({})
+
+        self.assertFalse(result["min_temp_c_cleared"])
+        self.assertFalse(result["max_temp_c_cleared"])
+        self.assertFalse(result["max_cost_of_living_cleared"])
+        self.assertFalse(result["trip_type_cleared"])
+        self.assertFalse(result["continent_cleared"])
+        self.assertFalse(result["country_cleared"])
+        self.assertEqual(result["excluded_place_names_remove"], [])
+        self.assertFalse(result["excluded_place_names_cleared"])
+
+    def test_passes_through_explicit_clear_flags(self):
+        result = _validate_state_clear(
+            {
+                "max_cost_of_living_cleared": True,
+                "trip_type_cleared": True,
+                "excluded_place_names_remove": ["Rome", ""],
+            }
+        )
+
+        self.assertTrue(result["max_cost_of_living_cleared"])
+        self.assertTrue(result["trip_type_cleared"])
+        self.assertEqual(result["excluded_place_names_remove"], ["Rome"])
+        self.assertFalse(result["min_temp_c_cleared"])
+
+
+class ResolveCrossTurnTemperatureContradictionTests(TestCase):
+    def test_keeps_the_newly_stated_max_and_drops_the_stale_min(self):
+        state = {"min_temp_c": 28, "max_temp_c": 15}
+        _resolve_cross_turn_temperature_contradiction(state, {"max_temp_c": 15})
+
+        self.assertIsNone(state["min_temp_c"])
+        self.assertEqual(state["max_temp_c"], 15)
+
+    def test_keeps_the_newly_stated_min_and_drops_the_stale_max(self):
+        state = {"min_temp_c": 28, "max_temp_c": 15}
+        _resolve_cross_turn_temperature_contradiction(state, {"min_temp_c": 28})
+
+        self.assertEqual(state["min_temp_c"], 28)
+        self.assertIsNone(state["max_temp_c"])
+
+    def test_drops_both_when_both_came_from_the_same_turn(self):
+        state = {"min_temp_c": 28, "max_temp_c": 15}
+        _resolve_cross_turn_temperature_contradiction(
+            state, {"min_temp_c": 28, "max_temp_c": 15}
+        )
+
+        self.assertIsNone(state["min_temp_c"])
+        self.assertIsNone(state["max_temp_c"])
+
+    def test_leaves_a_non_contradictory_range_untouched(self):
+        state = {"min_temp_c": 18, "max_temp_c": 28}
+        _resolve_cross_turn_temperature_contradiction(state, {"max_temp_c": 28})
+
+        self.assertEqual(state["min_temp_c"], 18)
+        self.assertEqual(state["max_temp_c"], 28)
+
+
+class TravelerStateAccumulatorEndToEndTests(TestCase):
+    """Exercises the full stream_travel_recommendation() pipeline through
+    a real session_key, confirming trip_type/continent/country/
+    excluded_place_names now survive a turn that doesn't restate them -
+    the LOST_CONTEXT failure the Cycle 2 conversation evaluation found -
+    without the fix over-correcting into STALE_STATE (a value that should
+    have changed staying stuck)."""
+
+    def setUp(self):
+        self.beach_destination = _make_destination(
+            "beach-1", lat=10.0, lon=10.0, trip_type="beach", country="Portugal"
+        )
+        self.city_destination = _make_destination(
+            "city-1", lat=20.0, lon=20.0, trip_type="city", country="Portugal"
+        )
+        self.climate = StubClimateProvider(
+            {
+                (10.0, 10.0): MonthlyClimateSummary(2025, 10, 25.0, 18.0, 5.0),
+                (20.0, 20.0): MonthlyClimateSummary(2025, 10, 25.0, 18.0, 5.0),
+            }
+        )
+
+    def _stub(self, *, intent, delta_overrides=None):
+        # climate_budget_signal now carries ONLY the three value fields
+        # (see CLIMATE_BUDGET_SCHEMA); the *_cleared flags and
+        # excluded_place_names_remove/cleared route to the separate
+        # traveler_state_clear_signal call instead - splitting
+        # delta_overrides here so existing test call sites can keep
+        # passing one flat dict regardless of which schema a given key
+        # actually belongs to.
+        clear_keys = {
+            "min_temp_c_cleared",
+            "max_temp_c_cleared",
+            "max_cost_of_living_cleared",
+            "trip_type_cleared",
+            "continent_cleared",
+            "country_cleared",
+            "excluded_place_names_remove",
+            "excluded_place_names_cleared",
+        }
+        overrides = delta_overrides or {}
+        climate_budget = {"min_temp_c": None, "max_temp_c": None, "max_cost_of_living": None}
+        state_clear = {}
+        for key, value in overrides.items():
+            if key in clear_keys:
+                state_clear[key] = value
+            else:
+                climate_budget[key] = value
+        return SchemaAwareStubAIProvider(
+            responses_by_schema={
+                "travel_message": intent,
+                "climate_budget_signal": climate_budget,
+                "traveler_state_clear_signal": state_clear,
+            }
+        )
+
+    def test_trip_type_value_comes_from_the_combined_call_not_the_isolated_one(self):
+        # The isolated call's OWN trip_type classification turned out to
+        # be measurably less reliable than the combined call's (it
+        # dropped a literal "cidade" from a real corpus message a few
+        # times running at temperature=0) - so its trip_type/continent/
+        # country/excluded_place_names_add values are ignored entirely;
+        # only the combined call's own extraction feeds the accumulator's
+        # VALUE for these four fields. A disagreeing isolated delta here
+        # (trip_type="city") must not win over the combined call's
+        # trip_type="beach".
+        result = get_travel_recommendation(
+            "quero uma praia",
+            session_key="traveler-state-e2e-hybrid-source",
+            ai_provider=self._stub(
+                intent=_intent(trip_type="beach"), delta_overrides={"trip_type": "city"}
+            ),
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertIn("beach-1", slugs)
+        self.assertNotIn("city-1", slugs)
+
+    def test_trip_type_cleared_flag_still_comes_from_the_isolated_call(self):
+        # The VALUE is hybrid-sourced (see test above), but the isolated
+        # call is still the only place trip_type_cleared comes from - the
+        # combined call has no clear-flag concept at all. country carries
+        # through both turns so has_enough_signal still holds once
+        # trip_type drops out - it doesn't discriminate between the two
+        # test destinations (both are Portugal), so any difference in
+        # which ones come back is down to trip_type alone.
+        get_travel_recommendation(
+            "quero uma praia em Portugal",
+            session_key="traveler-state-e2e-hybrid-clear",
+            ai_provider=self._stub(
+                intent=_intent(trip_type="beach", country="Portugal"),
+                delta_overrides={"trip_type": "beach"},
+            ),
+            climate_provider=self.climate,
+        )
+
+        result = get_travel_recommendation(
+            "na verdade qualquer tipo de viagem serve",
+            session_key="traveler-state-e2e-hybrid-clear",
+            ai_provider=self._stub(
+                intent=_intent(), delta_overrides={"trip_type_cleared": True}
+            ),
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertIn("beach-1", slugs)
+        self.assertIn("city-1", slugs)
+
+    def test_trip_type_survives_a_turn_that_does_not_mention_it(self):
+        get_travel_recommendation(
+            "quero uma praia",
+            session_key="traveler-state-e2e-1",
+            ai_provider=self._stub(
+                intent=_intent(trip_type="beach"), delta_overrides={"trip_type": "beach"}
+            ),
+            climate_provider=self.climate,
+        )
+
+        result = get_travel_recommendation(
+            "algo mais?",
+            session_key="traveler-state-e2e-1",
+            ai_provider=self._stub(intent=_intent()),
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertIn("beach-1", slugs)
+        self.assertNotIn("city-1", slugs)
+
+    def test_trip_type_explicit_clear_lifts_the_earlier_constraint(self):
+        # Country ("Portugal") is set alongside trip_type here and never
+        # cleared, so has_enough_signal still holds after trip_type is
+        # dropped in turn 2 - it doesn't discriminate between the two test
+        # destinations (both are Portugal), so any difference in which
+        # ones come back is down to trip_type alone.
+        get_travel_recommendation(
+            "quero uma praia em Portugal",
+            session_key="traveler-state-e2e-2",
+            ai_provider=self._stub(
+                intent=_intent(trip_type="beach", country="Portugal"),
+                delta_overrides={"trip_type": "beach", "country": "Portugal"},
+            ),
+            climate_provider=self.climate,
+        )
+
+        result = get_travel_recommendation(
+            "na verdade, qualquer tipo de viagem serve",
+            session_key="traveler-state-e2e-2",
+            ai_provider=self._stub(
+                intent=_intent(), delta_overrides={"trip_type_cleared": True}
+            ),
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertIn("beach-1", slugs)
+        self.assertIn("city-1", slugs)
+
+    def test_trip_type_correction_replaces_the_earlier_value(self):
+        get_travel_recommendation(
+            "quero uma praia",
+            session_key="traveler-state-e2e-3",
+            ai_provider=self._stub(
+                intent=_intent(trip_type="beach"), delta_overrides={"trip_type": "beach"}
+            ),
+            climate_provider=self.climate,
+        )
+
+        result = get_travel_recommendation(
+            "na verdade prefiro cidade",
+            session_key="traveler-state-e2e-3",
+            ai_provider=self._stub(
+                intent=_intent(trip_type="city"), delta_overrides={"trip_type": "city"}
+            ),
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertIn("city-1", slugs)
+        self.assertNotIn("beach-1", slugs)
+
+    def test_excluded_place_names_accumulate_across_turns(self):
+        # country="Portugal" gives has_enough_signal something to hold
+        # onto in turn 2, where the message itself states nothing new -
+        # an exclusion alone was never enough signal to search on by
+        # itself (see stream_travel_recommendation's own comment on that).
+        get_travel_recommendation(
+            "ja fui pra beach-1 em Portugal, quero outro lugar",
+            session_key="traveler-state-e2e-4",
+            ai_provider=self._stub(
+                intent=_intent(country="Portugal", excluded_place_names=["beach-1"]),
+                delta_overrides={"country": "Portugal", "excluded_place_names_add": ["beach-1"]},
+            ),
+            climate_provider=self.climate,
+        )
+
+        result = get_travel_recommendation(
+            "algo mais?",
+            session_key="traveler-state-e2e-4",
+            ai_provider=self._stub(intent=_intent()),
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertNotIn("beach-1", slugs)
+        self.assertIn("city-1", slugs)
+
+    def test_cross_turn_temperature_contradiction_keeps_the_side_just_stated(self):
+        # "somewhere hot" (min_temp_c=28) persists; a later "actually
+        # somewhere cold" sets max_temp_c=15 without that turn's own
+        # extraction saying anything about min_temp_c (there's nothing
+        # for it to clear from its own point of view). The merge alone
+        # would leave min_temp_c=28 and max_temp_c=15 both in force,
+        # satisfiable by no destination at all - the fix keeps max_temp_c
+        # (what this turn actually said) and drops the now-stale
+        # min_temp_c, rather than dropping both.
+        cold_climate = StubClimateProvider(
+            {
+                (10.0, 10.0): MonthlyClimateSummary(2025, 10, 25.0, 18.0, 5.0),  # beach-1: warm
+                (20.0, 20.0): MonthlyClimateSummary(2025, 10, 10.0, 2.0, 5.0),  # city-1: cold
+            }
+        )
+        get_travel_recommendation(
+            "quero um lugar bem quente em Portugal",
+            session_key="traveler-state-e2e-contradiction",
+            ai_provider=self._stub(
+                intent=_intent(min_temp_c=28, country="Portugal"),
+                delta_overrides={"min_temp_c": 28, "country": "Portugal"},
+            ),
+            climate_provider=cold_climate,
+        )
+
+        result = get_travel_recommendation(
+            "na verdade prefiro um lugar bem friozinho",
+            session_key="traveler-state-e2e-contradiction",
+            ai_provider=self._stub(
+                intent=_intent(max_temp_c=15), delta_overrides={"max_temp_c": 15}
+            ),
+            climate_provider=cold_climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertIn("city-1", slugs)
+        self.assertNotIn("beach-1", slugs)
+
+    def test_a_different_session_does_not_inherit_another_conversations_state(self):
+        get_travel_recommendation(
+            "quero uma praia",
+            session_key="traveler-state-e2e-5a",
+            ai_provider=self._stub(
+                intent=_intent(trip_type="beach"), delta_overrides={"trip_type": "beach"}
+            ),
+            climate_provider=self.climate,
+        )
+
+        result = get_travel_recommendation(
+            "algo mais, ate uns 3 de 5 no orcamento",
+            session_key="traveler-state-e2e-5b",
+            ai_provider=self._stub(
+                intent=_intent(max_cost_of_living=3),
+                delta_overrides={"max_cost_of_living": 3},
+            ),
+            climate_provider=self.climate,
+        )
+
+        slugs = {r.destination.slug for r in result.recommendations}
+        self.assertIn("beach-1", slugs)
+        self.assertIn("city-1", slugs)

@@ -59,6 +59,44 @@ NEEDS_LOGIN_REPLY = (
     "account first so I can save it to your profile."
 )
 
+# Shared verbatim between INTENT_EXTRACTION_SYSTEM_PROMPT (the combined,
+# history-aware call) and CLIMATE_BUDGET_SYSTEM_PROMPT (the isolated,
+# history-free call) - both need the model to make the exact same
+# beach/city/nature/culture judgment call from a single message, and a
+# shorter, independently-worded version of this in the isolated prompt
+# measurably regressed the single-request evaluation corpus's "ambiguous"
+# category (e.g. AMB-001, "quero algo relaxante... tipo um lugar
+# tranquilo" started getting force-fit into 'nature') - this specific
+# wording is what the corpus is tuned against, so it's the one source of
+# truth for the judgment, not duplicated prose that can drift out of sync.
+_TRIP_TYPE_GUIDANCE = (
+    "For trip_type, only set it when the message clearly matches one of "
+    "exactly these four categories: 'beach' (beach/coastal holiday), "
+    "'city' (city break/urban trip), 'nature' (outdoors/adventure/hiking), "
+    "'culture' (history/museums/cultural immersion). Leave it null if the "
+    "request doesn't clearly match one of these four, or matches more than "
+    "one - do not force-fit a vibe like 'romantic' or 'family-friendly' "
+    "into one of these categories just because you have to pick something. "
+    "This includes 'a family trip with young children'/'viagem em família "
+    "com crianças pequenas' - having young kids says nothing about beach "
+    "vs. city vs. nature vs. culture (any of the four can be great for a "
+    "family), so trip_type stays null here too unless a real category word "
+    "is also present. It also includes 'planning a romantic honeymoon "
+    "trip'/'lua de mel romântica' on its own - a honeymoon can just as "
+    "easily be a beach, city, nature, or culture trip, so 'romantic'/"
+    "'honeymoon' alone is never enough to pick one; trip_type stays null "
+    "here too unless a real category word is also present. The same "
+    "applies to 'relaxing'/'relaxante'/"
+    "'rilassante'/'relajante' and similar pace words on their own (e.g. "
+    "'a relaxing trip to Japan', 'quero uma viagem relaxante para o "
+    "Japão', 'qualcosa di rilassante') - relaxing describes pace, not a "
+    "category, and is NOT a signal to pick whichever of the four "
+    "categories is stereotypically associated with the named destination "
+    "(e.g. do not set 'nature' for a relaxing trip to Japan, or 'beach' "
+    "for a relaxing trip to Greece) - trip_type stays null here too "
+    "unless a real category word is also present.\n"
+)
+
 INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "You classify a traveler's message and extract structured information "
     "from it. Judge message_type using ONLY what the CURRENT message itself "
@@ -232,32 +270,8 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "Only leave min_temp_c or max_cost_of_living null when the user gave no "
     "indication at all for that dimension - do not leave it null just "
     "because they used words instead of a number.\n"
-    "For trip_type, only set it when the message clearly matches one of "
-    "exactly these four categories: 'beach' (beach/coastal holiday), "
-    "'city' (city break/urban trip), 'nature' (outdoors/adventure/hiking), "
-    "'culture' (history/museums/cultural immersion). Leave it null if the "
-    "request doesn't clearly match one of these four, or matches more than "
-    "one - do not force-fit a vibe like 'romantic' or 'family-friendly' "
-    "into one of these categories just because you have to pick something. "
-    "This includes 'a family trip with young children'/'viagem em família "
-    "com crianças pequenas' - having young kids says nothing about beach "
-    "vs. city vs. nature vs. culture (any of the four can be great for a "
-    "family), so trip_type stays null here too unless a real category word "
-    "is also present. It also includes 'planning a romantic honeymoon "
-    "trip'/'lua de mel romântica' on its own - a honeymoon can just as "
-    "easily be a beach, city, nature, or culture trip, so 'romantic'/"
-    "'honeymoon' alone is never enough to pick one; trip_type stays null "
-    "here too unless a real category word is also present. The same "
-    "applies to 'relaxing'/'relaxante'/"
-    "'rilassante'/'relajante' and similar pace words on their own (e.g. "
-    "'a relaxing trip to Japan', 'quero uma viagem relaxante para o "
-    "Japão', 'qualcosa di rilassante') - relaxing describes pace, not a "
-    "category, and is NOT a signal to pick whichever of the four "
-    "categories is stereotypically associated with the named destination "
-    "(e.g. do not set 'nature' for a relaxing trip to Japan, or 'beach' "
-    "for a relaxing trip to Greece) - trip_type stays null here too "
-    "unless a real category word is also present.\n"
-    "continent: set this when the traveler names or clearly implies ONE "
+    + _TRIP_TYPE_GUIDANCE
+    + "continent: set this when the traveler names or clearly implies ONE "
     "continent/region as where they want to go - a continent name itself "
     "('Europe', 'Ásia'), a well-known colloquial term for a trip there "
     "('Eurotrip', 'Eurotour' -> 'europe'), or a specific country/city that "
@@ -520,16 +534,28 @@ INTENT_SCHEMA = {
     },
 }
 
-# min_temp_c/max_temp_c/max_cost_of_living get extracted a second time
-# here, from the current message alone, no history - overwrites whatever
-# INTENT_SCHEMA's combined call produced for the same three fields (see
-# the call site below). sanitize_reply_for_context() in ai/memory.py
-# stops the model from repeating its own literal numbers back, but it
-# could still infer warmth from a destination name alone once history was
-# in play at all ("Phuket" implies warm, no digits needed) - prompt
-# tweaks to fix that kept breaking other cases, so this call just gets no
-# history to work with, full stop. Multi-turn combining still works
-# through ai.memory.update_climate_budget()'s accumulator instead.
+# This call extracts a second time, from the current message alone, no
+# history - overwrites whatever INTENT_SCHEMA's combined call produced for
+# the same fields (see the call site below). sanitize_reply_for_context()
+# in ai/memory.py stops the model from repeating its own literal numbers
+# back, but it could still infer warmth from a destination name alone once
+# history was in play at all ("Phuket" implies warm, no digits needed) -
+# prompt tweaks to fix that kept breaking other cases, so this call just
+# gets no history to work with, full stop. Multi-turn combining works
+# through ai.memory.update_climate_budget()'s accumulator instead - which
+# is also where a value keeps mattering after the message that raised it
+# scrolls out of the 12-message window.
+#
+# Started out covering only min_temp_c/max_temp_c/max_cost_of_living
+# (hence the name); grew to also cover trip_type/continent/country/
+# excluded_place_names once those turned out to need an identical
+# accumulator (see update_climate_budget's docstring in ai/memory.py for
+# why this is one mechanism, not two). Each of the four newer fields gets
+# a companion "_cleared" flag (or, for the list-valued exclusions, add/
+# remove/cleared) so the model can distinguish "this message didn't
+# mention it" from "the traveler just explicitly dropped it" - the same
+# distinction min_temp_c/max_temp_c/max_cost_of_living never had, which
+# was itself a real gap (see the accumulator's own docstring).
 CLIMATE_BUDGET_SCHEMA = {
     "name": "climate_budget_signal",
     "strict": True,
@@ -545,6 +571,21 @@ CLIMATE_BUDGET_SCHEMA = {
     },
 }
 
+# Byte-for-byte the original Cycle 1 prompt - restored deliberately
+# (Cycle 2 Improvement 1 regression fix). An earlier version of this
+# cycle's work first tried adding clear-detection fields to THIS same
+# schema/prompt - even with the added text kept in its own section
+# afterward rather than woven into the anchors, and even after trying a
+# schema with no trip_type/continent/country fields at all, the mere
+# presence of extra required fields (any of them) measurably shifted
+# this call's temperature/budget calibration on some messages, confirmed
+# by direct side-by-side testing (e.g. "quero relaxar numa praia no
+# marrocos em maio" went from a clean null/null 10/10 times on this exact
+# schema to a false min_temp_c=28 several times out of 5 with anything
+# else added to the schema, regardless of prompt wording). So this call
+# stays exactly as it always was; explicit-clear detection now lives in
+# STATE_CLEAR_SCHEMA/_extract_state_clear_signal, a wholly separate call
+# with its own schema and its own prompt, sharing nothing with this one.
 CLIMATE_BUDGET_SYSTEM_PROMPT = (
     "Extract a temperature preference and/or a budget preference from THIS "
     "ONE MESSAGE ALONE. You are deliberately given no conversation history "
@@ -582,6 +623,82 @@ CLIMATE_BUDGET_SYSTEM_PROMPT = (
     "fields from words that are themselves about temperature or money. If "
     "min_temp_c and max_temp_c would contradict each other (min above "
     "max), leave both null instead."
+)
+
+# A genuinely separate call from CLIMATE_BUDGET_SCHEMA/
+# CLIMATE_BUDGET_SYSTEM_PROMPT above - see that constant's own comment
+# for why a shared schema/prompt couldn't be made safe no matter how the
+# added text was worded or positioned. This call never sees the
+# temperature/budget anchors at all, so it has nothing to contaminate
+# them with; it only ever answers "did the traveler explicitly take back
+# a preference this message," a plain yes/no judgment for each of the
+# seven persistent fields (plus removing one name from the exclusion
+# list), never a value judgment.
+STATE_CLEAR_SCHEMA = {
+    "name": "traveler_state_clear_signal",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "min_temp_c_cleared": {"type": "boolean"},
+            "max_temp_c_cleared": {"type": "boolean"},
+            "max_cost_of_living_cleared": {"type": "boolean"},
+            "trip_type_cleared": {"type": "boolean"},
+            "continent_cleared": {"type": "boolean"},
+            "country_cleared": {"type": "boolean"},
+            "excluded_place_names_remove": {"type": "array", "items": {"type": "string"}},
+            "excluded_place_names_cleared": {"type": "boolean"},
+        },
+        "required": [
+            "min_temp_c_cleared",
+            "max_temp_c_cleared",
+            "max_cost_of_living_cleared",
+            "trip_type_cleared",
+            "continent_cleared",
+            "country_cleared",
+            "excluded_place_names_remove",
+            "excluded_place_names_cleared",
+        ],
+        "additionalProperties": False,
+    },
+}
+
+STATE_CLEAR_SYSTEM_PROMPT = (
+    "The traveler has an ongoing set of trip preferences (temperature, "
+    "budget, trip type, continent/country, places to avoid). Read THIS "
+    "ONE MESSAGE ALONE - no conversation history - and decide only "
+    "whether the traveler is EXPLICITLY taking one of those preferences "
+    "back. This is not about guessing what their preferences currently "
+    "are, and not about extracting any new value - only about detecting "
+    "an explicit retraction of an earlier one. If the message doesn't "
+    "clearly do that for a given field, its flag is false (or, for "
+    "excluded_place_names_remove, an empty list) - never true just "
+    "because the message doesn't happen to repeat a preference.\n"
+    "The traveler may write in any language - understand it and judge it "
+    "the same way regardless of language.\n"
+    "- min_temp_c_cleared / max_temp_c_cleared: true only for an explicit "
+    "statement that temperature no longer matters or that an earlier "
+    "limit is dropped ('never mind the temperature', 'a temperatura não "
+    "importa mais', 'esquece o clima').\n"
+    "- max_cost_of_living_cleared: true only for an explicit statement "
+    "that price/budget no longer matters or that an earlier limit is "
+    "dropped - including saying comfort/quality now matters more than "
+    "price ('actually, price doesn't matter', 'esquece o orçamento', "
+    "'comfort matters more than price now', 'conforto importa mais que "
+    "preço agora').\n"
+    "- trip_type_cleared: true only for an explicit statement that any "
+    "kind of trip is fine now, or dropping a specific type ('any kind of "
+    "trip works', 'esquece o tipo de viagem').\n"
+    "- continent_cleared / country_cleared: true only for an explicit "
+    "statement that any region/country is fine now, or dropping one "
+    "('anywhere really', 'não importa o país agora').\n"
+    "- excluded_place_names_remove: a place the traveler explicitly takes "
+    "back OFF an earlier exclusion list ('actually Rome would be nice "
+    "after all'). Give each name in its standard English form. Empty if "
+    "this message doesn't do that.\n"
+    "- excluded_place_names_cleared: true only for an explicit request to "
+    "drop ALL exclusions at once ('forget what I said, show me "
+    "everything', 'never mind, no exclusions')."
 )
 
 # Fallback for _resolve_destination() when the cheap DB substring lookup
@@ -1008,6 +1125,21 @@ def stream_travel_recommendation(
         return StreamingOrchestrationResult([], off_topic_reply)
 
     if message_type == "feedback":
+        # "Already been to Tokyo, don't want to go back" is feedback, not
+        # a recommendation request, so this branch returns before ever
+        # reaching the state-delta accumulator below - but intent's own
+        # excluded_place_names (from the combined call, which already
+        # knows not to exclude a place the traveler describes positively)
+        # is sitting right here regardless of message_type. Persisting it
+        # now is what lets that exclusion still apply several turns
+        # later, once the conversation actually turns into a search - the
+        # MEM-series conversation evaluation scenarios exist because this
+        # used to just get dropped on the floor.
+        if conv_key is not None and intent["excluded_place_names"]:
+            memory.update_climate_budget(
+                conv_key, excluded_place_names_add=intent["excluded_place_names"]
+            )
+
         # Same pattern as future_intent below - _handle_feedback returns
         # None for a real destination our catalog doesn't have, and gets
         # the same real-reply treatment instead of a dead-end note.
@@ -1083,17 +1215,52 @@ def stream_travel_recommendation(
     #
     # min_temp_c/max_temp_c/max_cost_of_living get re-derived here from
     # this message alone (see CLIMATE_BUDGET_SYSTEM_PROMPT), overwriting
-    # whatever the combined extraction above produced, then merged with
-    # whatever the conversation already had - so a real multi-turn
-    # preference still combines even though this call never sees history.
-    climate_budget = _extract_climate_budget_signal(
+    # whatever the combined extraction above produced for the same three
+    # fields - that isolated re-extraction is what the accumulator merges
+    # on, unchanged from before this cycle.
+    #
+    # trip_type/continent/country/excluded_place_names take their VALUE
+    # from the combined call above instead of a second isolated guess -
+    # unlike temperature/budget, there's no evidence that field ever gets
+    # contaminated by history (destination names in an earlier AI reply
+    # don't silently imply a category the way they imply a temperature),
+    # and the isolated call's classification of these turned out to be
+    # measurably less reliable than the combined call's - it dropped a
+    # literal "cidade" ("city") from "cidade fria e barata na europa" a
+    # few times in a row at temperature=0, something the combined call has
+    # never been seen to do. What's still needed for all seven fields is
+    # what the accumulator was built for either way: distinguishing "this
+    # message didn't mention it" from "the traveler explicitly dropped
+    # it" - a much simpler yes/no judgment than picking the right value,
+    # and the combined call has no vocabulary for it at all. That signal
+    # comes from _extract_state_clear_signal, a call with its own schema
+    # and prompt sharing nothing with _extract_climate_budget_signal - an
+    # earlier attempt at putting both in one call, even with the two
+    # concerns kept in clearly separate prompt sections, still measurably
+    # leaked into this call's temperature/budget calibration on some
+    # messages (see CLIMATE_BUDGET_SYSTEM_PROMPT's own comment).
+    state_delta = _extract_climate_budget_signal(
         message, ai_provider=ai_provider, conversation_key=conv_key
     )
+    state_delta.update(
+        _extract_state_clear_signal(message, ai_provider=ai_provider, conversation_key=conv_key)
+    )
+    state_delta["trip_type"] = intent["trip_type"]
+    state_delta["continent"] = intent["continent"]
+    state_delta["country"] = intent["country"]
+    state_delta["excluded_place_names_add"] = intent["excluded_place_names"]
     if conv_key is not None:
-        climate_budget = memory.update_climate_budget(conv_key, **climate_budget)
-    intent["min_temp_c"] = climate_budget["min_temp_c"]
-    intent["max_temp_c"] = climate_budget["max_temp_c"]
-    intent["max_cost_of_living"] = climate_budget["max_cost_of_living"]
+        traveler_state = memory.update_climate_budget(conv_key, **state_delta)
+    else:
+        traveler_state = memory.resolve_state_delta(**state_delta)
+    _resolve_cross_turn_temperature_contradiction(traveler_state, state_delta)
+    intent["min_temp_c"] = traveler_state["min_temp_c"]
+    intent["max_temp_c"] = traveler_state["max_temp_c"]
+    intent["max_cost_of_living"] = traveler_state["max_cost_of_living"]
+    intent["trip_type"] = traveler_state["trip_type"]
+    intent["continent"] = traveler_state["continent"]
+    intent["country"] = traveler_state["country"]
+    intent["excluded_place_names"] = traveler_state["excluded_place_names"]
     if intent_sink is not None:
         intent_sink.update(intent)
 
@@ -2044,6 +2211,34 @@ def _extract_climate_budget_signal(
     return _validate_climate_budget(data)
 
 
+def _extract_state_clear_signal(
+    message: str, *, ai_provider: AIProvider, conversation_key: str | None = None
+) -> dict:
+    """Derive this turn's explicit-clear signal (see STATE_CLEAR_SCHEMA)
+    from this message alone - a wholly separate call from
+    _extract_climate_budget_signal above, sharing no schema or prompt
+    text with it. See CLIMATE_BUDGET_SYSTEM_PROMPT's comment for why that
+    separation is load-bearing, not just tidiness."""
+    messages = [
+        AIMessage(role="system", content=STATE_CLEAR_SYSTEM_PROMPT),
+        AIMessage(role="user", content=message),
+    ]
+    try:
+        with track_llm_call(
+            operation="extract_state_clear_signal", conversation_key=conversation_key
+        ):
+            data = ai_provider.generate_structured_reply(
+                messages, json_schema=STATE_CLEAR_SCHEMA, temperature=0
+            )
+    except AIProviderError:
+        logger.warning(
+            "Could not extract an isolated state-clear signal - AI provider failure. message=%r",
+            message,
+        )
+        data = {}
+    return _validate_state_clear(data)
+
+
 def _validate_climate_budget(data: dict) -> dict:
     """The max_cost_of_living range check and min_temp_c/max_temp_c
     contradiction check - shared by _validate_intent (the combined call)
@@ -2066,6 +2261,54 @@ def _validate_climate_budget(data: dict) -> dict:
         "min_temp_c": min_temp_c,
         "max_temp_c": max_temp_c,
         "max_cost_of_living": max_cost_of_living,
+    }
+
+
+def _resolve_cross_turn_temperature_contradiction(traveler_state: dict, state_delta: dict) -> None:
+    """A single message's own min_temp_c/max_temp_c can't contradict
+    itself - _validate_climate_budget already drops both when it does -
+    but merging across turns can still produce a contradiction neither
+    turn had on its own: "somewhere hot" persists as min_temp_c=28, then
+    "actually somewhere cold" sets max_temp_c=15 without that turn saying
+    anything about min_temp_c (there's nothing for it to clear, from its
+    own point of view). Handing scoring.py that pair as-is would zero out
+    every destination. The side THIS turn actually just stated wins - the
+    other one, merely carried forward from an earlier turn, is the one
+    that's actually stale. Mutates traveler_state in place."""
+    min_temp_c = traveler_state["min_temp_c"]
+    max_temp_c = traveler_state["max_temp_c"]
+    if min_temp_c is None or max_temp_c is None or min_temp_c <= max_temp_c:
+        return
+    new_min = state_delta.get("min_temp_c")
+    new_max = state_delta.get("max_temp_c")
+    if new_max is not None and new_min is None:
+        traveler_state["min_temp_c"] = None
+    elif new_min is not None and new_max is None:
+        traveler_state["max_temp_c"] = None
+    else:
+        # Both sides came from this same turn (a fresh contradiction) or
+        # neither did (a stale pair from before this mechanism existed) -
+        # no single side is more current than the other, so drop both.
+        traveler_state["min_temp_c"] = None
+        traveler_state["max_temp_c"] = None
+
+
+def _validate_state_clear(data: dict) -> dict:
+    """Validates STATE_CLEAR_SCHEMA's output - eight booleans/one list,
+    nothing that needs enum or catalog checking (unlike _validate_intent's
+    trip_type/country, which pick a VALUE; this only ever answers yes/no).
+    Missing keys (an older/simpler AIProvider stub, or a provider failure
+    degrading to {}) all read as "no clear this turn" - every lookup here
+    goes through .get() on purpose."""
+    return {
+        "min_temp_c_cleared": bool(data.get("min_temp_c_cleared")),
+        "max_temp_c_cleared": bool(data.get("max_temp_c_cleared")),
+        "max_cost_of_living_cleared": bool(data.get("max_cost_of_living_cleared")),
+        "trip_type_cleared": bool(data.get("trip_type_cleared")),
+        "continent_cleared": bool(data.get("continent_cleared")),
+        "country_cleared": bool(data.get("country_cleared")),
+        "excluded_place_names_remove": _clean_string_list(data.get("excluded_place_names_remove")),
+        "excluded_place_names_cleared": bool(data.get("excluded_place_names_cleared")),
     }
 
 

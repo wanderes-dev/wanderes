@@ -60,8 +60,16 @@ def _intent(**overrides):
 
 class StubAIProvider:
     """Schema-aware double for the AIProvider ABC - returns a canned
-    intent for the combined extraction call, a canned climate/budget
-    signal for the isolated call, and streams a fixed reply."""
+    intent for the combined extraction call, a canned traveler-state
+    signal for the isolated call, and streams a fixed reply.
+
+    The isolated call's default mirrors every field the combined intent
+    already carries (not just the original three climate/budget ones) -
+    single-request scenarios have no real prior turn to distinguish
+    "unchanged" from "not mentioned", so the isolated signal for a fresh
+    conversation key should just agree with what the combined call itself
+    extracted, exactly as if the traveler had said it all in one message
+    read in isolation."""
 
     def __init__(self, *, intent, climate_budget=None, reply_text="Here is a great option."):
         self.intent = intent
@@ -69,6 +77,10 @@ class StubAIProvider:
             "min_temp_c": intent.get("min_temp_c"),
             "max_temp_c": intent.get("max_temp_c"),
             "max_cost_of_living": intent.get("max_cost_of_living"),
+            "trip_type": intent.get("trip_type"),
+            "continent": intent.get("continent"),
+            "country": intent.get("country"),
+            "excluded_place_names_add": intent.get("excluded_place_names") or [],
         }
         self.reply_text = reply_text
         self.model = "stub-model"
@@ -80,6 +92,10 @@ class StubAIProvider:
             return self.intent
         if json_schema["name"] == "climate_budget_signal":
             return self.climate_budget
+        if json_schema["name"] == "traveler_state_clear_signal":
+            # No scenario here exercises an explicit clear - {} degrades
+            # through _validate_state_clear to "no clear this turn".
+            return {}
         raise AssertionError(f"unexpected schema {json_schema['name']}")
 
     def generate_reply(self, messages, *, max_tokens=None):
@@ -114,6 +130,10 @@ class _StreamFailingAIProvider:
             "min_temp_c": self.intent.get("min_temp_c"),
             "max_temp_c": self.intent.get("max_temp_c"),
             "max_cost_of_living": self.intent.get("max_cost_of_living"),
+            "trip_type": self.intent.get("trip_type"),
+            "continent": self.intent.get("continent"),
+            "country": self.intent.get("country"),
+            "excluded_place_names_add": self.intent.get("excluded_place_names") or [],
         }
 
     def generate_reply(self, messages, *, max_tokens=None):

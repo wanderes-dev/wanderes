@@ -36,6 +36,7 @@ import random
 import time
 from dataclasses import dataclass, field, replace
 
+from ai import memory
 from ai.orchestration import stream_travel_recommendation
 from ai.provider import AIProvider, AIProviderError, get_ai_provider
 from recommendations.scoring import ScoredDestination
@@ -291,10 +292,24 @@ def _run_full_pipeline(
     with synthetic_traveler(scenario.id, scenario.profile_overrides) as user:
         intent_sink: dict = {}
         try:
+            session_key = None if user else f"eval-{scenario.id}"
+            # Each scenario is meant to be a fresh, self-contained request -
+            # its own conv_key gets a real Redis-backed traveler-state
+            # accumulator now (trip_type/continent/country/
+            # excluded_place_names, not just climate/budget), same as a
+            # live conversation. A deterministic per-scenario key means a
+            # PREVIOUS run of this same corpus - within
+            # memory.CONVERSATION_TTL_SECONDS of this one - would otherwise
+            # leak its accumulated state into this one, since nothing else
+            # about a single-request scenario resets it. Clearing first
+            # makes each run reproducible regardless of what an earlier
+            # run left behind.
+            if user is None:
+                memory.clear_history(memory.conversation_key(user=None, session_key=session_key))
             result = stream_travel_recommendation(
                 scenario.message,
                 user=user,
-                session_key=None if user else f"eval-{scenario.id}",
+                session_key=session_key,
                 ai_provider=ai_provider,
                 climate_provider=climate_provider,
                 history_override=list(scenario.history) or None,
