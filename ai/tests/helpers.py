@@ -48,12 +48,20 @@ class ScriptedProvider:
     it's what advances the turn counter. Records every call so a test can
     assert exactly how many model calls a turn made."""
 
-    def __init__(self, turns):
+    def __init__(self, turns, reply_text="A reply."):
         self.turns = turns
+        self.reply_text = reply_text
         self.turn = -1
         self.structured_calls = []
         self.reply_calls = 0
         self.stream_calls = 0
+        # Optional callable(schema_name), run at the start of every structured
+        # call - lets a test make something else happen mid-turn, the way
+        # another tab could while the model calls are in flight.
+        self.before_call = None
+        # The messages each combined-intent call was given, i.e. the history
+        # the turn actually saw.
+        self.intent_messages = []
 
     @property
     def total_calls(self) -> int:
@@ -64,8 +72,11 @@ class ScriptedProvider:
     ):
         name = json_schema["name"]
         self.structured_calls.append(name)
+        if self.before_call is not None:
+            self.before_call(name)
         if name == "travel_message":
             self.turn += 1
+            self.intent_messages.append(list(messages))
             return dict(self.turns[self.turn]["intent"])
         script = self.turns[self.turn]
         if name == "climate_budget_signal":
@@ -80,7 +91,7 @@ class ScriptedProvider:
 
     def stream_reply(self, messages, *, max_tokens=None, temperature=None):
         self.stream_calls += 1
-        yield "A reply."
+        yield self.reply_text
 
 
 class FixedClimateProvider:
@@ -116,6 +127,57 @@ def remaining_ttl_seconds(key: str) -> int | None:
     made_key = cache.make_and_validate_key(key)
     ttl = cache._cache.get_client(made_key, write=False).ttl(made_key)
     return None if ttl < 0 else ttl
+
+
+class InterleavingCache:
+    """Stands in for ai.memory.cache (patch "ai.memory.cache") and runs a
+    callback right after a chosen cache operation, so a test can play out
+    another writer's steps at an exact point inside someone else's protocol.
+    Each hook fires once, and the callback's own cache calls go through the
+    same wrapper (so its operations can be observed or hooked as well)."""
+
+    def __init__(self, real):
+        self._real = real
+        self._hooks = []
+        self.ops = []
+
+    def after(self, op, key_suffix, callback):
+        self._hooks.append([op, key_suffix, callback])
+
+    def _ran(self, op, key):
+        self.ops.append((op, key.rsplit(":", 1)[-1] if ":" in key else key))
+        for hook in self._hooks:
+            if hook[0] == op and key.endswith(hook[1]) and hook[2] is not None:
+                callback, hook[2] = hook[2], None
+                callback()
+
+    def get(self, key, *args, **kwargs):
+        value = self._real.get(key, *args, **kwargs)
+        self._ran("get", key)
+        return value
+
+    def set(self, key, *args, **kwargs):
+        result = self._real.set(key, *args, **kwargs)
+        self._ran("set", key)
+        return result
+
+    def add(self, key, *args, **kwargs):
+        result = self._real.add(key, *args, **kwargs)
+        self._ran("add", key)
+        return result
+
+    def delete(self, key, *args, **kwargs):
+        result = self._real.delete(key, *args, **kwargs)
+        self._ran("delete", key)
+        return result
+
+    def touch(self, key, *args, **kwargs):
+        result = self._real.touch(key, *args, **kwargs)
+        self._ran("touch", key)
+        return result
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
 
 
 class StateWriteSpy:
