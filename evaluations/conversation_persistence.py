@@ -175,6 +175,7 @@ def save_conversation_run(
     results: list[ConversationResult],
     cost: CostTracker,
     runs_dir: Path | None = None,
+    path: str = "direct",
 ) -> Path:
     runs_dir = runs_dir or RUNS_DIR
     timestamp = datetime.now(UTC)
@@ -217,6 +218,11 @@ def save_conversation_run(
     meta = {
         "run_id": run_id,
         "label": label,
+        # Which way the conversations were driven: "direct" (the orchestration
+        # itself) or "view" (the chat endpoint, as a signed-in traveler with
+        # saved conversations on). Runs before this field existed were all
+        # "direct".
+        "path": path,
         "corpus_version": CONVERSATION_CORPUS_VERSION,
         "git_sha": _git_sha(),
         "timestamp": timestamp.isoformat(),

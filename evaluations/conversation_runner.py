@@ -2,13 +2,18 @@
 orchestration path - ai.orchestration.stream_travel_recommendation(),
 called once per turn with a real, persistent session_key so the actual
 Redis-backed conv_key mechanism (ai.memory) fires exactly as it does for
-a live traveler. Deliberately never uses history_override: Cycle 1's own
-evaluator uses it for single-request scenarios, but history_override
-forces conv_key=None (ai.orchestration.stream_travel_recommendation),
-which skips the climate/budget accumulator and the profile-confirmation
-gate entirely - exactly the two pieces of real persistent state this
-corpus exists to exercise. See documentation/18_CONVERSATION_EVALUATION_FRAMEWORK.md
-§2 for the full architecture trace this was based on.
+a live traveler. The default ("direct") path deliberately never uses
+history_override: Cycle 1's own evaluator uses it for single-request
+scenarios, but on its own it leaves the climate/budget accumulator and the
+profile-confirmation gate out of the picture - exactly the two pieces of
+real persistent state this corpus exists to exercise. See
+documentation/18_CONVERSATION_EVALUATION_FRAMEWORK.md §2 for the full
+architecture trace this was based on.
+
+The "view" path (evaluations.view_path) covers what that one can't: a
+signed-in traveler's saved conversation, where every turn from the second
+on arrives as a history_override and only state-ownership decides whether
+the accumulated state carries over.
 
 No special evaluation-only conversation engine exists here - every call
 below goes through the same entry point, the same intent extraction, the
@@ -18,6 +23,7 @@ same scoring, the same explanation generation a real /chat/ request uses.
 from __future__ import annotations
 
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from ai import memory
@@ -25,6 +31,7 @@ from ai.orchestration import stream_travel_recommendation
 from ai.provider import AIProvider, AIProviderError
 from recommendations.scoring import ScoredDestination
 from travel.services import find_destination_slugs_by_name
+from users.models import User
 
 from .conversation_invariants import (
     CheckpointResult,
@@ -40,6 +47,7 @@ from .cost import CostTracker
 from .grounding import GroundingResult, run_grounding_checks
 from .invariants import InvariantResult, check_no_affiliate_or_acquisition_signal_in_scoring
 from .profiles import synthetic_traveler
+from .view_path import ViewSession
 from .weather_fixtures import MissingWeatherFixtureError
 
 
@@ -212,6 +220,27 @@ class ConversationResult:
         return "\n".join(lines)
 
 
+PATHS = ("direct", "view")
+
+
+@contextmanager
+def _traveler_for_path(scenario: ConversationScenario, path: str):
+    """The direct path is anonymous unless the scenario declares a profile.
+    The view path always needs a signed-in account - that's who gets saved
+    conversations - so it makes a bare one when there's no profile."""
+    with synthetic_traveler(scenario.id, scenario.profile_overrides) as user:
+        if user is not None or path != "view":
+            yield user
+            return
+        account = User.objects.create_user(
+            email=f"eval-view-{scenario.id.lower()}@example.invalid", password=None
+        )
+        try:
+            yield account
+        finally:
+            account.delete()  # cascades to its SavedConversation rows
+
+
 def run_conversation(
     scenario: ConversationScenario,
     *,
@@ -219,30 +248,50 @@ def run_conversation(
     climate_provider,
     cost: CostTracker,
     attempt: int = 0,
+    path: str = "direct",
 ) -> ConversationResult:
+    """`path="direct"` calls the orchestration itself, like a first-turn or
+    anonymous chat. `path="view"` goes through the real chat endpoint as a
+    signed-in traveler who left "Save this conversation" on - the only way
+    the saved-conversation state-ownership logic is exercised at all."""
+    if path not in PATHS:
+        raise ValueError(f"path must be one of {PATHS}, got {path!r}")
     started_at = time.perf_counter()
     result = ConversationResult(scenario=scenario)
     scored_history: list[list[ScoredDestination]] = []
 
-    with synthetic_traveler(scenario.id, scenario.profile_overrides) as user:
+    with _traveler_for_path(scenario, path) as user:
         session_key = None if user else f"eval-conv-{scenario.id}-{attempt}"
         conv_key = memory.conversation_key(user=user, session_key=session_key)
         memory.clear_history(conv_key)  # guarantee no leakage from a prior attempt
+        view_session = (
+            ViewSession(user, ai_provider=ai_provider, climate_provider=climate_provider)
+            if path == "view"
+            else None
+        )
 
         for turn_index, turn in enumerate(scenario.turns):
             intent_sink: dict = {}
             state_sink: dict = {}
             try:
-                streaming = stream_travel_recommendation(
-                    turn.message,
-                    user=user,
-                    session_key=session_key,
-                    ai_provider=ai_provider,
-                    climate_provider=climate_provider,
-                    intent_sink=intent_sink,
-                    state_sink=state_sink,
-                )
-                reply = "".join(streaming.reply_chunks)
+                if view_session is not None:
+                    viewed = view_session.post(turn.message)
+                    intent_sink.update(viewed.intent)
+                    state_sink.update(viewed.state)
+                    reply = viewed.reply
+                    recommendations = viewed.recommendations
+                else:
+                    streaming = stream_travel_recommendation(
+                        turn.message,
+                        user=user,
+                        session_key=session_key,
+                        ai_provider=ai_provider,
+                        climate_provider=climate_provider,
+                        intent_sink=intent_sink,
+                        state_sink=state_sink,
+                    )
+                    reply = "".join(streaming.reply_chunks)
+                    recommendations = streaming.recommendations
             except MissingWeatherFixtureError as exc:
                 result.is_infrastructure_failure = True
                 result.infrastructure_failure_reason = str(exc)
@@ -253,7 +302,7 @@ def run_conversation(
                 result.first_divergence_turn = turn_index
                 break
 
-            scored = list(streaming.recommendations)
+            scored = list(recommendations)
             scored_history.append(scored)
             cost.record_pipeline_call(scenario_message=turn.message, reply=reply)
 
@@ -363,6 +412,7 @@ def run_conversations(
     *,
     ai_provider: AIProvider,
     climate_provider=None,
+    path: str = "direct",
 ) -> tuple[list[ConversationResult], CostTracker]:
     from django.conf import settings
 
@@ -371,7 +421,9 @@ def run_conversations(
     climate_provider = climate_provider or FixtureWeatherProvider()
     cost = CostTracker(model_name=getattr(settings, "AI_MODEL", "unknown"))
     results = [
-        run_conversation(c, ai_provider=ai_provider, climate_provider=climate_provider, cost=cost)
+        run_conversation(
+            c, ai_provider=ai_provider, climate_provider=climate_provider, cost=cost, path=path
+        )
         for c in conversations
     ]
     return results, cost

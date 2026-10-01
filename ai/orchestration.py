@@ -821,6 +821,7 @@ def stream_travel_recommendation(
     focus_destination_slug: str | None = None,
     intent_sink: dict | None = None,
     state_sink: dict | None = None,
+    thread_id: int | str | None = None,
 ) -> StreamingOrchestrationResult:
     """Handle one chat message: a recommendation request, feedback about a
     past visit, a stated future travel intention, or an off-topic message.
@@ -850,8 +851,21 @@ def stream_travel_recommendation(
     `history_override`: when the caller is continuing an already-saved
     conversation, it passes that conversation's own stored messages here
     instead of pulling from ai.memory's Redis-backed short-term cache -
-    the saved copy is the more complete source of truth, so this skips
-    reading and writing Redis for that call entirely.
+    the saved copy is the more complete source of truth, so the history the
+    AI sees always comes from here, never from Redis, on such a turn.
+
+    `thread_id`: which conversation this turn belongs to, as far as the
+    caller can vouch for it - a saved conversation's id (int), a pending
+    token (ai.memory.new_pending_owner) for the first turn of a conversation
+    that's about to be saved, or None for one that isn't tracked. It only
+    matters for the accumulated traveler state, which lives under a
+    per-user key that several conversations could otherwise believe is
+    theirs. With a history_override, the state is read and written only when
+    `thread_id` is a saved conversation that provably owns it (or that can
+    atomically claim an empty slot - see ai.memory); otherwise the turn runs
+    stateless, as it always did, and leaves whatever state is there alone.
+    Without a history_override it stamps the state it writes as that
+    thread's (None clears any earlier owner).
 
     `focus_destination_slug`: set only by the "Choose this trip" button,
     which already knows the destination, so this skips intent extraction
@@ -876,9 +890,22 @@ def stream_travel_recommendation(
     done, whichever branch handled the message. Where intent_sink shows
     what this one message yielded, this shows what the conversation will
     carry into the next turn - the thing a state-retention check actually
-    cares about. Stays empty when nothing is persisted for the call
-    (history_override). One cache read, no model calls.
+    cares about. Stays empty when the turn ran stateless (a
+    history_override turn whose conversation doesn't own the state). One
+    cache read, no model calls.
     """
+    # Which key, if any, this turn's structured state lives under. A
+    # history_override turn gets one only when its conversation provably
+    # owns the state (or claims an empty slot); with no thread_id it never
+    # does, which is exactly how such turns behaved before ownership existed.
+    conv_key = memory.conversation_key(user=user, session_key=session_key)
+    if history_override is None:
+        state_key = conv_key
+    elif isinstance(thread_id, int) and not isinstance(thread_id, bool):
+        state_key = conv_key if memory.claim_state_for_conversation(conv_key, thread_id) else None
+    else:
+        state_key = None
+
     result = _route_turn(
         message,
         user=user,
@@ -888,11 +915,18 @@ def stream_travel_recommendation(
         history_override=history_override,
         focus_destination_slug=focus_destination_slug,
         intent_sink=intent_sink,
+        state_key=state_key,
+        thread_id=thread_id,
     )
-    if state_sink is not None and history_override is None:
-        persisted = memory.get_climate_budget(
-            memory.conversation_key(user=user, session_key=session_key)
-        )
+    # An override turn reports the state only while it still owns it: one that
+    # lost the state to another thread during its model calls ran stateless,
+    # and what's persisted now is that other thread's.
+    if (
+        state_sink is not None
+        and state_key is not None
+        and (history_override is None or memory.state_owned_by(state_key, thread_id))
+    ):
+        persisted = memory.get_climate_budget(state_key)
         # Copied so a caller can't reach back into the shared blank-state
         # default through the exclusions list.
         state_sink.update(persisted, excluded_place_names=list(persisted["excluded_place_names"]))
@@ -909,22 +943,52 @@ def _route_turn(
     history_override: list[dict] | None = None,
     focus_destination_slug: str | None = None,
     intent_sink: dict | None = None,
+    state_key: str | None = None,
+    thread_id: int | str | None = None,
 ) -> StreamingOrchestrationResult:
     """The routing and handling behind stream_travel_recommendation(), split
     out so that function can report the post-turn state once, after
-    whichever of the many return paths below was taken."""
+    whichever of the many return paths below was taken. `state_key` is
+    where this turn's structured state lives (None = this turn runs
+    stateless); stream_travel_recommendation() has already decided that."""
     ai_provider = ai_provider or get_ai_provider()
     profile = _traveler_profile(user)
+    conv_key = state_key
     if history_override is not None:
-        conv_key = None
         history = history_override
     else:
-        conv_key = memory.conversation_key(user=user, session_key=session_key)
         history = memory.get_history(conv_key)
 
     def _remember(reply: str) -> None:
-        if conv_key is not None:
+        if conv_key is None:
+            return
+        if history_override is not None:
+            # A saved conversation's text lives in its SavedConversation, not
+            # in Redis - only the state's (and its owner's) lifetime needs
+            # keeping in step with the conversation.
+            memory.refresh_state_lifetime(conv_key)
+        else:
             memory.append_turn(conv_key, user_message=message, assistant_reply=reply)
+
+    def _state_write_key() -> str | None:
+        # Where this turn may write structured state right now. A plain
+        # (non-override) turn always may. An override turn was given the key
+        # only because its conversation owned the state when the turn began;
+        # the model calls since then take seconds, so ownership is checked
+        # again just before writing - if another thread has taken the state
+        # in the meantime, this turn stays stateless rather than write over it.
+        #
+        # This narrows the race, it doesn't close it: ownership can still
+        # change between this check and the state operation that follows it,
+        # because the cache has no multi-key compare-and-write. A turn caught
+        # there would merge the other writer's state into its own - that is
+        # not a fail-closed outcome. See "Who owns the accumulated state" in
+        # ai/memory.py for why it's accepted rather than locked against.
+        if conv_key is None:
+            return None
+        if history_override is None or memory.state_owned_by(conv_key, thread_id):
+            return conv_key
+        return None
 
     if focus_destination_slug:
         destination = Destination.objects.filter(slug=focus_destination_slug).first()
@@ -1181,9 +1245,12 @@ def _route_turn(
         # later, once the conversation actually turns into a search - the
         # MEM-series conversation evaluation scenarios exist because this
         # used to just get dropped on the floor.
-        if conv_key is not None and intent["excluded_place_names"]:
+        write_key = _state_write_key()
+        if write_key is not None and intent["excluded_place_names"]:
             memory.update_climate_budget(
-                conv_key, excluded_place_names_add=intent["excluded_place_names"]
+                write_key,
+                excluded_place_names_add=intent["excluded_place_names"],
+                owner=thread_id,
             )
 
         # Same pattern as future_intent below - _handle_feedback returns
@@ -1295,8 +1362,9 @@ def _route_turn(
     state_delta["continent"] = intent["continent"]
     state_delta["country"] = intent["country"]
     state_delta["excluded_place_names_add"] = intent["excluded_place_names"]
-    if conv_key is not None:
-        traveler_state = memory.update_climate_budget(conv_key, **state_delta)
+    write_key = _state_write_key()
+    if write_key is not None:
+        traveler_state = memory.update_climate_budget(write_key, owner=thread_id, **state_delta)
     else:
         traveler_state = memory.resolve_state_delta(**state_delta)
     intent["min_temp_c"] = traveler_state["min_temp_c"]

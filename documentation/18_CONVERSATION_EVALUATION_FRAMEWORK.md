@@ -29,6 +29,8 @@ Cycle 1's evaluator always calls `stream_travel_recommendation` with `history_ov
 
 `evaluations.conversation_runner.run_conversation` therefore drives every turn via `session_key=<per-conversation synthetic key>` (never `history_override=`), calling `memory.clear_history()` before the first turn so no state leaks from a prior attempt or a previous run. This is the same entry point, the same intent extraction, the same scoring, the same explanation generation a real `/chat/` request uses - no special evaluation-only conversation engine exists.
 
+**Two paths (Improvement 4).** That default ("direct") path is the path an anonymous visitor, or the first turn of any conversation, takes. A signed-in traveler who leaves "Save this conversation" on (the default) takes a different one from turn 2 on: the view hands the orchestration a `history_override` plus a `thread_id`, and whether the accumulated state carries over is decided by state *ownership* (see the Improvement 4 entry in `DEVELOPMENT_LOG.md`). The direct path cannot see that handoff, so the runner has a second mode, `path="view"` (`evaluate_conversations --path view`, implemented in `evaluations/view_path.py`): every turn is a POST to the real `/api/v1/recommendations/` endpoint as a signed-in synthetic account with saving on, the saved conversation's id is picked up from the response footer and sent back from turn 2 on - exactly as the chat page's JS does. Only two things are patched: the view's call into the orchestration (wrapped, so the evaluation can hand in its providers and read `intent_sink`/`state_sink` back) and the provider that titles a new saved conversation (so a run pays for no call it doesn't otherwise make). Each run's `meta.json` records its `path` (runs before this field existed were all `direct`). **The view path has been proven with scripted providers only; it has not yet been run against the real model** - a first real run is the intended baseline-then-compare step, and its numbers are not comparable with `direct` runs until that comparison is made.
+
 ## 4. Conversation schema
 
 `evaluations/conversation_scenarios.py`:
@@ -103,6 +105,10 @@ python manage.py evaluate_conversations --family reference
 
 # Run the complete baseline (both splits)
 python manage.py evaluate_conversations --split all --full --label conversation_baseline
+
+# The same conversations through the real chat endpoint, as a signed-in traveler with
+# "Save this conversation" on (the saved-conversation path; real AI cost, same as above)
+python manage.py evaluate_conversations --split all --full --path view --label conversation_view
 
 # Weather fixture coverage is shared with the single-request corpus -
 # refresh_weather_fixtures already accounts for both

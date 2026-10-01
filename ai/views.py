@@ -224,6 +224,22 @@ def recommendations_stream(request):
         else:
             history_override = conversation.messages[-memory.MAX_HISTORY_MESSAGES :]
 
+    # Which conversation this turn's accumulated traveler state may belong
+    # to (see ai.memory's "Who owns the accumulated state"). A saved
+    # conversation proves itself by its id, which was validated just above
+    # (the lookup is scoped to this user, so a stale or foreign id never
+    # gets here). A conversation that's about to be saved has no id until
+    # the reply has streamed, so it gets a one-off pending token that's
+    # promoted to the real id afterwards. Anything else is untracked.
+    pending_owner = None
+    if conversation is not None:
+        thread_id = conversation.pk
+    elif save_requested:
+        pending_owner = memory.new_pending_owner()
+        thread_id = pending_owner
+    else:
+        thread_id = None
+
     # Sent only by the chat page's own "Choose this trip" button, which
     # already knows the destination - no validation here,
     # stream_travel_recommendation's own Destination lookup is the source
@@ -241,6 +257,7 @@ def recommendations_stream(request):
         session_key=request.session.session_key,
         history_override=history_override,
         focus_destination_slug=focus_destination_slug,
+        thread_id=thread_id,
     )
     if result.recommendations:
         if result.is_destination_detail:
@@ -338,6 +355,13 @@ def recommendations_stream(request):
                 user_message=message,
                 assistant_reply=full_reply,
             )
+            if pending_owner is not None and save_result.saved and save_result.conversation_id:
+                # The conversation that held the pending token now has an
+                # id. Whether that still gets honoured depends on nobody
+                # else having taken the state since - see promote_state_owner.
+                memory.promote_state_owner(
+                    conversation_key, pending_owner, save_result.conversation_id
+                )
             yield CONVERSATION_DELIMITER + json.dumps(
                 {
                     "saved": save_result.saved,
@@ -468,5 +492,12 @@ def conversation_delete(request, pk):
     if forbidden:
         return forbidden
     conversation = get_object_or_404(SavedConversation, pk=pk, user=request.user)
+    # Deliberately leaves the accumulated state's owner alone. A conversation
+    # id is never reused, so an owner record naming a deleted conversation is
+    # inert - nothing can present that id again - and it goes away with the
+    # next reset or when it expires. Clearing it here would mean checking who
+    # owns the state and then deleting, and in between a newer thread could
+    # have taken it over and lose its ownership to a conversation that no
+    # longer exists.
     conversation.delete()
     return JsonResponse({"deleted": True})

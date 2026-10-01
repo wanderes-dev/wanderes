@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from ai.provider import get_ai_provider
 from evaluations.conversation_persistence import save_conversation_run
-from evaluations.conversation_runner import run_conversation, select_conversations
+from evaluations.conversation_runner import PATHS, run_conversation, select_conversations
 from evaluations.conversation_scenarios import load_conversation_corpus
 from evaluations.cost import CostTracker
 from evaluations.weather_fixtures import FixtureWeatherProvider
@@ -44,6 +44,16 @@ class Command(BaseCommand):
         )
         parser.add_argument("--seed", type=int, default=1337, help="Sampling seed.")
         parser.add_argument(
+            "--path",
+            choices=PATHS,
+            default="direct",
+            help=(
+                "direct (default): call the orchestration itself, like a first-turn or anonymous "
+                "chat. view: go through the real chat endpoint as a signed-in traveler with "
+                "'Save this conversation' on - the path saved conversations take."
+            ),
+        )
+        parser.add_argument(
             "--trace",
             metavar="CONVERSATION_ID",
             default=None,
@@ -55,7 +65,7 @@ class Command(BaseCommand):
         split = None if options["split"] == "all" else options["split"]
 
         if options["trace"]:
-            self._print_trace(conversations, options["trace"])
+            self._print_trace(conversations, options["trace"], options["path"])
             return
 
         sample = None if options["full"] else options["sample"]
@@ -89,12 +99,18 @@ class Command(BaseCommand):
         cost = CostTracker(model_name=self._model_name())
         results = [
             run_conversation(
-                c, ai_provider=ai_provider, climate_provider=climate_provider, cost=cost
+                c,
+                ai_provider=ai_provider,
+                climate_provider=climate_provider,
+                cost=cost,
+                path=options["path"],
             )
             for c in selected
         ]
 
-        run_dir = save_conversation_run(label=options["label"], results=results, cost=cost)
+        run_dir = save_conversation_run(
+            label=options["label"], results=results, cost=cost, path=options["path"]
+        )
 
         evaluable = [r for r in results if r.evaluable]
         infra = len(results) - len(evaluable)
@@ -117,7 +133,7 @@ class Command(BaseCommand):
 
         return getattr(settings, "AI_MODEL", "unknown")
 
-    def _print_trace(self, conversations, conversation_id):
+    def _print_trace(self, conversations, conversation_id, path="direct"):
         scenario = next((c for c in conversations if c.id == conversation_id), None)
         if scenario is None:
             raise CommandError(f"No conversation with id {conversation_id!r}")
@@ -125,6 +141,10 @@ class Command(BaseCommand):
         climate_provider = FixtureWeatherProvider()
         cost = CostTracker(model_name=self._model_name())
         result = run_conversation(
-            scenario, ai_provider=ai_provider, climate_provider=climate_provider, cost=cost
+            scenario,
+            ai_provider=ai_provider,
+            climate_provider=climate_provider,
+            cost=cost,
+            path=path,
         )
         self.stdout.write(result.render_trace())

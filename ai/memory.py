@@ -1,4 +1,5 @@
 import re
+import uuid
 
 from django.core.cache import cache
 
@@ -71,17 +72,42 @@ def append_turn(key: str, *, user_message: str, assistant_reply: str) -> None:
     # recommendation path (and the feedback exclusion write) ever rewrites
     # it, so without this a stretch of other turns - small talk, a visa
     # question, a saved trip - kept the history alive while the state's own
-    # clock ran down underneath it. touch() is a no-op for a key that isn't
-    # there, so it never invents state for a conversation that has none.
+    # clock ran down underneath it.
+    refresh_state_lifetime(key)
+
+
+def refresh_state_lifetime(key: str) -> None:
+    """Restart the clock on the accumulated state, on its owner record and -
+    when the owner is a pending token - on the promotion record that vouches
+    for it, so all of them live as long as the conversation does. The
+    promotion record only counts while the owner is still that very token, so
+    it must not age out before the owner does: an owner that's still there
+    would quietly stop being honoured, and the conversation would be stuck
+    stateless until the owner itself expired.
+
+    touch() is a no-op for a key that isn't there, so this never invents
+    state, ownership or a promotion for a conversation that has none - a
+    promotion record that has already expired stays gone, and an owner left
+    pending without one stays unhonoured."""
     cache.touch(_climate_budget_key(key), CONVERSATION_TTL_SECONDS)
+    owner = cache.get(_state_owner_key(key))
+    if owner is None:
+        return
+    cache.touch(_state_owner_key(key), CONVERSATION_TTL_SECONDS)
+    if isinstance(owner, str) and owner.startswith(_PENDING_OWNER_PREFIX):
+        cache.touch(_owner_promotion_key(key, owner), CONVERSATION_TTL_SECONDS)
 
 
 def clear_history(key: str) -> None:
     """Wipe whatever context exists for this key - used when a traveler
     starts a fresh conversation, so it doesn't quietly inherit whatever
-    was discussed last time under the same key."""
-    cache.delete(key)
+    was discussed last time under the same key. The state's owner goes with
+    it: there's nothing left to own. The owner goes FIRST, like in any other
+    change to the state (see update_climate_budget), so nobody is ever
+    considered the owner of a state that's being torn down."""
+    cache.delete(_state_owner_key(key))
     cache.delete(_climate_budget_key(key))
+    cache.delete(key)
 
 
 def _climate_budget_key(key: str) -> str:
@@ -194,6 +220,7 @@ def update_climate_budget(
     excluded_place_names_add: list[str] | None = None,
     excluded_place_names_remove: list[str] | None = None,
     excluded_place_names_cleared: bool = False,
+    owner: int | str | None = None,
 ) -> dict:
     """Merge this turn's (history-free) traveler-state signal into what's
     already accumulated. Each scalar field only changes when this call
@@ -245,7 +272,31 @@ def update_climate_budget(
     # `merged` is already fully resolved (see resolve_state_delta), so what
     # gets stored is exactly what's returned - and exactly what the caller
     # builds its request from.
+    #
+    # `owner` says whose state this now is (see "Who owns the accumulated
+    # state" below); None means nobody that can prove it, which is the
+    # default so a caller that forgets fails closed. The order is fixed:
+    #
+    #   invalidate the existing owner -> write the state -> stamp the new owner
+    #
+    # The owner is dropped first, for EVERY writer (whoever is writing, and
+    # whether or not it will stamp itself afterwards): an old owner must never
+    # be able to look valid while the state under it is being changed by
+    # someone else. The new owner is stamped only once the state is written,
+    # so ownership never points at state that isn't there yet.
+    #
+    # An unowned write has to END with no owner, so it drops the owner once
+    # more after writing: between its first delete and its state write the
+    # slot looks empty, and a claim (or another writer's stamp) landing in
+    # that gap would otherwise go on to vouch for state it never saw. A
+    # stamping writer doesn't need this - its own stamp replaces whatever
+    # landed in the gap.
+    cache.delete(_state_owner_key(key))
     cache.set(_climate_budget_key(key), merged, CONVERSATION_TTL_SECONDS)
+    if owner is not None:
+        cache.set(_state_owner_key(key), owner, CONVERSATION_TTL_SECONDS)
+    else:
+        cache.delete(_state_owner_key(key))
     return merged
 
 
@@ -302,6 +353,135 @@ def resolve_state_delta(
         resolved, {"min_temp_c": min_temp_c, "max_temp_c": max_temp_c}
     )
     return resolved
+
+
+# Who owns the accumulated state
+#
+# The accumulated state lives under the per-USER key, but a signed-in user
+# can have several saved conversations (and several tabs) that each could
+# believe it's theirs. A saved conversation continued via history_override
+# may therefore only read or write that state once its ownership is proven;
+# otherwise it runs stateless, exactly as it always did.
+#
+# The owner is recorded next to the state, under "<key>:state-owner": a
+# SavedConversation id, or a "pending:<token>" for the first turn of a
+# conversation that doesn't have an id yet (the id only exists after the
+# reply has streamed and the turn has been saved). Every change to the state
+# drops the existing owner first and only then, if the writer can prove who
+# it is, stamps itself (an unowned writer drops the owner again at the end) -
+# so an owner record is only ever trusted while nothing else has touched the
+# state since.
+#
+# Django's cache has no compare-and-set and no multi-key transaction, so the
+# protocol never replaces an owner it didn't just write. A pending token is
+# turned into a real id by a separate promotion record (promote_state_owner),
+# and an empty slot is claimed with a fresh pending-style token that only
+# becomes authoritative once it has been re-verified (claim_empty_state_slot).
+#
+# What this cannot do is close the gap between a turn's final ownership check
+# and the state operation that follows it (or, in general, stop two writers'
+# multi-step sequences from interleaving): another same-user writer can in
+# principle land in that sub-millisecond window, and the turn would then
+# merge that writer's state into its own and stamp itself as the owner. That
+# is a real (if very unlikely) way to cross-contaminate, NOT a fail-closed
+# outcome; closing it needs a lock or Redis-specific atomic scripting, and
+# neither is justified by any evidence that the race happens.
+_PENDING_OWNER_PREFIX = "pending:"
+
+
+def _state_owner_key(key: str) -> str:
+    return f"{key}:state-owner"
+
+
+def _owner_promotion_key(key: str, pending: str) -> str:
+    return f"{key}:state-owner-promotion:{pending}"
+
+
+def new_pending_owner() -> str:
+    """A one-off owner token for a conversation that's about to be saved."""
+    return f"{_PENDING_OWNER_PREFIX}{uuid.uuid4().hex}"
+
+
+def get_state_owner(key: str) -> int | str | None:
+    return cache.get(_state_owner_key(key))
+
+
+def state_owned_by(key: str, conversation_id: int) -> bool:
+    """Whether the state under `key` is provably this saved conversation's:
+    the owner record is its id, or a pending token that was promoted to it
+    and that nothing has replaced since."""
+    owner = cache.get(_state_owner_key(key))
+    if owner is None or isinstance(owner, bool):
+        return False
+    if isinstance(owner, int):
+        return owner == conversation_id
+    if isinstance(owner, str) and owner.startswith(_PENDING_OWNER_PREFIX):
+        return cache.get(_owner_promotion_key(key, owner)) == conversation_id
+    return False
+
+
+def promote_state_owner(key: str, pending: str, conversation_id: int) -> bool:
+    """Record that the conversation which has just been saved is the one
+    that held `pending`.
+
+    Django's cache has no compare-and-set, so "replace the pending owner
+    with the id" would be a read followed by a write - and a writer that
+    took the state in between would have its ownership overwritten.
+    Promotion therefore never writes the owner record at all. It records,
+    once (cache.add is atomic), which conversation the pending token turned
+    out to be, and state_owned_by() honours that only while the owner record
+    is still that very token. Anyone else having stamped or cleared the owner
+    in the meantime leaves the promotion record unconsulted - the same result
+    as a compare-and-set that failed. Returns whether this call recorded it."""
+    if not pending.startswith(_PENDING_OWNER_PREFIX):
+        return False
+    promotion_key = _owner_promotion_key(key, pending)
+    return bool(cache.add(promotion_key, conversation_id, CONVERSATION_TTL_SECONDS))
+
+
+def claim_empty_state_slot(key: str, conversation_id: int) -> bool:
+    """Take ownership of a slot that holds neither an owner nor any state -
+    after an expiry, a restart, or a "New conversation" - so a saved
+    conversation can start accumulating state from this turn on. Nothing is
+    inherited and nothing is wiped: if there's any state at all, or anyone
+    already owns the slot, this declines.
+
+    The claim is a fresh, unique pending-style token put in the owner slot
+    with cache.add, which is atomic, so two tabs racing for the same empty
+    slot can't both win. A token in the owner slot means nothing yet: the
+    state is checked again after winning, and only if the slot is still
+    empty is the token promoted to this conversation (the same promotion
+    record a saved conversation's first turn uses), which is what makes it
+    authoritative - and the claim is reported only if the token is still the
+    owner after that. If some writer slipped state in between the first look
+    and the claim, the token is simply never promoted and never honoured.
+
+    Nothing here ever deletes or overwrites an owner record or touches the
+    state, so a claimant that loses - to another claimant, or to a writer - can't
+    damage whoever won. A token that loses to a writer's state is left alone
+    (the writer's own stamp or clear replaces it; otherwise it just expires),
+    which keeps the slot unavailable, never wrongly available."""
+    state_key = _climate_budget_key(key)
+    owner_key = _state_owner_key(key)
+    if cache.get(state_key) is not None or cache.get(owner_key) is not None:
+        return False
+    claim = new_pending_owner()
+    if not cache.add(owner_key, claim, CONVERSATION_TTL_SECONDS):
+        return False
+    if cache.get(state_key) is not None:
+        return False
+    if not promote_state_owner(key, claim, conversation_id):
+        return False
+    # A writer can still have replaced or cleared the token between the
+    # re-check and the promotion; only report a claim that holds right now.
+    return state_owned_by(key, conversation_id)
+
+
+def claim_state_for_conversation(key: str, conversation_id: int) -> bool:
+    """May this saved conversation use the state under `key` this turn?
+    Yes if it already owns it, or if the slot is empty and it can claim it;
+    anything else (another owner, or state nobody can vouch for) is no."""
+    return state_owned_by(key, conversation_id) or claim_empty_state_slot(key, conversation_id)
 
 
 def _profile_confirmed_key(key: str) -> str:
