@@ -3488,6 +3488,7 @@ class ClimateBudgetSignalTests(TestCase):
                 "country_cleared": False,
                 "excluded_place_names_remove": [],
                 "excluded_place_names_cleared": False,
+                "selected_destination_cleared": False,
             },
         )
 

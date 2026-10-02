@@ -122,6 +122,12 @@ _NO_CLIMATE_BUDGET = {
     "continent": None,
     "country": None,
     "excluded_place_names": [],
+    # The specific destination the traveler has chosen to go to, as a
+    # {"slug", "name", "country"} record (slug is None for a real place that
+    # isn't in the catalog) - not the same thing as `country`, which is only
+    # ever a constraint on discovery. Resolved once when it's set, so the
+    # follow-ups that rely on it never have to re-resolve a name.
+    "selected_destination": None,
 }
 
 
@@ -132,8 +138,12 @@ def get_climate_budget(key: str) -> dict:
     max_temp_c/max_cost_of_living); grew to cover trip_type/continent/
     country/excluded_place_names too once those turned out to need the
     exact same "isolated per-turn signal, accumulated across turns"
-    treatment - see update_climate_budget's docstring."""
-    return cache.get(_climate_budget_key(key)) or dict(_NO_CLIMATE_BUDGET)
+    treatment - see update_climate_budget's docstring. A state stored
+    before a field existed simply reads as blank for it."""
+    stored = cache.get(_climate_budget_key(key))
+    if not stored:
+        return dict(_NO_CLIMATE_BUDGET)
+    return {**_NO_CLIMATE_BUDGET, **stored}
 
 
 def _merge_scalar(current, new_value, cleared: bool):
@@ -220,6 +230,8 @@ def update_climate_budget(
     excluded_place_names_add: list[str] | None = None,
     excluded_place_names_remove: list[str] | None = None,
     excluded_place_names_cleared: bool = False,
+    selected_destination: dict | None = None,
+    selected_destination_cleared: bool = False,
     owner: int | str | None = None,
 ) -> dict:
     """Merge this turn's (history-free) traveler-state signal into what's
@@ -268,6 +280,8 @@ def update_climate_budget(
         excluded_place_names_add=excluded_place_names_add,
         excluded_place_names_remove=excluded_place_names_remove,
         excluded_place_names_cleared=excluded_place_names_cleared,
+        selected_destination=selected_destination,
+        selected_destination_cleared=selected_destination_cleared,
     )
     # `merged` is already fully resolved (see resolve_state_delta), so what
     # gets stored is exactly what's returned - and exactly what the caller
@@ -318,6 +332,8 @@ def resolve_state_delta(
     excluded_place_names_add: list[str] | None = None,
     excluded_place_names_remove: list[str] | None = None,
     excluded_place_names_cleared: bool = False,
+    selected_destination: dict | None = None,
+    selected_destination_cleared: bool = False,
 ) -> dict:
     """The same SET/UNCHANGED/CLEAR merge update_climate_budget() persists,
     exposed standalone for a caller with no conv_key to accumulate into -
@@ -347,6 +363,9 @@ def resolve_state_delta(
             add=excluded_place_names_add,
             remove=excluded_place_names_remove,
             cleared=excluded_place_names_cleared,
+        ),
+        "selected_destination": _merge_scalar(
+            current.get("selected_destination"), selected_destination, selected_destination_cleared
         ),
     }
     _resolve_cross_turn_temperature_contradiction(

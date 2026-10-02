@@ -66,6 +66,18 @@ def is_known_country(country_name: str) -> bool:
     ).exists()
 
 
+def is_catalog_country_name(name: str) -> bool:
+    """Whether `name`, exactly as written (case aside), is a country the
+    catalog stores. Unlike is_known_country() this never goes through the
+    alias table, which exists to translate the *country field* ("Tailândia"
+    -> "Thailand") and so also turns an ordinary place name into a country:
+    "Granada" is the Portuguese/Spanish name of the country Grenada. For
+    deciding whether a traveler named a place or a country, what they wrote
+    is the evidence, not what it could be rewritten to."""
+    stripped = (name or "").strip()
+    return bool(stripped) and Destination.objects.filter(country__iexact=stripped).exists()
+
+
 def find_destination_slugs_by_name(place_names: list[str]) -> frozenset:
     """Resolve free-text place/country names to matching Destination slugs.
 
