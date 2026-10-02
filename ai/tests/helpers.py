@@ -17,6 +17,7 @@ BASE_INTENT = {
     "continent": None,
     "country": None,
     "excluded_place_names": [],
+    "selected_destination_name": None,
     "feedback_destination_name": None,
     "feedback_rating": None,
     "feedback_tags": [],
@@ -43,9 +44,11 @@ def intent(**overrides) -> dict:
 
 class ScriptedProvider:
     """One scripted answer set per turn: turns[n] is a dict with an
-    "intent" plus optional "climate_budget" and "state_clear" answers. The
-    combined intent call is always the first structured call of a turn, so
-    it's what advances the turn counter. Records every call so a test can
+    "intent" plus optional "climate_budget" and "state_clear" answers, and
+    optionally "destination_resolution" / "freeform_place" for the calls that
+    resolve a name the catalog lookup missed (unscripted, both answer "no").
+    The combined intent call is always the first structured call of a turn,
+    so it's what advances the turn counter. Records every call so a test can
     assert exactly how many model calls a turn made."""
 
     def __init__(self, turns, reply_text="A reply."):
@@ -62,6 +65,9 @@ class ScriptedProvider:
         # The messages each combined-intent call was given, i.e. the history
         # the turn actually saw.
         self.intent_messages = []
+        # The messages each streamed reply was generated from - what a test
+        # reads to tell which kind of reply a turn took.
+        self.stream_messages = []
 
     @property
     def total_calls(self) -> int:
@@ -83,6 +89,10 @@ class ScriptedProvider:
             return dict(script.get("climate_budget", {}))
         if name == "traveler_state_clear_signal":
             return dict(script.get("state_clear", {}))
+        if name == "destination_resolution":
+            return dict(script.get("destination_resolution", {}))
+        if name == "freeform_place_resolution":
+            return dict(script.get("freeform_place", {}))
         return {}
 
     def generate_reply(self, messages, *, max_tokens=None):
@@ -91,6 +101,7 @@ class ScriptedProvider:
 
     def stream_reply(self, messages, *, max_tokens=None, temperature=None):
         self.stream_calls += 1
+        self.stream_messages.append(list(messages))
         yield self.reply_text
 
 

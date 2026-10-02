@@ -1,7 +1,11 @@
 import logging
+import re
+import unicodedata
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
+
+from django.db.models import Q
 
 from analytics.instrumentation import track_llm_call
 from analytics.services import record_event
@@ -23,6 +27,7 @@ from travel.services import (
     ENTRY_REQUIREMENT_DISCLAIMER,
     find_destination_slugs_by_name,
     get_entry_requirements,
+    is_catalog_country_name,
     is_known_country,
     resolve_country_name,
 )
@@ -97,6 +102,36 @@ _TRIP_TYPE_GUIDANCE = (
     "unless a real category word is also present.\n"
 )
 
+# Calibrated against evaluations/selected_destination_calibration.py: the field
+# is a judgment the model makes inside the combined call, and the examples must
+# never reuse a place from that set (a test checks).
+#
+# This paragraph is appended at the END of INTENT_EXTRACTION_SYSTEM_PROMPT on
+# purpose. Placed in the middle, next to the country/trip_type instructions,
+# it made the model lose a trip-type correction half the time ("quero uma
+# praia", then "não, quis dizer uma cidade mesmo" kept the beach: 8/8 -> 4/8
+# on replay), and a longer or in-place wording never recovered it; the same
+# short text at the end costs nothing there. Keep it short and keep it last.
+SELECTED_DESTINATION_PROMPT = (
+    "selected_destination_name: the one specific named place the traveler "
+    "says they are going to or planning to go to, e.g. 'quero ir para "
+    "Salzburg', 'vou para Lyon', 'estou pensando em ir para Hoi An', 'na "
+    "verdade quero Lyon'. It is in addition to country and continent. "
+    "Standard English name. Null for a country, a multi-country region or a "
+    "continent, a place only mentioned, compared, asked about, visited, avoided or "
+    "dreamed of for someday, a bare place name unless it picks an option you "
+    "just presented, and whenever they are still asking where to go."
+)
+
+NEAR_TERM_PLAN_PROMPT = (
+    "A plain statement that they ARE going, or are planning or thinking of "
+    "going, to a named place soon or with no 'someday' marker ('vamos "
+    "passar o feriado em Salzburg', 'estou pensando em ir para Hoi An', "
+    "'we're going to Tallinn in June') is a present trip plan, not a "
+    "someday goal - classify those as 'recommendation' too, extracting the "
+    "place as described below. "
+)
+
 INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "You classify a traveler's message and extract structured information "
     "from it. Judge message_type using ONLY what the CURRENT message itself "
@@ -163,7 +198,9 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "to visit eventually/someday rather than a trip to help plan right "
     "now - explicit markers like 'algum dia', 'um dia', 'someday', 'one "
     "day', 'my dream is to...', 'I've always wanted to...', or a stated "
-    "longer-term timeframe ('ano que vem', 'next year'). Crucially: if your own "
+    "longer-term timeframe ('ano que vem', 'next year'). "
+    + NEAR_TERM_PLAN_PROMPT
+    + "Crucially: if your own "
     "immediately preceding reply just suggested destinations or asked "
     "which of them interests the traveler, and the current message is "
     "just naming one of them (or a short reaction to it, e.g. 'Bahia', "
@@ -321,7 +358,7 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "standard English form (e.g. 'Tailandia' -> 'Thailand'), the same "
     "way as the country field above - a name left in another language "
     "would silently fail to match our English-language catalog. Leave "
-    "it as an empty list if they mentioned no exclusions.\n\n"
+    "it as an empty list if they mentioned no exclusions.\n"
     "--- Fields for message_type = 'feedback' ---\n"
     "feedback_destination_name: the name of the place they're giving "
     "feedback about, as they wrote it. Null if unclear.\n"
@@ -457,7 +494,8 @@ INTENT_EXTRACTION_SYSTEM_PROMPT = (
     "minha esposa e filha' -> 3, 'my wife and I' -> 2, 'a family of "
     "four' -> 4, 'somos 3 pessoas' -> 3, or simply replying '3' to your "
     "own earlier question about how many people). Null if never stated "
-    "anywhere in the conversation - never guess a number."
+    "anywhere in the conversation - never guess a number.\n\n"
+    + SELECTED_DESTINATION_PROMPT
 )
 
 INTENT_SCHEMA = {
@@ -484,6 +522,15 @@ INTENT_SCHEMA = {
             },
             "country": {"type": ["string", "null"]},
             "excluded_place_names": {"type": "array", "items": {"type": "string"}},
+            "selected_destination_name": {
+                "type": ["string", "null"],
+                "description": (
+                    "The one specific city, town or island the traveler says they are "
+                    "going to or planning to go to. Null for a country or region, a "
+                    "someday aspiration, a comparison or question about a place, or a "
+                    "passing mention."
+                ),
+            },
             "feedback_destination_name": {"type": ["string", "null"]},
             "feedback_rating": {"type": ["integer", "null"]},
             "feedback_tags": {"type": "array", "items": {"type": "string"}},
@@ -512,6 +559,7 @@ INTENT_SCHEMA = {
             "continent",
             "country",
             "excluded_place_names",
+            "selected_destination_name",
             "feedback_destination_name",
             "feedback_rating",
             "feedback_tags",
@@ -632,7 +680,7 @@ CLIMATE_BUDGET_SYSTEM_PROMPT = (
 # temperature/budget anchors at all, so it has nothing to contaminate
 # them with; it only ever answers "did the traveler explicitly take back
 # a preference this message," a plain yes/no judgment for each of the
-# seven persistent fields (plus removing one name from the exclusion
+# persistent fields (plus removing one name from the exclusion
 # list), never a value judgment.
 STATE_CLEAR_SCHEMA = {
     "name": "traveler_state_clear_signal",
@@ -648,6 +696,7 @@ STATE_CLEAR_SCHEMA = {
             "country_cleared": {"type": "boolean"},
             "excluded_place_names_remove": {"type": "array", "items": {"type": "string"}},
             "excluded_place_names_cleared": {"type": "boolean"},
+            "selected_destination_cleared": {"type": "boolean"},
         },
         "required": [
             "min_temp_c_cleared",
@@ -658,6 +707,7 @@ STATE_CLEAR_SCHEMA = {
             "country_cleared",
             "excluded_place_names_remove",
             "excluded_place_names_cleared",
+            "selected_destination_cleared",
         ],
         "additionalProperties": False,
     },
@@ -698,7 +748,20 @@ STATE_CLEAR_SYSTEM_PROMPT = (
     "this message doesn't do that.\n"
     "- excluded_place_names_cleared: true only for an explicit request to "
     "drop ALL exclusions at once ('forget what I said, show me "
-    "everything', 'never mind, no exclusions')."
+    "everything', 'never mind, no exclusions').\n"
+    "- selected_destination_cleared: the traveler may already have picked "
+    "one specific place to go to. True only when this message reopens the "
+    "choice of WHERE to go instead of continuing with that place - asking "
+    "for other/different/more options or another city, saying they "
+    "haven't decided or changed their mind without naming a new place "
+    "('mostra outras opções', 'quero outra cidade', 'na verdade ainda não "
+    "decidi', 'show me other places'), or starting a fresh search by "
+    "region or type ('quero uma cidade na Espanha', 'I want a beach "
+    "somewhere warm'). False for naming a different specific place to go "
+    "to (that replaces the choice by itself) and for anything that just "
+    "continues with the same place - follow-up questions, budget, "
+    "practical or timing refinements ('conte-me mais', 'e hospedagem?', "
+    "'quero algo mais barato')."
 )
 
 # Fallback for _resolve_destination() when the cheap DB substring lookup
@@ -993,6 +1056,19 @@ def _route_turn(
     if focus_destination_slug:
         destination = Destination.objects.filter(slug=focus_destination_slug).first()
         if destination is not None:
+            # The button is the most explicit choice there is, so it counts
+            # as one for the follow-ups too.
+            write_key = _state_write_key()
+            if write_key is not None:
+                memory.update_climate_budget(
+                    write_key,
+                    selected_destination={
+                        "slug": destination.slug,
+                        "name": destination.name,
+                        "country": destination.country,
+                    },
+                    owner=thread_id,
+                )
             return _handle_focus_destination(
                 message,
                 destination,
@@ -1013,6 +1089,7 @@ def _route_turn(
         logger.warning("Could not extract intent - AI provider failure. message=%r", message)
         _remember(FALLBACK_REPLY)
         return StreamingOrchestrationResult([], iter([FALLBACK_REPLY]))
+    _drop_unoffered_bare_selection(message, intent, history)
     if intent_sink is not None:
         intent_sink.update(intent)
 
@@ -1362,6 +1439,20 @@ def _route_turn(
     state_delta["continent"] = intent["continent"]
     state_delta["country"] = intent["country"]
     state_delta["excluded_place_names_add"] = intent["excluded_place_names"]
+    # A place the traveler named as their choice is resolved once, here, and
+    # kept in the state as a record; a name that turns out to be neither a
+    # catalog destination nor a real place is simply not a selection (the
+    # turn then behaves as it did before this field existed).
+    selected_record = _resolve_selected_destination(
+        intent["selected_destination_name"],
+        country_hint=intent["country"],
+        ai_provider=ai_provider,
+        conversation_key=conv_key,
+    )
+    selection_unresolved = (
+        intent["selected_destination_name"] is not None and selected_record is None
+    )
+    state_delta["selected_destination"] = selected_record
     write_key = _state_write_key()
     if write_key is not None:
         traveler_state = memory.update_climate_budget(write_key, owner=thread_id, **state_delta)
@@ -1374,8 +1465,27 @@ def _route_turn(
     intent["continent"] = traveler_state["continent"]
     intent["country"] = traveler_state["country"]
     intent["excluded_place_names"] = traveler_state["excluded_place_names"]
+    intent["selected_destination"] = traveler_state["selected_destination"]
     if intent_sink is not None:
         intent_sink.update(intent)
+
+    # Someone who has already chosen where they're going isn't searching:
+    # this turn - and every later one, until they reopen the choice or pick
+    # somewhere else - is a conversation about that place, not another
+    # country-level ranking.
+    if traveler_state["selected_destination"] is not None and not selection_unresolved:
+        selected_result = _handle_selected_destination(
+            message,
+            traveler_state["selected_destination"],
+            profile=profile,
+            history=history,
+            ai_provider=ai_provider,
+            climate_provider=climate_provider,
+            remember=_remember,
+            conversation_key=conv_key,
+        )
+        if selected_result is not None:
+            return selected_result
 
     has_enough_signal = (
         intent["min_temp_c"] is not None
@@ -1543,6 +1653,7 @@ def _handle_focus_destination(
     conversation_key: str | None = None,
     accommodation_focus: bool = False,
     accommodation_party_size: int | None = None,
+    chosen_destination: bool = False,
 ) -> StreamingOrchestrationResult:
     """The "choose this trip" detail path: the traveler already picked one
     destination from a browse-stage card, so there's nothing left to
@@ -1562,7 +1673,12 @@ def _handle_focus_destination(
     accommodation_focus - the caller only reaches this function with a
     known party size (it asks first when one isn't known yet) - and gets
     carried on the result so ai/views.py can build a link with the right
-    group_adults instead of a destination-only search."""
+    group_adults instead of a destination-only search.
+
+    `chosen_destination` is set when the traveler typed their choice ("quero
+    ir pra Barcelona", or a follow-up on a destination chosen earlier)
+    rather than clicking the button - same reply path, but the prompt says
+    what happened and treats the destination as already decided."""
     climate_provider = climate_provider or get_climate_provider()
     try:
         summary = climate_provider.get_monthly_climate(
@@ -1592,6 +1708,7 @@ def _handle_focus_destination(
         history=history,
         accommodation_focus=accommodation_focus,
         accommodation_party_size=accommodation_party_size,
+        chosen_destination=chosen_destination,
     )
     reply = _stream_ai_reply(
         messages,
@@ -1608,6 +1725,91 @@ def _handle_focus_destination(
     )
 
 
+def _handle_selected_destination(
+    message: str,
+    selected: dict,
+    *,
+    profile: TravelerProfile | None,
+    history: list[dict] | None,
+    ai_provider: AIProvider,
+    climate_provider,
+    remember,
+    conversation_key: str | None = None,
+) -> StreamingOrchestrationResult | None:
+    """Answer a message for a traveler who has already chosen where they're
+    going (the `selected_destination` record in the accumulated state), so
+    nothing is searched or ranked: a catalog destination gets the same
+    single-destination reply "Choose this trip" produces, and a real place
+    outside the catalog gets a general-knowledge reply with the same
+    "search stays" card the accommodation flow offers for such places.
+    Returns None when the record points at a catalog entry that no longer
+    exists, so the caller carries on as if nothing had been chosen."""
+    slug = selected.get("slug")
+    if slug:
+        destination = Destination.objects.filter(slug=slug).first()
+        if destination is None:
+            return None
+        return _handle_focus_destination(
+            message,
+            destination,
+            profile=profile,
+            history=history,
+            ai_provider=ai_provider,
+            climate_provider=climate_provider,
+            remember=remember,
+            conversation_key=conversation_key,
+            chosen_destination=True,
+        )
+    name = selected["name"]
+    country = selected.get("country") or ""
+    reply = _stream_ai_reply(
+        _build_selected_freeform_destination_messages(message, name, country, history),
+        message,
+        ai_provider=ai_provider,
+        remember=remember,
+        conversation_key=conversation_key,
+    )
+    return StreamingOrchestrationResult(
+        [],
+        reply,
+        accommodation_freeform_name=name,
+        accommodation_freeform_country=country,
+    )
+
+
+def _build_selected_freeform_destination_messages(
+    message: str, name: str, country: str, history: list[dict] | None = None
+) -> list[AIMessage]:
+    """For a traveler who chose a real place our curated catalog doesn't
+    have. Same recommendation philosophy as every other "not in the
+    catalog" reply: general knowledge, said honestly, no invented
+    specifics (prices, hotel names, opening times) and no pretending we hold
+    verified data on it."""
+    label = f"{name}, {country}" if country else name
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f'The traveler just said: "{message}" - they have chosen {label} as '
+                "where they want to go. It isn't in our curated destination dataset, so "
+                "we hold no verified data on it. Treat the destination as already "
+                "decided - don't suggest or compare other destinations unless they ask "
+                "for alternatives. Respond warmly and usefully from your own general "
+                "travel knowledge (what it's known for, when it's good to visit, "
+                "something practical), answering what their message actually asks, and "
+                "say in passing, without opening with an apology, that this comes from "
+                "general knowledge rather than our verified data. Never invent specific "
+                "prices, hotel names, or availability. Invite a real follow-up question. "
+                "Reply in the same language the traveler has been using in this "
+                "conversation (check the history above, not just this message)."
+            ),
+        )
+    )
+    return messages
+
+
 def _build_destination_detail_messages(
     message: str,
     destination: Destination,
@@ -1617,6 +1819,7 @@ def _build_destination_detail_messages(
     history: list[dict] | None,
     accommodation_focus: bool = False,
     accommodation_party_size: int | None = None,
+    chosen_destination: bool = False,
 ) -> list[AIMessage]:
     poi = ", ".join(destination.points_of_interest) if destination.points_of_interest else ""
     climate_line = f"\n- Current typical avg high: {avg_high_c}C" if avg_high_c is not None else ""
@@ -1643,6 +1846,19 @@ def _build_destination_detail_messages(
             "specific hotel name, price, or availability claim you can't "
             "verify. Still ground it in a real, detailed sense of the place "
             "(the description and points of interest below), the way a "
+        )
+    elif chosen_destination:
+        context_line = (
+            f"The traveler has chosen {destination.name}, {destination.country} as "
+            "where they want to go. "
+        )
+        message_line = f'Their message was: "{message}"\n\n'
+        conversation_note = (
+            "Treat the destination as already decided - don't suggest or compare "
+            "other destinations unless they ask for alternatives. Have a "
+            "genuine, detailed conversation about this one place - answer what "
+            "their message actually asks, bring the description and points of "
+            "interest to life, and invite a real follow-up question, the way a "
         )
     else:
         context_line = (
@@ -1983,6 +2199,63 @@ def _handle_future_intent(
     )
 
 
+def _best_name_match(candidates, name: str) -> Destination | None:
+    """Pick the destination a traveler most plausibly meant out of the loose
+    substring matches. find_destination_slugs_by_name() matches name OR
+    country anywhere inside the text, so a short name pulls in unrelated
+    places ("Pai" matches every Spanish destination through "Spain", "Nice"
+    matches Venice, "Lima" matches Kilimanjaro) and "first row wins" meant
+    the database's row order decided the answer. Preference order: exact
+    name, name starting with the text, the text as a whole word inside the
+    name, then any other substring; within a tier, the lowest id."""
+    wanted = name.strip().lower()
+    if not wanted:
+        return None
+    ordered = list(candidates.order_by("id"))
+    whole_word = re.compile(rf"\b{re.escape(wanted)}\b")
+    for matches in (
+        [d for d in ordered if d.name.lower() == wanted],
+        [d for d in ordered if d.name.lower().startswith(wanted)],
+        [d for d in ordered if whole_word.search(d.name.lower())],
+        ordered,
+    ):
+        if matches:
+            return matches[0]
+    return None
+
+
+def _catalog_name_forms(catalog_name: str) -> set[str]:
+    """The names a catalog entry answers to: its own name and each of the
+    " / "-separated names a compound entry lists ("Cusco / Machu Picchu"),
+    with any parenthetical qualifier ("Hawaii (Maui/Oahu)") left out, all
+    compared without case or accents."""
+    base = re.sub(r"\([^)]*\)", " ", catalog_name)
+    forms = {" ".join(_plain_words(base))}
+    forms.update(" ".join(_plain_words(part)) for part in base.split("/"))
+    forms.discard("")
+    return forms
+
+
+def _catalog_destination_named(name: str, *, country_hint: str | None = None) -> Destination | None:
+    """The catalog destination that IS the place the traveler named: the same
+    name, or one of the names a compound entry lists. Nothing fuzzy - no
+    substring, prefix, translation or AI step - so a place the catalog does
+    not carry comes back as None instead of a related one (a region is not
+    its biggest city, "Porto" is not "Porto Seguro"). Two entries with one
+    name (there are two Granadas) go to the one in `country_hint`, otherwise
+    to the lowest id."""
+    wanted = " ".join(_plain_words(name))
+    if not wanted:
+        return None
+    matches = [
+        d for d in Destination.objects.order_by("id") if wanted in _catalog_name_forms(d.name)
+    ]
+    if len(matches) > 1 and country_hint:
+        hint = country_hint.strip().lower()
+        matches = [d for d in matches if d.country.strip().lower() == hint] or matches
+    return matches[0] if matches else None
+
+
 def _resolve_destination(
     name: str,
     *,
@@ -1991,16 +2264,26 @@ def _resolve_destination(
 ) -> Destination | None:
     """Resolve a free-text destination name to a real catalog entry.
 
-    Tries the cheap DB substring match first (find_destination_slugs_by_name)
-    - the common case, no AI call needed. Only when that finds nothing, and
-    an ai_provider was given, falls back to asking the AI to match the raw
-    text against the real catalog (see DESTINATION_RESOLUTION_SYSTEM_PROMPT
-    for why this is safe: it can only pick a real slug from the actual
-    list, never invent one, and the result is re-verified against the
-    database below regardless). Callers that can't supply an ai_provider
-    (none currently) simply get the DB-only behavior."""
+    Tries the cheap DB substring match first (find_destination_slugs_by_name,
+    narrowed by _best_name_match) - the common case, no AI call needed. Only
+    when that finds nothing, and an ai_provider was given, falls back to
+    asking the AI to match the raw text against the real catalog (see
+    DESTINATION_RESOLUTION_SYSTEM_PROMPT for why this is safe: it can only
+    pick a real slug from the actual list, never invent one, and the result
+    is re-verified against the database below regardless). Callers that
+    can't supply an ai_provider (none currently) simply get the DB-only
+    behavior. This is for flows where a nearby match is an acceptable answer
+    (offering a stays link); a place the traveler has CHOSEN is looked up
+    with _catalog_destination_named instead, which never substitutes."""
+    # The raw-name match is added next to find_destination_slugs_by_name()
+    # because that one rewrites its terms through the country-alias table
+    # first, and "Granada" (the Spanish city) is also the Portuguese name for
+    # the country Grenada.
+    if not name.strip():
+        return None
     slugs = find_destination_slugs_by_name([name])
-    destination = Destination.objects.filter(slug__in=slugs).first()
+    candidates = Destination.objects.filter(Q(slug__in=slugs) | Q(name__icontains=name.strip()))
+    destination = _best_name_match(candidates, name)
     if destination is not None or ai_provider is None:
         return destination
 
@@ -2087,6 +2370,69 @@ def _resolve_freeform_place(
     resolved_country = response.get("country")
     resolved_country = resolved_country.strip() if isinstance(resolved_country, str) else ""
     return resolved_name.strip(), resolved_country
+
+
+def _resolve_selected_destination(
+    name: str | None,
+    *,
+    country_hint: str | None,
+    ai_provider: AIProvider,
+    conversation_key: str | None = None,
+) -> dict | None:
+    """Turn the place the traveler said they're going to into the record the
+    accumulated state keeps (see memory._NO_CLIMATE_BUDGET): the catalog
+    destination that is that very place, otherwise a real place confirmed by
+    _resolve_freeform_place, otherwise None - a name that is neither never
+    becomes a selection.
+
+    A chosen place is never swapped for a different one. The catalog lookup
+    accepts only the same name (_catalog_destination_named), and the AI
+    name-matching step used for suggestion links is deliberately not used: it
+    answered "Valência" with Porto and "Toscana" with Florence, which would
+    have sent the whole conversation to another city. A place the catalog
+    doesn't carry gets the free-form reply under its own name instead. A
+    catalog hit costs no model call. A match whose country contradicts the
+    country the message implied (`country_hint`) is dropped as well, for two
+    entries sharing a name."""
+    if not name:
+        return None
+    destination = _catalog_destination_named(name, country_hint=country_hint)
+    if (
+        destination is not None
+        and country_hint
+        and destination.country.strip().lower() != country_hint.strip().lower()
+    ):
+        logger.info(
+            "Dropped a catalog match for the chosen place - its country contradicts the "
+            "message. name=%r matched=%r country_hint=%r",
+            name,
+            destination.slug,
+            country_hint,
+        )
+        destination = None
+    if destination is not None:
+        return {
+            "slug": destination.slug,
+            "name": destination.name,
+            "country": destination.country,
+        }
+    freeform_place = _resolve_freeform_place(
+        name, ai_provider=ai_provider, conversation_key=conversation_key
+    )
+    if freeform_place is None:
+        return None
+    freeform_name, freeform_country = freeform_place
+    # The same place under its standard English name (the model wrote
+    # "Sevilla", the catalog says "Seville"): an exact lookup on that name,
+    # in the same country, is still the same place and gets the catalog reply.
+    # A region the catalog merely contains a city of ("Tuscany") has no entry
+    # under its own name, so it stays free-form.
+    standard = _catalog_destination_named(freeform_name, country_hint=freeform_country)
+    if standard is not None and (
+        not freeform_country or standard.country.strip().lower() == freeform_country.lower()
+    ):
+        return {"slug": standard.slug, "name": standard.name, "country": standard.country}
+    return {"slug": None, "name": freeform_name, "country": freeform_country or ""}
 
 
 def _history_messages(history: list[dict] | None) -> list[AIMessage]:
@@ -2393,7 +2739,64 @@ def _validate_state_clear(data: dict) -> dict:
         "country_cleared": bool(data.get("country_cleared")),
         "excluded_place_names_remove": _clean_string_list(data.get("excluded_place_names_remove")),
         "excluded_place_names_cleared": bool(data.get("excluded_place_names_cleared")),
+        "selected_destination_cleared": bool(data.get("selected_destination_cleared")),
     }
+
+
+# Words that make a short message a statement of choice rather than a bare
+# place name ("quero Bali", "I want Bali", "vou Bali").
+_FILLER_WORDS = frozenset("o a os as um uma the el la le il por favor please pls pfv porfa".split())
+_CHOICE_WORDS = frozenset(
+    "quero queria vou vamos bora escolho prefiro quiero voy voglio vado want wanna "
+    "going go take choose pick veux vais".split()
+)
+_BARE_REPLY_MAX_WORDS = 2
+
+
+def _plain_words(text: str) -> list[str]:
+    folded = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    return re.findall(r"[a-z0-9]+", folded)
+
+
+def _options_just_presented(history: list[dict] | None, *place_names: str) -> bool:
+    """Whether the assistant's latest reply mentions one of these places - the
+    only context a bare place name can be answering."""
+    last_reply = next(
+        (turn["content"] for turn in reversed(history or []) if turn["role"] == "assistant"), None
+    )
+    if not last_reply:
+        return False
+    text = f" {' '.join(_plain_words(last_reply))} "
+    return any(
+        f" {' '.join(words)} " in text for words in map(_plain_words, place_names) if words
+    )
+
+
+def _drop_unoffered_bare_selection(message: str, intent: dict, history: list[dict] | None) -> None:
+    """A bare place name ("Bali") picks a destination only as the answer to
+    options the assistant has just presented. With no such options in sight
+    - nothing said yet, or a place that reply never mentioned - it is just a
+    mention, and the selection the model made from it is dropped. The model
+    can't be relied on for this (it selects any bare name), but the context
+    is plain in the history, so it is checked here instead. A message with a
+    choice word in it ("quero Bali") or more than two words ("outra cidade:
+    Madrid") is a statement, never bare - the cost of calling a statement
+    bare is a lost selection, so doubt goes the other way."""
+    name = intent.get("selected_destination_name")
+    if not name:
+        return
+    words = [w for w in _plain_words(message) if w not in _FILLER_WORDS]
+    if not 1 <= len(words) <= _BARE_REPLY_MAX_WORDS or any(w in _CHOICE_WORDS for w in words):
+        return
+    if _options_just_presented(history, " ".join(words), name):
+        return
+    logger.info(
+        "Dropped a bare place name as a selection - no options naming it were just presented. "
+        "message=%r selected=%r",
+        message,
+        name,
+    )
+    intent["selected_destination_name"] = None
 
 
 def _validate_intent(data: dict) -> dict:
@@ -2448,6 +2851,27 @@ def _validate_intent(data: dict) -> dict:
     else:
         data["unmatched_region_name"] = None
     data["country"] = country
+
+    # A chosen destination is one specific place, and only a recommendation
+    # request can carry one. A name that is a country as written, or that the
+    # model also gave as the country/region of the same message, is still a
+    # discovery constraint and never becomes a selection. The alias table is
+    # deliberately not used to decide this from the name alone: it rewrites
+    # "Granada" to the country Grenada, and a selected city must survive that.
+    selected = data.get("selected_destination_name")
+    selected = selected.strip() if isinstance(selected, str) and selected.strip() else None
+    if selected is not None:
+        region = country or data["unmatched_region_name"] or ""
+        names_the_region = bool(region) and (
+            canonicalize_country_name(selected).lower() == canonicalize_country_name(region).lower()
+        )
+        if (
+            data.get("message_type") != "recommendation"
+            or is_catalog_country_name(selected)
+            or names_the_region
+        ):
+            selected = None
+    data["selected_destination_name"] = selected
 
     data["excluded_place_names"] = _clean_string_list(data.get("excluded_place_names"))
 
