@@ -467,6 +467,7 @@ class _CountingProvider:
     def __init__(self, inner):
         self.inner = inner
         self.calls = []
+        self.stream_prompt = ""
 
     def generate_structured_reply(self, messages, **kwargs):
         self.calls.append(kwargs["json_schema"]["name"])
@@ -478,6 +479,7 @@ class _CountingProvider:
 
     def stream_reply(self, messages, **kwargs):
         self.calls.append("stream")
+        self.stream_prompt = messages[-1].content
         yield from self.inner.stream_reply(messages, **kwargs)
 
 
@@ -512,6 +514,8 @@ def run_probes(provider, *, conversations=PROBE_CONVERSATIONS, climate_provider=
                 route = "free-form"
             elif result.recommendations:
                 route = "discovery"
+            elif "is already the traveler's chosen destination" in counting.stream_prompt:
+                route = "carried"  # led by the message, no card
             else:
                 route = "other"
             selected = (state_sink.get("selected_destination") or {}).get("name")

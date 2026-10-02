@@ -96,6 +96,16 @@ class _Case(TestCase):
         self.assertTrue(result.is_destination_detail)
         self.assertEqual(self.slugs(result), [slug])
 
+    def assert_carried_on(self, result, provider, label):
+        """The destination is only carried: the reply is led by the traveler's
+        message with the place as background, and no card or selection event
+        goes with it."""
+        self.assertEqual(result.recommendations, [])
+        self.assertFalse(result.is_destination_detail)
+        self.assertIsNone(result.accommodation_freeform_name)
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertIn(f"{label} is already the traveler's chosen destination", prompt)
+
     def assert_discovery(self, result):
         self.assertFalse(result.is_destination_detail)
         self.assertIsNone(result.accommodation_freeform_name)
@@ -546,10 +556,8 @@ class FollowUpContinuityTests(_Case):
 
         result, _, state = self.say(provider, "conte-me mais")
 
-        self.assert_detail_of(result, "barcelona-es")
-        prompt = self.prompt_of_last_reply(provider)
-        self.assertIn("has chosen Barcelona, Spain", prompt)
-        self.assertIn('"conte-me mais"', prompt)
+        self.assert_carried_on(result, provider, "Barcelona, Spain")
+        self.assertIn('"conte-me mais"', self.prompt_of_last_reply(provider))
         self.assertEqual(state["selected_destination"], barcelona_record())
 
     def test_a_follow_up_that_extracts_nothing_at_all_still_stays(self):
@@ -558,7 +566,7 @@ class FollowUpContinuityTests(_Case):
 
         result, _, _ = self.say(provider, "e aí, o que acha?")
 
-        self.assert_detail_of(result, "barcelona-es")
+        self.assert_carried_on(result, provider, "Barcelona, Spain")
 
     def test_a_cheaper_follow_up_stays_on_the_destination_and_the_budget_still_accumulates(self):
         provider = ScriptedProvider(
@@ -571,7 +579,7 @@ class FollowUpContinuityTests(_Case):
 
         result, _, state = self.say(provider, "quero algo mais barato")
 
-        self.assert_detail_of(result, "barcelona-es")
+        self.assert_carried_on(result, provider, "Barcelona, Spain")
         self.assertEqual(state["max_cost_of_living"], 2)
         self.assertEqual(state["selected_destination"], barcelona_record())
 
@@ -596,7 +604,7 @@ class FollowUpContinuityTests(_Case):
         self.assertEqual(stays.accommodation_party_size, 4)
 
         later, _, state = self.say(provider, "conte-me mais")
-        self.assert_detail_of(later, "barcelona-es")
+        self.assert_carried_on(later, provider, "Barcelona, Spain")
         self.assertEqual(state["selected_destination"], barcelona_record())
 
     def test_an_accommodation_question_without_a_place_falls_back_to_the_chosen_one(self):
@@ -610,7 +618,7 @@ class FollowUpContinuityTests(_Case):
 
         result, _, _ = self.say(provider, "e hospedagem?")
 
-        self.assert_detail_of(result, "barcelona-es")
+        self.assert_carried_on(result, provider, "Barcelona, Spain")
 
     def test_an_activity_question_keeps_the_choice_for_the_turns_after_it(self):
         provider = ScriptedProvider(
@@ -626,7 +634,7 @@ class FollowUpContinuityTests(_Case):
         self.assertEqual(activity.recommendations, [])  # the activity reply, as before
 
         later, _, state = self.say(provider, "conte-me mais")
-        self.assert_detail_of(later, "barcelona-es")
+        self.assert_carried_on(later, provider, "Barcelona, Spain")
         self.assertEqual(state["selected_destination"], barcelona_record())
 
     def test_an_explicit_change_of_mind_replaces_the_choice(self):
@@ -644,7 +652,7 @@ class FollowUpContinuityTests(_Case):
         self.assertEqual(state["selected_destination"]["slug"], "madrid-es")
 
         later, _, _ = self.say(provider, "conte-me mais")
-        self.assert_detail_of(later, "madrid-es")  # and it stays Madrid, not Barcelona
+        self.assert_carried_on(later, provider, "Madrid, Spain")  # Madrid, not Barcelona
 
     def test_a_passing_mention_of_another_place_does_not_replace_the_choice(self):
         provider = ScriptedProvider(
@@ -657,7 +665,7 @@ class FollowUpContinuityTests(_Case):
 
         result, _, state = self.say(provider, "e Madrid, fica longe de lá?")
 
-        self.assert_detail_of(result, "barcelona-es")
+        self.assert_carried_on(result, provider, "Barcelona, Spain")
         self.assertEqual(state["selected_destination"], barcelona_record())
 
     def test_reopening_the_choice_clears_it_and_goes_back_to_discovery(self):
@@ -736,8 +744,8 @@ class FollowUpContinuityTests(_Case):
 
         result, _, state = self.say(provider, "conte-me mais")
 
-        self.assertEqual(result.accommodation_freeform_name, "Valencia")
-        self.assertEqual(result.recommendations, [])
+        self.assert_carried_on(result, provider, "Valencia, Spain")
+        self.assertIn("no verified facts", self.prompt_of_last_reply(provider))
         # Remembered as a record, so following up costs no resolution calls.
         self.assertEqual(provider.structured_calls[-3:], _MERGE_PATH_CALLS)
         self.assertEqual(state["selected_destination"]["name"], "Valencia")
@@ -750,7 +758,7 @@ class FollowUpContinuityTests(_Case):
 
         result, _, _ = self.say(provider, "conte-me mais")
 
-        self.assert_detail_of(result, "madrid-es")
+        self.assert_carried_on(result, provider, "Madrid, Spain")
 
     def test_the_choice_lives_and_dies_with_the_rest_of_the_state(self):
         provider = ScriptedProvider([turn(spain(selected_destination_name="Barcelona"))])
@@ -855,14 +863,15 @@ class SavedConversationContinuityTests(TestCase):
 
         second = tab.post("conte-me mais")
         self.assertIsNotNone(second.view_kwargs["history_override"])  # override turn
-        self.assertEqual([r.destination.slug for r in second.recommendations], ["barcelona-es"])
+        self.assertEqual(second.recommendations, [])  # carried: no card re-emitted
         self.assertEqual(second.state["selected_destination"]["slug"], "barcelona-es")
 
         third = tab.post("na verdade quero Madrid")
         self.assertEqual([r.destination.slug for r in third.recommendations], ["madrid-es"])
 
         fourth = tab.post("e hospedagem?")
-        self.assertEqual([r.destination.slug for r in fourth.recommendations], ["madrid-es"])
+        self.assertEqual(fourth.recommendations, [])
+        self.assertEqual(fourth.state["selected_destination"]["slug"], "madrid-es")
 
     def test_a_conversation_that_lost_the_state_does_not_inherit_the_choice(self):
         provider = ScriptedProvider(

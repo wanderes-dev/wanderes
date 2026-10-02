@@ -60,7 +60,7 @@ Everything left of the dashboard is queryable directly — via the Django ORM (`
 
 | Event | Fires | Actor | Why |
 |---|---|---|---|
-| `destination_selected` | "Choose this trip" clicked (`focus_destination_slug` → `is_destination_detail` result) | user or anonymized IP | Shipped 2026-09-08, had zero instrumentation until now — a real, deliberate user action distinct from a passive recommendation being generated |
+| `destination_selected` | A destination actually chosen or replaced: "Choose this trip" clicked (`focus_destination_slug`), or a typed choice that names a place different from the one already stored (both → `is_destination_detail` result). **Not** fired for later turns that only carry the chosen destination, nor for a stays request that reuses it (`is_accommodation_reply`) | user or anonymized IP | Shipped 2026-09-08, had zero instrumentation until now — a real, deliberate user action distinct from a passive recommendation being generated |
 | `signup_started` | GET `/users/register/` | anonymized IP (always anonymous by construction) | Pairs with `user_registered` for a real signup funnel, especially now that the save-trip flow routes people here contextually |
 | `anonymous_user_authenticated` | Manual login of an **existing** account, when the visitor had a pre-login session | user | The other half of "anonymous → authenticated conversion" that `user_registered` alone can't answer (that only covers new signups) |
 | `llm_request_completed` | One AI-provider call completes (success or failure) | **none** (operational) | Latency/reliability for the AI layer — see §7 |

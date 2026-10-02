@@ -327,7 +327,7 @@ class ProbeTests(TestCase):
 
         self.assertEqual(
             [(r.turn, r.route, r.selected) for r in results],
-            [(1, "detail", "Barcelona"), (2, "detail", "Barcelona")],
+            [(1, "detail", "Barcelona"), (2, "carried", "Barcelona")],
         )
         text = format_probes(results)
         self.assertIn("[sticks]", text)
