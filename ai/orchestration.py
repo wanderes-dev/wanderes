@@ -853,6 +853,10 @@ class StreamingOrchestrationResult:
     # reply - lets ai/views.py show "Save this trip" instead of "Choose
     # this trip" for that one response without re-deriving it from context.
     is_destination_detail: bool = False
+    # True when that detail reply answers a stays request: the place is reused
+    # for the accommodation feature, not chosen or replaced, so ai/views.py
+    # must not record a destination_selected event for it.
+    is_accommodation_reply: bool = False
     # The deterministic filters behind `recommendations`, so ai/views.py
     # can enrich its analytics event without knowing anything about intent
     # extraction. None on every other branch (nothing to report).
@@ -1301,7 +1305,25 @@ def _route_turn(
     if message_type == "off_topic":
         # A real AI reply, not a canned one - SYSTEM_PROMPT already knows
         # how to handle this naturally, just hand it the message.
-        off_topic_messages = _build_off_topic_messages(message, history)
+        #
+        # With a destination already chosen, the follow-ups the model files
+        # here ("quanto custa?", "obrigado", "por que presumiu 4 pessoas?")
+        # are still about that trip, so they get the same grounded,
+        # message-first prompt as any other turn on it - the generic reply
+        # was inventing price ranges for them.
+        write_key = _state_write_key()
+        stored_selection = (
+            memory.get_climate_budget(write_key)["selected_destination"]
+            if write_key is not None
+            else None
+        )
+        off_topic_messages = None
+        if stored_selection is not None:
+            off_topic_messages = _carried_destination_messages_for(
+                message, stored_selection, history
+            )
+        if off_topic_messages is None:
+            off_topic_messages = _build_off_topic_messages(message, history)
         off_topic_reply = _stream_ai_reply(
             off_topic_messages,
             message,
@@ -1454,10 +1476,22 @@ def _route_turn(
     )
     state_delta["selected_destination"] = selected_record
     write_key = _state_write_key()
+    # What was chosen before this message, to tell a choice made now from one
+    # merely carried over (the model restates the place on many follow-ups).
+    # With no state to read - a stateless turn - the choice can only have come
+    # from this message, so it counts as made now.
+    prior_selection = (
+        memory.get_climate_budget(write_key)["selected_destination"]
+        if write_key is not None
+        else None
+    )
     if write_key is not None:
         traveler_state = memory.update_climate_budget(write_key, owner=thread_id, **state_delta)
     else:
         traveler_state = memory.resolve_state_delta(**state_delta)
+    selection_is_fresh = selected_record is not None and not _same_place(
+        selected_record, prior_selection
+    )
     intent["min_temp_c"] = traveler_state["min_temp_c"]
     intent["max_temp_c"] = traveler_state["max_temp_c"]
     intent["max_cost_of_living"] = traveler_state["max_cost_of_living"]
@@ -1483,6 +1517,7 @@ def _route_turn(
             climate_provider=climate_provider,
             remember=_remember,
             conversation_key=conv_key,
+            fresh=selection_is_fresh,
         )
         if selected_result is not None:
             return selected_result
@@ -1721,6 +1756,7 @@ def _handle_focus_destination(
         [scored],
         reply,
         is_destination_detail=True,
+        is_accommodation_reply=accommodation_focus,
         accommodation_party_size=accommodation_party_size,
     )
 
@@ -1735,20 +1771,40 @@ def _handle_selected_destination(
     climate_provider,
     remember,
     conversation_key: str | None = None,
+    fresh: bool = True,
 ) -> StreamingOrchestrationResult | None:
     """Answer a message for a traveler who has already chosen where they're
     going (the `selected_destination` record in the accumulated state), so
-    nothing is searched or ranked: a catalog destination gets the same
-    single-destination reply "Choose this trip" produces, and a real place
-    outside the catalog gets a general-knowledge reply with the same
-    "search stays" card the accommodation flow offers for such places.
+    nothing is searched or ranked.
+
+    `fresh` says the choice was made by THIS message. Then a catalog
+    destination gets the same single-destination reply "Choose this trip"
+    produces, and a real place outside the catalog gets a general-knowledge
+    reply with the same "search stays" card the accommodation flow offers for
+    such places. Otherwise the destination is only carried from earlier turns:
+    it is background for answering what the traveler just said, not the
+    subject of every reply, so the answer is led by their message (see
+    _build_carried_destination_messages) and no destination card or
+    selection event goes with it.
+
     Returns None when the record points at a catalog entry that no longer
     exists, so the caller carries on as if nothing had been chosen."""
     slug = selected.get("slug")
+    destination = None
     if slug:
         destination = Destination.objects.filter(slug=slug).first()
         if destination is None:
             return None
+    if not fresh:
+        reply = _stream_ai_reply(
+            _build_carried_destination_messages(message, selected, destination, history),
+            message,
+            ai_provider=ai_provider,
+            remember=remember,
+            conversation_key=conversation_key,
+        )
+        return StreamingOrchestrationResult([], reply)
+    if destination is not None:
         return _handle_focus_destination(
             message,
             destination,
@@ -1775,6 +1831,115 @@ def _handle_selected_destination(
         accommodation_freeform_name=name,
         accommodation_freeform_country=country,
     )
+
+
+def _carried_destination_messages_for(
+    message: str, selected: dict, history: list[dict] | None
+) -> list[AIMessage] | None:
+    """The carried-destination prompt for a stored selection, or None when it
+    points at a catalog entry that no longer exists."""
+    slug = selected.get("slug")
+    destination = Destination.objects.filter(slug=slug).first() if slug else None
+    if slug and destination is None:
+        return None
+    return _build_carried_destination_messages(message, selected, destination, history)
+
+
+def _same_place(first: dict | None, second: dict | None) -> bool:
+    """Whether two selected-destination records are the same place: the same
+    catalog entry, or the same name and country for one outside the catalog."""
+    if not first or not second:
+        return False
+    if first.get("slug") or second.get("slug"):
+        return first.get("slug") == second.get("slug")
+    return " ".join(_plain_words(first["name"])) == " ".join(_plain_words(second["name"])) and (
+        (first.get("country") or "").lower() == (second.get("country") or "").lower()
+    )
+
+
+def _build_carried_destination_messages(
+    message: str, selected: dict, destination: Destination | None, history: list[dict] | None
+) -> list[AIMessage]:
+    """The reply for a turn on which the chosen destination is only carried
+    over from earlier ones. The traveler's message leads: a complaint, a
+    correction or a question about an earlier reply is answered itself rather
+    than with a tour of the place, and the destination's facts are reference
+    material - used when they help, never recited. Unlike the reply to the
+    turn that made the choice, this one gets no climate line, no video offer
+    and no closing-question instruction, because each of those turned every
+    follow-up into another description of the place.
+
+    The grounding rule is spelled out here as well as in SYSTEM_PROMPT because
+    this is where it bites: a traveler who reports a wrong date or number of
+    travelers on the booking link must hear that Wanderes can't set those,
+    not that it fixed them."""
+    if destination is not None:
+        label = f"{destination.name}, {destination.country}"
+        reference = (
+            "Reference facts about it - background to draw on only when they help "
+            "answer, not a list to recite:\n"
+            f"- Trip type: {destination.get_trip_type_display()}\n"
+            f"- Cost of living tier: {destination.get_cost_of_living_display()} "
+            f"({destination.cost_of_living} on a 1-5 scale, 1 cheapest) - a relative "
+            "indication only; we hold no verified prices for flights, hotels or "
+            "activities\n"
+            f"- Best season: {destination.best_season}\n"
+            f"- Worst season: {destination.worst_season}\n"
+            f"- Description: {destination.short_description}\n"
+            f"- Points of interest: {', '.join(destination.points_of_interest)}\n\n"
+        )
+    else:
+        label = (
+            f"{selected['name']}, {selected['country']}"
+            if selected.get("country")
+            else selected["name"]
+        )
+        reference = (
+            "It isn't in our curated destination dataset, so we hold no verified facts "
+            "about it; anything you say about the place comes from general knowledge, "
+            "and should be said as such.\n\n"
+        )
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f"{label} is already the traveler's chosen destination, so it is background "
+                "here, not the subject of this reply.\n"
+                f'What they just said: "{message}"\n\n'
+                f"{reference}"
+                "How to reply:\n"
+                "1. Answer what they just said, directly and first. If it is a complaint, a "
+                "correction, or a question about something you said earlier, deal with that "
+                "itself - acknowledge it and answer it - instead of describing the "
+                "destination.\n"
+                "2. Use the reference facts only if they actually help answer. Don't recite "
+                "the description, list attractions, mention the season or the climate, or "
+                "suggest a video unless they asked about the destination itself; if they did "
+                "('tell me more', 'what is it like', 'what is there to do'), answer that "
+                "properly and richly.\n"
+                "3. Let the length follow what they asked: a short question gets a short "
+                "answer, a thank-you gets a brief, natural acknowledgement. Don't repeat what "
+                "you have already told them in this conversation.\n"
+                "4. Don't close with a generic question or an offer; ask something only if "
+                "you genuinely need it to help them.\n"
+                "5. State as fact only what is listed above or was said in this conversation. "
+                "Never invent prices, availability, dates, numbers of travelers, bookings, or "
+                "what any search link contains. You cannot set or change the dates or the "
+                "number of travelers on a booking site: if they say one is wrong, say plainly "
+                "that you can't set or correct it yet and what they can adjust on that site, "
+                "instead of claiming it is fixed. You can't see what a link carried either: "
+                "if asked why it showed some date or number of travelers, don't explain, "
+                "defend or deny it - say you can't see that. For cost, use only the tier "
+                "above and say you have no verified prices, nor typical price ranges.\n"
+                "Do not mention saving this as a trip or any button or interface element. "
+                "Reply in the same language the traveler has been using in this conversation "
+                "(check the history above, not just this message)."
+            ),
+        )
+    )
+    return messages
 
 
 def _build_selected_freeform_destination_messages(
@@ -1826,8 +1991,16 @@ def _build_destination_detail_messages(
     traveler_note = _traveler_context_note(profile)
     entry_requirements_note = _entry_requirements_note(profile, [destination])
     video_note = _video_availability_note([destination])
+    video_offer = (
+        "If a real video is noted as being on file above, you may offer to show it - "
+        "only when one was actually noted as available, never speculatively. "
+    )
 
     if accommodation_focus:
+        # A where-to-stay answer isn't the place to reopen the weather or pitch a video.
+        climate_line = ""
+        video_note = ""
+        video_offer = ""
         party_note = (
             f" for their group of {accommodation_party_size}"
             if accommodation_party_size
@@ -1894,10 +2067,8 @@ def _build_destination_detail_messages(
                 f"{message_line}"
                 f"{conversation_note}"
                 "thoughtful travel consultant would once a client has settled "
-                "on somewhere to talk through in depth. If a real video is "
-                "noted as being on file above, you may offer to show it - "
-                "only when one was actually noted as available, never "
-                "speculatively. Do not mention saving this as a trip or any "
+                f"on somewhere to talk through in depth. {video_offer}"
+                "Do not mention saving this as a trip or any "
                 "button/UI element - the interface already offers that "
                 "separately once you reply. Reply in the same language the "
                 "traveler has been using in this conversation (check the "
@@ -3406,8 +3577,9 @@ def _build_off_topic_messages(message: str, history: list[dict] | None = None) -
                 f"{message}\n\n"
                 "(Answer naturally, per your instructions. If a good answer "
                 "would need a specific real-world fact you're not actually "
-                "confident about - an exact current price, a specific company "
-                "or airline name and route, live availability or a schedule - "
+                "confident about - an exact current price or a typical price "
+                "range, a specific company or airline name and route, live "
+                "availability or a schedule - "
                 "say so plainly and keep the answer general, rather than "
                 "stating an invented specific as if it were verified.)"
             ),

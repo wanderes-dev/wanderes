@@ -265,15 +265,19 @@ def recommendations_stream(request):
             # action, distinct from a normal browse-stage
             # recommendation_generated. Its single ScoredDestination isn't
             # a fresh recommendation_generated event - it grew out of one
-            # already recorded on an earlier turn.
-            record_event(
-                "destination_selected",
-                user=user,
-                request=request,
-                metadata={"destination_slug": result.recommendations[0].destination.slug},
-                conversation_key=conversation_key,
-                locale=locale,
-            )
+            # already recorded on an earlier turn. A stays request reuses a
+            # place for another feature - it neither chooses nor replaces
+            # one, so it records nothing here (and is no new recommendation
+            # either).
+            if not result.is_accommodation_reply:
+                record_event(
+                    "destination_selected",
+                    user=user,
+                    request=request,
+                    metadata={"destination_slug": result.recommendations[0].destination.slug},
+                    conversation_key=conversation_key,
+                    locale=locale,
+                )
         else:
             recommendation_metadata = {
                 "result_count": len(result.recommendations),
