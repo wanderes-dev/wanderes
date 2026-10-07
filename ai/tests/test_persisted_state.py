@@ -312,7 +312,7 @@ class ResolvedTemperatureRangeThroughTurnsTests(_StateSinkTestCase):
                 intent_sink, state_sink = {}, {}
                 self._turn(
                     provider,
-                    f"message {n}",
+                    f"message {chr(ord('a') + n)}",
                     session=session,
                     intent_sink=intent_sink,
                     state_sink=state_sink,

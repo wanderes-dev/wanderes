@@ -16,7 +16,7 @@ from integrations.accommodations import get_accommodation_search_link_provider
 from travel.models import Destination
 from users.models import TravelerProfile
 
-from . import memory
+from . import memory, trip_details
 from .conversations import record_turn
 from .models import SavedConversation
 from .orchestration import FALLBACK_REPLY, MAX_RECOMMENDATIONS, stream_travel_recommendation
@@ -109,9 +109,7 @@ def _parse_conversation_id(raw: str | None) -> int | None:
     return None
 
 
-def _recommendation_card_data(
-    scored_destination, *, detail_shown=False, accommodation_party_size=None
-):
+def _recommendation_card_data(scored_destination, *, detail_shown=False, trip=None):
     """Shape one ScoredDestination into what the chat page's recommendation
     cards need. `05_AI_DESIGN.md` §7's "never invent travel data" applies
     to the frontend too - only real fields already computed by
@@ -129,10 +127,9 @@ def _recommendation_card_data(
     against in production, and avoids cluttering the browse-stage,
     multiple-destinations-at-once cards.
 
-    `accommodation_party_size` comes from ai.orchestration's
-    is_accommodation_request branch, which only ever reaches this point
-    once a party size is actually known (it asks for one first when it
-    isn't) - never guessed here."""
+    `trip` is the ResolvedTrip ai.orchestration produced for this turn: the
+    link carries exactly what it holds and the caption says so, both read
+    from that one object - nothing is guessed or defaulted here."""
     destination = scored_destination.destination
     fit_reasons = []
     if scored_destination.preference_fit > 0:
@@ -153,16 +150,14 @@ def _recommendation_card_data(
         "detail_shown": detail_shown,
     }
     if detail_shown:
-        # No dates known at this point in the live chat flow - the
-        # provider degrades to those being absent rather than inventing
-        # them (integrations.accommodations.base's own docstring covers
-        # this). Party size is passed through when actually known.
+        trip = trip or trip_details.ResolvedTrip()
         accommodation_provider = get_accommodation_search_link_provider()
         data["accommodation_search_url"] = accommodation_provider.build_search_url(
             destination=destination.name,
             country=destination.country,
-            adults=accommodation_party_size,
+            **trip.booking_kwargs(),
         )
+        data["accommodation_caption"] = trip.caption(destination.name)
     return data
 
 
@@ -313,7 +308,7 @@ def recommendations_stream(request):
                 _recommendation_card_data(
                     r,
                     detail_shown=result.is_destination_detail,
-                    accommodation_party_size=result.accommodation_party_size,
+                    trip=result.trip,
                 )
                 for r in result.recommendations[:MAX_RECOMMENDATIONS]
             ]
@@ -328,6 +323,7 @@ def recommendations_stream(request):
             # trip" (trips.Trip.destination is a hard FK to
             # travel.Destination; this place was never written there).
             accommodation_provider = get_accommodation_search_link_provider()
+            trip = result.trip or trip_details.ResolvedTrip()
             payload = [
                 {
                     "name": result.accommodation_freeform_name,
@@ -337,8 +333,9 @@ def recommendations_stream(request):
                     "accommodation_search_url": accommodation_provider.build_search_url(
                         destination=result.accommodation_freeform_name,
                         country=result.accommodation_freeform_country or "",
-                        adults=result.accommodation_party_size,
+                        **trip.booking_kwargs(),
                     ),
+                    "accommodation_caption": trip.caption(result.accommodation_freeform_name),
                 }
             ]
             yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)

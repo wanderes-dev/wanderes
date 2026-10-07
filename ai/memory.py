@@ -128,6 +128,11 @@ _NO_CLIMATE_BUDGET = {
     # ever a constraint on discovery. Resolved once when it's set, so the
     # follow-ups that rely on it never have to re-resolve a name.
     "selected_destination": None,
+    # What the traveler has said about the trip itself - start date, stay
+    # length, who is going - as the record ai.trip_details defines. Only
+    # what was actually stated; derived values (the check-out date) are
+    # never stored.
+    "trip_details": None,
 }
 
 
@@ -232,6 +237,8 @@ def update_climate_budget(
     excluded_place_names_cleared: bool = False,
     selected_destination: dict | None = None,
     selected_destination_cleared: bool = False,
+    trip_details: dict | None = None,
+    trip_details_cleared: bool = False,
     owner: int | str | None = None,
 ) -> dict:
     """Merge this turn's (history-free) traveler-state signal into what's
@@ -282,6 +289,8 @@ def update_climate_budget(
         excluded_place_names_cleared=excluded_place_names_cleared,
         selected_destination=selected_destination,
         selected_destination_cleared=selected_destination_cleared,
+        trip_details=trip_details,
+        trip_details_cleared=trip_details_cleared,
     )
     # `merged` is already fully resolved (see resolve_state_delta), so what
     # gets stored is exactly what's returned - and exactly what the caller
@@ -334,6 +343,8 @@ def resolve_state_delta(
     excluded_place_names_cleared: bool = False,
     selected_destination: dict | None = None,
     selected_destination_cleared: bool = False,
+    trip_details: dict | None = None,
+    trip_details_cleared: bool = False,
 ) -> dict:
     """The same SET/UNCHANGED/CLEAR merge update_climate_budget() persists,
     exposed standalone for a caller with no conv_key to accumulate into -
@@ -366,6 +377,12 @@ def resolve_state_delta(
         ),
         "selected_destination": _merge_scalar(
             current.get("selected_destination"), selected_destination, selected_destination_cleared
+        ),
+        # The record arrives already merged field by field (ai.trip_details
+        # applies the traveler's corrections to the stored record), so here
+        # it is a whole-value SET like selected_destination.
+        "trip_details": _merge_scalar(
+            current.get("trip_details"), trip_details, trip_details_cleared
         ),
     }
     _resolve_cross_turn_temperature_contradiction(

@@ -43,8 +43,12 @@ class StubClimateProvider:
 
 
 class StubAIProvider:
-    def __init__(self, *, structured_response, reply_text="Here's my recommendation."):
+    def __init__(
+        self, *, structured_response, reply_text="Here's my recommendation.", trip_details=None
+    ):
         self.structured_response = structured_response
+        # What the trip-details call answers (the components the traveler stated).
+        self.trip_details = trip_details or {}
         self.reply_text = reply_text
         self.stream_reply_calls = []
         self.stream_reply_temperatures = []
@@ -55,6 +59,8 @@ class StubAIProvider:
         self, messages, *, json_schema, max_tokens=None, temperature=None
     ):
         self.generate_structured_reply_calls.append(messages)
+        if json_schema["name"] == "trip_details_signal":
+            return self.trip_details
         if json_schema["name"] == "climate_budget_signal":
             # structured_response is shaped like INTENT_SCHEMA's output
             # (built via _intent(), below), so most of the state-delta
@@ -191,7 +197,6 @@ def _intent(
     activity_place_name=None,
     is_accommodation_request=False,
     accommodation_place_name=None,
-    accommodation_party_size=None,
 ):
     return {
         "message_type": message_type,
@@ -219,7 +224,6 @@ def _intent(
         "activity_place_name": activity_place_name,
         "is_accommodation_request": is_accommodation_request,
         "accommodation_place_name": accommodation_place_name,
-        "accommodation_party_size": accommodation_party_size,
     }
 
 
@@ -2099,8 +2103,8 @@ class AccommodationRequestTests(TestCase):
             structured_response=_intent(
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
-                accommodation_party_size=2,
             ),
+            trip_details={"adults": 2},
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
 
@@ -2125,8 +2129,8 @@ class AccommodationRequestTests(TestCase):
                 country="Japan",
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
-                accommodation_party_size=2,
             ),
+            trip_details={"adults": 2},
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
 
@@ -2144,8 +2148,8 @@ class AccommodationRequestTests(TestCase):
             structured_response=_intent(
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
-                accommodation_party_size=2,
             ),
+            trip_details={"adults": 2},
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
 
@@ -2165,8 +2169,8 @@ class AccommodationRequestTests(TestCase):
             structured_response=_intent(
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
-                accommodation_party_size=3,
             ),
+            trip_details={"adults": 3},
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
 
@@ -2177,15 +2181,15 @@ class AccommodationRequestTests(TestCase):
         )
         list(result.reply_chunks)
 
-        self.assertEqual(result.accommodation_party_size, 3)
+        self.assertEqual(result.trip.adults, 3)
 
     def test_party_size_mentioned_in_the_prompt_when_known(self):
         ai_provider = StubAIProvider(
             structured_response=_intent(
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
-                accommodation_party_size=3,
             ),
+            trip_details={"adults": 3},
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
 
@@ -2196,7 +2200,7 @@ class AccommodationRequestTests(TestCase):
         )
 
         prompt = ai_provider.stream_reply_calls[0][-1].content
-        self.assertIn("for their group of 3", prompt)
+        self.assertIn("- Adults: 3.", prompt)
 
     def test_unknown_party_size_asks_before_suggesting_anything(self):
         # Direct user report (2026-09-24): the AI should always ask how
@@ -2207,7 +2211,6 @@ class AccommodationRequestTests(TestCase):
             structured_response=_intent(
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
-                accommodation_party_size=None,
             ),
             reply_text="Claro! Quantas pessoas vão viajar?",
         )
@@ -2221,7 +2224,7 @@ class AccommodationRequestTests(TestCase):
 
         self.assertEqual(result.recommendations, [])
         self.assertFalse(result.is_destination_detail)
-        self.assertIsNone(result.accommodation_party_size)
+        self.assertIsNone(result.trip)
         self.assertEqual(reply, "Claro! Quantas pessoas vão viajar? ")
 
     def test_party_size_question_prompt_names_the_resolved_destination(self):
@@ -2229,7 +2232,6 @@ class AccommodationRequestTests(TestCase):
             structured_response=_intent(
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
-                accommodation_party_size=None,
             ),
             reply_text="Claro! Quantas pessoas vão viajar?",
         )
@@ -2299,8 +2301,8 @@ class AccommodationRequestTests(TestCase):
                 "travel_message": _intent(
                     is_accommodation_request=True,
                     accommodation_place_name="Xangai",
-                    accommodation_party_size=2,
                 ),
+                "trip_details_signal": {"adults": 2},
                 "destination_resolution": {"slug": "shanghai-cn"},
             },
             reply_text="Here's what's good to know about staying in Shanghai.",
@@ -2394,8 +2396,8 @@ class FreeformAccommodationRequestTests(TestCase):
                 "travel_message": _intent(
                     is_accommodation_request=True,
                     accommodation_place_name="Wuhan",
-                    accommodation_party_size=3,
                 ),
+                "trip_details_signal": {"adults": 3},
                 "destination_resolution": {"slug": None},
                 "freeform_place_resolution": {
                     "is_real_place": True,
@@ -2416,7 +2418,7 @@ class FreeformAccommodationRequestTests(TestCase):
         self.assertEqual(result.recommendations, [])
         self.assertEqual(result.accommodation_freeform_name, "Wuhan")
         self.assertEqual(result.accommodation_freeform_country, "China")
-        self.assertEqual(result.accommodation_party_size, 3)
+        self.assertEqual(result.trip.adults, 3)
 
     def test_asks_for_party_size_before_resolving_a_freeform_reply(self):
         ai_provider = SchemaAwareStubAIProvider(
@@ -2424,7 +2426,6 @@ class FreeformAccommodationRequestTests(TestCase):
                 "travel_message": _intent(
                     is_accommodation_request=True,
                     accommodation_place_name="Wuhan",
-                    accommodation_party_size=None,
                 ),
                 "destination_resolution": {"slug": None},
                 "freeform_place_resolution": {
@@ -2443,7 +2444,7 @@ class FreeformAccommodationRequestTests(TestCase):
 
         self.assertEqual(result.recommendations, [])
         self.assertIsNone(result.accommodation_freeform_name)
-        self.assertIsNone(result.accommodation_party_size)
+        self.assertIsNone(result.trip)
         self.assertEqual(reply, "Claro! Quantas pessoas vão viajar? ")
 
     def test_party_size_question_names_the_resolved_place(self):
@@ -2452,7 +2453,6 @@ class FreeformAccommodationRequestTests(TestCase):
                 "travel_message": _intent(
                     is_accommodation_request=True,
                     accommodation_place_name="Wuhan",
-                    accommodation_party_size=None,
                 ),
                 "destination_resolution": {"slug": None},
                 "freeform_place_resolution": {
@@ -2478,8 +2478,8 @@ class FreeformAccommodationRequestTests(TestCase):
                 "travel_message": _intent(
                     is_accommodation_request=True,
                     accommodation_place_name="Wuhan",
-                    accommodation_party_size=2,
                 ),
+                "trip_details_signal": {"adults": 2},
                 "destination_resolution": {"slug": None},
                 "freeform_place_resolution": {
                     "is_real_place": True,
@@ -2508,8 +2508,8 @@ class FreeformAccommodationRequestTests(TestCase):
                 "travel_message": _intent(
                     is_accommodation_request=True,
                     accommodation_place_name="Wuhan",
-                    accommodation_party_size=2,
                 ),
+                "trip_details_signal": {"adults": 2},
                 "destination_resolution": {"slug": None},
             },
             reply_text="I can't pull up a live search for it.",

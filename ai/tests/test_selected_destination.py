@@ -588,11 +588,8 @@ class FollowUpContinuityTests(_Case):
             [
                 turn(spain(selected_destination_name="Barcelona")),
                 turn(
-                    spain(
-                        is_accommodation_request=True,
-                        accommodation_place_name="Barcelona",
-                        accommodation_party_size=4,
-                    )
+                    spain(is_accommodation_request=True, accommodation_place_name="Barcelona"),
+                    trip_details={"adults": 4},
                 ),
                 turn(spain()),
             ]
@@ -601,7 +598,7 @@ class FollowUpContinuityTests(_Case):
 
         stays, _, _ = self.say(provider, "e hospedagem? somos 4")
         self.assert_detail_of(stays, "barcelona-es")
-        self.assertEqual(stays.accommodation_party_size, 4)
+        self.assertEqual(stays.trip.adults, 4)
 
         later, _, state = self.say(provider, "conte-me mais")
         self.assert_carried_on(later, provider, "Barcelona, Spain")

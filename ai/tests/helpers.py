@@ -34,7 +34,6 @@ BASE_INTENT = {
     "activity_place_name": None,
     "is_accommodation_request": False,
     "accommodation_place_name": None,
-    "accommodation_party_size": None,
 }
 
 
@@ -46,7 +45,8 @@ class ScriptedProvider:
     """One scripted answer set per turn: turns[n] is a dict with an
     "intent" plus optional "climate_budget" and "state_clear" answers, and
     optionally "destination_resolution" / "freeform_place" for the calls that
-    resolve a name the catalog lookup missed (unscripted, both answer "no").
+    resolve a name the catalog lookup missed (unscripted, both answer "no"),
+    and "trip_details" for the trip-details call (unscripted: nothing stated).
     The combined intent call is always the first structured call of a turn,
     so it's what advances the turn counter. Records every call so a test can
     assert exactly how many model calls a turn made."""
@@ -68,6 +68,8 @@ class ScriptedProvider:
         # The messages each streamed reply was generated from - what a test
         # reads to tell which kind of reply a turn took.
         self.stream_messages = []
+        # The messages each trip-details call was given.
+        self.trip_details_messages = []
 
     @property
     def total_calls(self) -> int:
@@ -93,6 +95,9 @@ class ScriptedProvider:
             return dict(script.get("destination_resolution", {}))
         if name == "freeform_place_resolution":
             return dict(script.get("freeform_place", {}))
+        if name == "trip_details_signal":
+            self.trip_details_messages.append(list(messages))
+            return dict(script.get("trip_details", {}))
         return {}
 
     def generate_reply(self, messages, *, max_tokens=None):

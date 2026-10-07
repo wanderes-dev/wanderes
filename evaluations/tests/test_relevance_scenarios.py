@@ -136,14 +136,16 @@ class ScenarioSetTests(SimpleTestCase):
             self.assertTrue(first.expect_card, scenario.id)
             self.assertIn("rich", first.require, scenario.id)
 
-    def test_the_complaints_must_say_plainly_what_cannot_be_set(self):
+    def test_the_complaints_may_not_claim_a_fix_or_recite_the_place(self):
         by_id = {s.id: s for s in SCENARIOS}
 
         for scenario_id in ("challenge", "repeated-complaint"):
             last = by_id[scenario_id].steps[-1]
-            self.assertIn("limits", last.require)
             self.assertIn("attractions", last.forbid)
             self.assertIn("fix_claim", last.forbid)
+            # Wanderes does carry dates and travelers now, so what it must not do
+            # is claim a change it didn't make - not insist it can't make one.
+            self.assertNotIn("limits", last.require)
 
     def test_ordinary_follow_ups_may_not_recite_the_place(self):
         steps = next(s for s in SCENARIOS if s.id == "ordinary-follow-ups").steps[1:]

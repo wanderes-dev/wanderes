@@ -99,9 +99,11 @@ class FreshVersusCarriedReplyTests(_CarriedCase):
         prompt = self.prompt_of_last_reply(provider)
         self.assertIn("Never invent prices, availability, dates, numbers of travelers", prompt)
         self.assertIn("what any search link contains", prompt)
-        self.assertIn("You cannot set or change the dates or the number of travelers", prompt)
+        self.assertIn("exist only as the trip details listed above", prompt)
+        self.assertIn("never say one was set, changed or corrected unless they say so", prompt)
+        self.assertIn("You can't change a booking page the traveler already opened", prompt)
         self.assertIn("nor typical price ranges", prompt)
-        self.assertIn("You can't see what a link carried either", prompt)
+        self.assertIn("Without such a list you can't see what a link carried", prompt)
         self.assertIn("don't explain, defend or deny it", prompt)
         self.assertIn("we hold no verified prices", prompt)
         self.assertIn("Cost of living tier: Medium (3 on a 1-5 scale", prompt)
@@ -114,11 +116,10 @@ class FreshVersusCarriedReplyTests(_CarriedCase):
             "search link contains has been set, changed or fixed",
             " ".join(SYSTEM_PROMPT.split()),
         )
-        self.assertIn("you cannot change another site's dates or travelers", SYSTEM_PROMPT)
-        self.assertIn(
-            "You can't see what a search link carried either",
-            " ".join(SYSTEM_PROMPT.split()),
-        )
+        flat = " ".join(SYSTEM_PROMPT.split())
+        self.assertIn("a list of trip details is given, it is the only source", flat)
+        self.assertIn("you cannot change a page the traveler already opened", flat)
+        self.assertIn("Without such a list you can't see what a search link carried", flat)
 
     def test_the_model_restating_the_same_place_does_not_make_it_a_new_choice(self):
         provider = ScriptedProvider(
@@ -189,11 +190,8 @@ class FreshVersusCarriedReplyTests(_CarriedCase):
             [
                 turn(spain(selected_destination_name="Barcelona")),
                 turn(
-                    spain(
-                        is_accommodation_request=True,
-                        accommodation_place_name="Barcelona",
-                        accommodation_party_size=2,
-                    )
+                    spain(is_accommodation_request=True, accommodation_place_name="Barcelona"),
+                    trip_details={"adults": 2},
                 ),
             ]
         )
@@ -202,7 +200,7 @@ class FreshVersusCarriedReplyTests(_CarriedCase):
         stays, _, _ = self.say(provider, "e hospedagem? somos 2")
 
         self.assert_detail_of(stays, "barcelona-es")
-        self.assertEqual(stays.accommodation_party_size, 2)
+        self.assertEqual(stays.trip.adults, 2)
         self.assertTrue(stays.is_accommodation_reply)
 
     def test_a_stays_reply_keeps_the_place_facts_but_not_the_weather_or_a_video_pitch(self):
@@ -210,11 +208,8 @@ class FreshVersusCarriedReplyTests(_CarriedCase):
             [
                 turn(spain(selected_destination_name="Barcelona")),
                 turn(
-                    spain(
-                        is_accommodation_request=True,
-                        accommodation_place_name="Barcelona",
-                        accommodation_party_size=2,
-                    )
+                    spain(is_accommodation_request=True, accommodation_place_name="Barcelona"),
+                    trip_details={"adults": 2},
                 ),
             ]
         )
@@ -404,11 +399,8 @@ class CardAndAnalyticsTests(TestCase):
     def test_a_stays_request_reuses_the_chosen_place_and_records_no_selection(self):
         def stays(place):
             return turn(
-                spain(
-                    is_accommodation_request=True,
-                    accommodation_place_name=place,
-                    accommodation_party_size=2,
-                )
+                spain(is_accommodation_request=True, accommodation_place_name=place),
+                trip_details={"adults": 2},
             )
 
         provider = ScriptedProvider(
