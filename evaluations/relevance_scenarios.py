@@ -110,7 +110,6 @@ SCENARIOS = (
                 "por que vc presumiu 4 pessoas e me deu dia 10 ao inves de dia 5 ?",
                 expect_card=False,
                 forbid=(*_NOT_ABOUT_THE_PLACE, "price_figures"),
-                require=("limits",),
                 max_chars=1000,
             ),
         ),
@@ -120,19 +119,17 @@ SCENARIOS = (
         "the same complaint, twice",
         (
             _CHOOSE,
-            Step("quero ir dia 05 ficar 3 dias", expect_card=False, forbid=("video", "fix_claim")),
+            Step("quero ir dia 05 ficar 3 dias", forbid=("video", "fix_claim")),
             Step(
                 "continua com a data errada",
                 expect_card=False,
                 forbid=_NOT_ABOUT_THE_PLACE,
-                require=("limits",),
                 max_chars=1000,
             ),
             Step(
                 "ainda está errado",
                 expect_card=False,
                 forbid=_NOT_ABOUT_THE_PLACE,
-                require=("limits",),
                 max_chars=1000,
             ),
         ),
@@ -177,10 +174,9 @@ SCENARIOS = (
         "a date correction",
         (
             _CHOOSE,
-            Step("quero ir dia 05 ficar 3 dias", expect_card=False, forbid=("video", "fix_claim")),
+            Step("quero ir dia 05 ficar 3 dias", forbid=("video", "fix_claim")),
             Step(
                 "na verdade é dia 06",
-                expect_card=False,
                 forbid=_NOT_ABOUT_THE_PLACE,
                 max_chars=900,
             ),

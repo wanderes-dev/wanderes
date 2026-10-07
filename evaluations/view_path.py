@@ -54,6 +54,9 @@ class ViewTurn:
     # What the view actually passed to stream_travel_recommendation() -
     # history_override, thread_id and the rest.
     view_kwargs: dict = field(default_factory=dict)
+    # The cards the page would render, as the view sent them (including the
+    # "Search stays" URL and its caption).
+    cards: list = field(default_factory=list)
 
 
 def _allowed_host() -> str:
@@ -118,6 +121,11 @@ class ViewSession:
         if footer.get("saved") and footer.get("conversation_id"):
             self.conversation_id = footer["conversation_id"]
 
+        cards = []
+        if RECOMMENDATIONS_DELIMITER in body:
+            tail = body.split(RECOMMENDATIONS_DELIMITER, 1)[1]
+            cards = json.loads(tail.split(CONVERSATION_DELIMITER, 1)[0])
+
         return ViewTurn(
             reply=reply,
             recommendations=list(captured["result"].recommendations),
@@ -126,6 +134,7 @@ class ViewSession:
             saved=bool(footer.get("saved")),
             conversation_id=footer.get("conversation_id"),
             view_kwargs=captured["kwargs"],
+            cards=cards,
         )
 
     def new_conversation(self) -> None:

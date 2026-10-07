@@ -35,8 +35,9 @@ class AccommodationSearchLinkProvider(ABC):
 
         Every field past `destination` is optional and should be omitted
         entirely (not guessed) when Wanderes doesn't actually know it -
-        the live chat recommendation flow only ever knows a destination
-        name and country, never real dates or party size. Implementations
-        must degrade gracefully to a destination-only search rather than
-        fabricate any of these.
+        the chat passes only what the traveler has actually said (see
+        ai.trip_details.ResolvedTrip.booking_kwargs): both dates or
+        neither, adults, and children only together with an age for each.
+        Implementations must degrade gracefully to a destination-only
+        search rather than fabricate any of these.
         """

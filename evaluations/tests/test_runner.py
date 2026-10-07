@@ -52,7 +52,6 @@ def _intent(**overrides):
         "activity_place_name": None,
         "is_accommodation_request": False,
         "accommodation_place_name": None,
-        "accommodation_party_size": None,
     }
     base.update(overrides)
     return base
@@ -92,9 +91,9 @@ class StubAIProvider:
             return self.intent
         if json_schema["name"] == "climate_budget_signal":
             return self.climate_budget
-        if json_schema["name"] == "traveler_state_clear_signal":
-            # No scenario here exercises an explicit clear - {} degrades
-            # through _validate_state_clear to "no clear this turn".
+        if json_schema["name"] in ("traveler_state_clear_signal", "trip_details_signal"):
+            # No scenario here exercises an explicit clear or trip details -
+            # {} degrades to "no clear this turn" / "nothing stated".
             return {}
         raise AssertionError(f"unexpected schema {json_schema['name']}")
 

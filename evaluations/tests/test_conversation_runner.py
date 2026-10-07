@@ -89,7 +89,6 @@ _BASE_INTENT = {
     "activity_place_name": None,
     "is_accommodation_request": False,
     "accommodation_place_name": None,
-    "accommodation_party_size": None,
 }
 
 

@@ -132,6 +132,7 @@ _NO_STATE = {
     "country": None,
     "excluded_place_names": [],
     "selected_destination": None,
+    "trip_details": None,
 }
 
 

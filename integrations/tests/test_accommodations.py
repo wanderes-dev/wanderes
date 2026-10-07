@@ -69,15 +69,30 @@ class BookingComSearchLinkProviderTests(TestCase):
         self.assertIn("group_children=2", url)
         self.assertIn("age=5&age=8", url)
 
-    def test_omits_ages_when_count_does_not_match_provided_ages(self):
-        # Never fabricate a missing child's age - degrade to no age params
-        # rather than guess, same "don't invent data" principle as the
-        # missing-dates case above.
+    def test_children_without_every_age_are_left_out_entirely(self):
+        # Booking quietly reads a child with no age as age 0, so a child count
+        # we can't back with ages never reaches the URL (and no age is made
+        # up) - the traveler adds the child on Booking instead.
+        for children, ages in ((3, [5, 8]), (1, None), (1, []), (2, [5])):
+            with self.subTest(children=children, ages=ages):
+                url = self.provider.build_search_url(
+                    destination="Paris",
+                    country="France",
+                    adults=3,
+                    children=children,
+                    child_ages=ages,
+                )
+
+                self.assertIn("group_adults=3", url)
+                self.assertNotIn("group_children", url)
+                self.assertNotIn("age=", url)
+
+    def test_a_stated_absence_of_children_is_still_sent(self):
         url = self.provider.build_search_url(
-            destination="Paris", country="France", children=3, child_ages=[5, 8]
+            destination="Paris", country="France", adults=2, children=0
         )
 
-        self.assertIn("group_children=3", url)
+        self.assertIn("group_children=0", url)
         self.assertNotIn("age=", url)
 
     def test_never_includes_cj_or_affiliate_tracking_parameters(self):

@@ -834,6 +834,12 @@ button:focus-visible, .btn:focus-visible {
     color: var(--color-text-muted);
 }
 
+.recommendation-card .accommodation-caption {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+}
+
 .recommendation-card .btn {
     margin-top: auto;
     align-self: flex-start;

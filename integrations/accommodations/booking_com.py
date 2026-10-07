@@ -41,16 +41,16 @@ class BookingComSearchLinkProvider(AccommodationSearchLinkProvider):
             params.append(("group_adults", str(adults)))
         if rooms is not None:
             params.append(("no_rooms", str(rooms)))
-        if children is not None:
+        if children == 0:
+            params.append(("group_children", "0"))
+        elif children and child_ages and len(child_ages) == children:
+            # One age=N per child (0-17, in order). Children go into the
+            # search only together with every age: given a child count and no
+            # age, Booking doesn't stop to ask - it quietly reads the child as
+            # age 0 and prices the stay for an infant. A count we can't back
+            # with ages is left out entirely rather than let Booking invent one.
             params.append(("group_children", str(children)))
-            # Booking requires one age=N per child (0-17, in order) once
-            # group_children > 0, or it shows an age-picker interstitial
-            # instead of results. Only emit them when the caller actually
-            # has real ages for every child - a mismatched or missing count
-            # is exactly the "don't invent data" case, so it's left for
-            # Booking's own interstitial rather than guessed here.
-            if children > 0 and child_ages and len(child_ages) == children:
-                for age in child_ages:
-                    params.append(("age", str(age)))
+            for age in child_ages:
+                params.append(("age", str(age)))
 
         return f"{SEARCH_RESULTS_URL}?{urlencode(params)}"

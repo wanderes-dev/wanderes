@@ -691,6 +691,17 @@
                         });
                     }
                     card.appendChild(stayLink);
+
+                    // What that link actually carries - dates and travelers
+                    // only when they are known - and what is known but
+                    // left out of it. Built server-side from the same
+                    // resolved trip as the URL, so the two can't differ.
+                    if (destination.accommodation_caption) {
+                        const caption = document.createElement("p");
+                        caption.className = "accommodation-caption";
+                        caption.textContent = destination.accommodation_caption;
+                        card.appendChild(caption);
+                    }
                 }
             } else {
                 const chooseButton = document.createElement("button");

@@ -7,6 +7,7 @@ from django.urls import reverse
 from ai.models import SavedConversation
 from ai.orchestration import FALLBACK_REPLY, StreamingOrchestrationResult
 from ai.provider.base import AIResponse
+from ai.trip_details import ResolvedTrip
 from ai.views import CONVERSATION_DELIMITER, RECOMMENDATIONS_DELIMITER
 from analytics.models import Event
 from recommendations.scoring import ScoredDestination
@@ -381,7 +382,7 @@ class RecommendationsStreamViewTests(TestCase):
     def test_accommodation_search_url_reflects_a_known_party_size(self, mock_stream):
         # Direct user report (2026-09-24): asked for 3 people, got a link
         # built for Booking.com's own default of 2, because the search
-        # omitted a count entirely. accommodation_party_size threads
+        # omitted a count entirely. the resolved trip threads
         # through from ai.orchestration's is_accommodation_request branch.
         destination = Destination.objects.create(
             slug="bali-id",
@@ -410,7 +411,7 @@ class RecommendationsStreamViewTests(TestCase):
             recommendations=[scored],
             reply_chunks=iter(["Here's more about Bali."]),
             is_destination_detail=True,
-            accommodation_party_size=3,
+            trip=ResolvedTrip(adults=3),
         )
 
         response = self.client.post(
@@ -483,7 +484,7 @@ class FreeformAccommodationCardTests(TestCase):
         mock_stream.return_value = StreamingOrchestrationResult(
             recommendations=[],
             reply_chunks=iter(["Wuhan has some great riverside areas to stay in."]),
-            accommodation_party_size=3,
+            trip=ResolvedTrip(adults=3),
             accommodation_freeform_name="Wuhan",
             accommodation_freeform_country="China",
         )
@@ -514,7 +515,7 @@ class FreeformAccommodationCardTests(TestCase):
         mock_stream.return_value = StreamingOrchestrationResult(
             recommendations=[],
             reply_chunks=iter(["Here's what to expect."]),
-            accommodation_party_size=2,
+            trip=ResolvedTrip(adults=2),
             accommodation_freeform_name="Wuhan",
             accommodation_freeform_country="",
         )
