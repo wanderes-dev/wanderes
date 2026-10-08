@@ -51,6 +51,10 @@ def spain(**fields):
     return {"country": "Spain", "continent": "europe", **fields}
 
 
+# What a stays search needs besides who is going: a start and a length.
+WHEN = {"start": {"day": 5}, "stay_length": 3, "stay_unit": "days"}
+
+
 def barcelona_record():
     return {"slug": "barcelona-es", "name": "Barcelona", "country": "Spain"}
 
@@ -589,7 +593,7 @@ class FollowUpContinuityTests(_Case):
                 turn(spain(selected_destination_name="Barcelona")),
                 turn(
                     spain(is_accommodation_request=True, accommodation_place_name="Barcelona"),
-                    trip_details={"adults": 4},
+                    trip_details={**WHEN, "adults": 4},
                 ),
                 turn(spain()),
             ]

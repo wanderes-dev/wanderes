@@ -1,7 +1,7 @@
 """A small frozen set of phrases for the trip-details extraction: does the
 model report the components the traveler stated - and nothing else?
 
-Thirty-five phrases, no more, and no tuning loop around them: it exists to show
+Thirty-nine phrases, no more, and no tuning loop around them: it exists to show
 the extraction behaves on the shapes this feature depends on (a bare day, a
 length, a range, who is going, an age given as a reply, a detail withdrawn)
 and on the ones that must yield nothing (a complaint about an earlier reply,
@@ -39,6 +39,7 @@ def expected_components(expect: dict) -> dict:
         "children": expect.get("children"),
         "child_ages": expect.get("child_ages", []),
         "rooms": expect.get("rooms"),
+        "confirms_party_offer": expect.get("confirms_party_offer", False),
         "cleared_fields": expect.get("cleared_fields", []),
     }
 
@@ -131,6 +132,31 @@ PHRASES = (
     Phrase("rooms-correction", "na verdade 2 quartos", {"rooms": 2}),
     Phrase("rooms-with-booking-wording", "reserve dois quartos para mim", {"rooms": 2}),
     Phrase("rooms-forgotten", "esquece os quartos", {"cleared_fields": ["rooms"]}),
+    # --- the answer to "are those N people from your profile all adults?"
+    Phrase(
+        "profile-yes",
+        "sim",
+        {"confirms_party_offer": True},
+        question="Vai viajar com as 2 pessoas do seu perfil — todos adultos?",
+    ),
+    Phrase(
+        "profile-yes-in-english",
+        "yes, all adults",
+        {"confirms_party_offer": True},
+        question="Are you travelling with the 2 people on your profile - all adults?",
+    ),
+    Phrase(
+        "profile-no-with-numbers",
+        "não, somos 3 adultos",
+        {"adults": 3},
+        question="Vai viajar com as 2 pessoas do seu perfil — todos adultos?",
+    ),
+    Phrase(
+        "yes-to-something-else",
+        "claro, pode mostrar",
+        {},
+        question="Quer que eu mostre um vídeo de Barcelona?",
+    ),
     # --- an answer that needs the question
     Phrase(
         "age-reply",

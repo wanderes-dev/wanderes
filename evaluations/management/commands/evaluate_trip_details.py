@@ -9,7 +9,7 @@ from evaluations.trip_details_set import format_report, run_trip_details_set
 class Command(BaseCommand):
     help = (
         "Run the frozen set of trip-details phrases (evaluations/trip_details_set.py) through "
-        "the real extraction call with the real model: 35 calls. Nothing is written unless "
+        "the real extraction call with the real model: 39 calls. Nothing is written unless "
         "--output is given."
     )
 
