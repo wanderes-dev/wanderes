@@ -1,4 +1,5 @@
 import json
+from datetime import date
 
 from django.http import (
     HttpResponseBadRequest,
@@ -158,7 +159,47 @@ def _recommendation_card_data(scored_destination, *, detail_shown=False, trip=No
             **trip.booking_kwargs(),
         )
         data["accommodation_caption"] = trip.caption(destination.name)
+        data["accommodation_link"] = trip.link_summary()
     return data
+
+
+def _diagnostic_link(raw: str) -> dict | None:
+    """What the clicked link carried, as the page reports it, cut down to the
+    six operational values and re-validated: dates as ISO dates, counts inside
+    the ranges the resolver itself allows. Anything else - and anything that
+    doesn't parse - is dropped, so only plain structured values are ever stored
+    (never the URL, never a tracking id)."""
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    def count(value, low, high):
+        ok = isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+        return value if ok else None
+
+    def day(value):
+        try:
+            return date.fromisoformat(value).isoformat() if isinstance(value, str) else None
+        except ValueError:
+            return None
+
+    ages = data.get("child_ages")
+    ages = ages if isinstance(ages, list) else []
+    return {
+        "check_in": day(data.get("check_in")),
+        "check_out": day(data.get("check_out")),
+        "adults": count(data.get("adults"), 1, trip_details.MAX_ADULTS),
+        "children": count(data.get("children"), 0, trip_details.MAX_CHILDREN),
+        "child_ages": [
+            a
+            for a in ages[: trip_details.MAX_CHILDREN]
+            if count(a, 0, trip_details.MAX_CHILD_AGE) is not None
+        ],
+        "rooms": count(data.get("rooms"), 1, trip_details.MAX_ROOMS),
+    }
 
 
 @require_POST
@@ -416,6 +457,13 @@ def accommodation_click(request):
         if profile is not None:
             metadata["traveler_preferred_trip_types"] = profile.preferred_trip_types
             metadata["traveler_preferred_cost_of_living"] = profile.preferred_cost_of_living
+
+    # What Wanderes generated at click time, for locating a future boundary
+    # failure (Wanderes, the page, Booking, CJ). Diagnostic and first-party
+    # only: the operational values and nothing else, never part of any ranking.
+    link = _diagnostic_link(request.POST.get("link", ""))
+    if link is not None:
+        metadata["link"] = link
 
     acquisition = get_acquisition_snapshot(request)
     if acquisition:

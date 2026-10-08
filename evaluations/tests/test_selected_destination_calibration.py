@@ -312,7 +312,8 @@ class ProbeTests(TestCase):
         )
         # The second conversation is fresh: it did not inherit the first one's choice.
         self.assertEqual(len(results[0].calls), 4)
-        self.assertEqual(results[1].cards, ["Barcelona", "Madrid"])
+        # Both Spanish destinations score the same, so the order they come in isn't promised.
+        self.assertCountEqual(results[1].cards, ["Barcelona", "Madrid"])
 
     def test_the_turns_of_one_conversation_share_its_state(self):
         provider = self.scripted(

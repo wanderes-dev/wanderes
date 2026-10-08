@@ -32,9 +32,9 @@ class _EchoProvider:
 
 class FrozenSetTests(SimpleTestCase):
     def test_it_stays_a_small_frozen_set(self):
-        self.assertEqual(len(PHRASES), 30)
-        self.assertEqual(len({p.id for p in PHRASES}), 30)
-        self.assertEqual(len({p.message for p in PHRASES}), 30)
+        self.assertEqual(len(PHRASES), 35)
+        self.assertEqual(len({p.id for p in PHRASES}), 35)
+        self.assertEqual(len({p.message for p in PHRASES}), 35)
 
     def test_it_covers_the_shapes_the_feature_depends_on(self):
         ids = {p.id for p in PHRASES}
@@ -53,6 +53,9 @@ class FrozenSetTests(SimpleTestCase):
             "forget-the-start",
             "complaint-about-an-earlier-reply",
             "a-past-trip",
+            "rooms-please",
+            "rooms-search",
+            "rooms-forgotten",
         ):
             self.assertIn(needed, ids)
 
@@ -99,4 +102,4 @@ class FrozenSetTests(SimpleTestCase):
         self.assertTrue(
             all(r.passed for r in results), [r.phrase.id for r in results if not r.passed]
         )
-        self.assertIn("phrases matching: 30/30", format_report(results))
+        self.assertIn("phrases matching: 35/35", format_report(results))

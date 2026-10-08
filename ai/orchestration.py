@@ -1125,25 +1125,13 @@ def _route_turn(
         )
         return StreamingOrchestrationResult([], visa_reply)
 
-    # Forces the "we can't actually book anything" disclosure for an
-    # explicit booking request - leaving it to whatever path the message
-    # would otherwise land in meant it got mentioned inconsistently.
-    if intent["is_booking_request"]:
-        booking_messages = _build_booking_request_messages(message, history)
-        booking_reply = _stream_ai_reply(
-            booking_messages,
-            message,
-            ai_provider=ai_provider,
-            remember=_remember,
-            conversation_key=conv_key,
-        )
-        return StreamingOrchestrationResult([], booking_reply)
-
     # What the traveler says about the trip itself - when, for how long, who
-    # is going - is read by its own narrow call, and only when the message has
-    # something to read or a stays search is waiting on exactly this. It is
-    # resolved once here and then drives the link, the caption under it and
-    # what the reply may say, so those three can't disagree.
+    # is going, how many rooms - is read by its own narrow call, and only when
+    # the message has something to read or a stays search is waiting on exactly
+    # this. It is resolved once here, ahead of everything that could answer the
+    # message, and then drives the link, the caption under it and what the reply
+    # may say, so those three can't disagree - and so a message that changes the
+    # search is treated as that, not as a booking request or a request for a guide.
     trip_turn = _read_trip_details(
         message,
         intent,
@@ -1154,12 +1142,49 @@ def _route_turn(
         conversation_key=conv_key,
     )
 
+    # An explicit request to book can't be completed here, but it is rarely
+    # only that: "reserve dois quartos para mim" also sets the rooms. With a
+    # place to search stays for, it gets the search (updated by whatever the
+    # message changed) and one clause saying the reservation is finished on
+    # Booking.com - not a refusal and not a pivot to generic planning.
+    if intent["is_booking_request"]:
+        write_key = _state_write_key()
+        stored_selection = (
+            memory.get_climate_budget(write_key)["selected_destination"]
+            if write_key is not None
+            else None
+        )
+        target = _stays_target(
+            intent, stored_selection, ai_provider=ai_provider, conversation_key=conv_key
+        )
+        if target is not None:
+            place, target_destination = target
+            return _stays_turn(
+                message,
+                place,
+                target_destination,
+                trip_turn,
+                booking_wording=True,
+                history=history,
+                ai_provider=ai_provider,
+                remember=_remember,
+                conversation_key=conv_key,
+            )
+        booking_messages = _build_booking_request_messages(message, history)
+        booking_reply = _stream_ai_reply(
+            booking_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
+        )
+        return StreamingOrchestrationResult([], booking_reply)
+
     # A traveler who already named/settled on one specific destination and
-    # now just wants accommodation suggestions for it (not new destination
-    # options) needs to land on the same single-destination detail path
-    # "Choose this trip" produces - that's the only reply that carries the
-    # real "Search stays" link (ai/views.py only attaches
-    # accommodation_search_url to a detail_shown card). Without this
+    # now wants to search stays for it (not new destination options) gets the
+    # stays action: the reply that carries the real "Search stays" link
+    # (ai/views.py only attaches accommodation_search_url to a detail_shown
+    # card), kept to what they asked. Without this
     # branch, a typed follow-up like "só quero hospedagens" after naming
     # Tokyo fell through to generate_recommendations() with whatever
     # broader country/continent constraint got extracted, silently
@@ -1173,40 +1198,16 @@ def _route_turn(
                 accommodation_place_name, ai_provider=ai_provider, conversation_key=conv_key
             )
             if accommodation_destination is not None:
-                if trip_turn.trip.adults is None:
-                    # Ask once, up front, before generating any "Search
-                    # stays" link - Booking.com's own default (2 adults)
-                    # when a search omits a count at all doesn't match
-                    # whatever the traveler actually stated elsewhere in
-                    # the conversation, so silently degrading to a
-                    # destination-only link here would produce a link
-                    # for the wrong number of people (2026-09-24, direct
-                    # user report: asked for 3, got a link for 2).
-                    party_size_messages = _build_accommodation_party_size_question_messages(
-                        message,
-                        f"{accommodation_destination.name}, {accommodation_destination.country}",
-                        history,
-                        trip_turn,
-                    )
-                    party_size_reply = _stream_ai_reply(
-                        party_size_messages,
-                        message,
-                        ai_provider=ai_provider,
-                        remember=_remember,
-                        conversation_key=conv_key,
-                    )
-                    return StreamingOrchestrationResult([], party_size_reply)
-                return _handle_focus_destination(
+                return _stays_turn(
                     message,
+                    _place_record(accommodation_destination),
                     accommodation_destination,
-                    profile=profile,
+                    trip_turn,
+                    booking_wording=False,
                     history=history,
                     ai_provider=ai_provider,
-                    climate_provider=climate_provider,
                     remember=_remember,
                     conversation_key=conv_key,
-                    accommodation_focus=True,
-                    trip_turn=trip_turn,
                 )
             # Not in our curated catalog - but a live accommodation search
             # doesn't actually need catalog data (no scoring, no climate,
@@ -1220,44 +1221,16 @@ def _route_turn(
             )
             if freeform_place is not None:
                 freeform_name, freeform_country = freeform_place
-                if trip_turn.trip.adults is None:
-                    freeform_label = (
-                        f"{freeform_name}, {freeform_country}"
-                        if freeform_country
-                        else freeform_name
-                    )
-                    party_size_messages = _build_accommodation_party_size_question_messages(
-                        message, freeform_label, history, trip_turn
-                    )
-                    party_size_reply = _stream_ai_reply(
-                        party_size_messages,
-                        message,
-                        ai_provider=ai_provider,
-                        remember=_remember,
-                        conversation_key=conv_key,
-                    )
-                    return StreamingOrchestrationResult([], party_size_reply)
-                freeform_messages = _build_freeform_accommodation_messages(
+                return _stays_turn(
                     message,
-                    freeform_name,
-                    freeform_country,
-                    trip_turn=trip_turn,
-                    profile=profile,
+                    {"slug": None, "name": freeform_name, "country": freeform_country},
+                    None,
+                    trip_turn,
+                    booking_wording=False,
                     history=history,
-                )
-                freeform_reply = _stream_ai_reply(
-                    freeform_messages,
-                    message,
                     ai_provider=ai_provider,
                     remember=_remember,
                     conversation_key=conv_key,
-                )
-                return StreamingOrchestrationResult(
-                    [],
-                    freeform_reply,
-                    trip=trip_turn.trip,
-                    accommodation_freeform_name=freeform_name,
-                    accommodation_freeform_country=freeform_country,
                 )
             unrecognized_accommodation_messages = (
                 _build_unrecognized_accommodation_destination_messages(
@@ -1702,7 +1675,6 @@ def _handle_focus_destination(
     climate_provider,
     remember,
     conversation_key: str | None = None,
-    accommodation_focus: bool = False,
     chosen_destination: bool = False,
     trip_turn: trip_details.TripTurn | None = None,
 ) -> StreamingOrchestrationResult:
@@ -1713,15 +1685,6 @@ def _handle_focus_destination(
     the generic explanation path never sends. "Save this trip" only shows
     up once this reply comes back (ai/views.py checks
     is_destination_detail) - deterministic, not an AI judgment call.
-
-    `accommodation_focus` is set by the is_accommodation_request branch
-    (a typed "hospedagens em Tóquio", not a button click) reusing this
-    same path for its one real payoff: the "Search stays" link only ever
-    attaches to a detail_shown card. Threaded through so the prompt can
-    say what actually happened instead of falsely claiming a button
-    click, and nudge the reply toward what's useful for choosing where
-    to stay. The stays branch only reaches this function once the number
-    of adults is known (it asks first when it isn't).
 
     `trip_turn` is the trip state for this turn (dates, stay length, who is
     going). The reply is told exactly those facts, and the same resolved trip
@@ -1759,7 +1722,6 @@ def _handle_focus_destination(
         avg_high_c=avg_high_c,
         profile=profile,
         history=history,
-        accommodation_focus=accommodation_focus,
         chosen_destination=chosen_destination,
         trip_turn=trip_turn,
     )
@@ -1774,7 +1736,6 @@ def _handle_focus_destination(
         [scored],
         reply,
         is_destination_detail=True,
-        is_accommodation_reply=accommodation_focus,
         trip=trip_turn.trip if trip_turn is not None else None,
     )
 
@@ -1868,20 +1829,48 @@ def _stream_carried_reply(
     conversation_key: str | None,
 ) -> StreamingOrchestrationResult:
     """The reply to a turn on a destination that is only carried over, with
-    no card and no selection event - except when this message changed the trip
-    details. Then the stays action goes out again with the new link and
-    caption, because the one the traveler last saw no longer matches what is
-    known (it is the same kind of reply as a stays request: it neither
-    chooses nor replaces a place)."""
+    no card and no selection event - except when this message changed the
+    search. A message that changes what the link carries, or leaves a detail the
+    search can't carry yet (rooms outnumbering the adults, a child with no age,
+    a date that couldn't be used), is an operation on the stays search, however
+    the intent labelled it: it gets the stays-action reply - a short
+    confirmation or the one question, never a description of the place - and
+    the card goes out again with the new link and caption when the link
+    changed or the rooms need explaining (it neither chooses nor replaces a
+    place)."""
+    operation = trip_turn is not None and (trip_turn.changed or trip_turn.must_ask)
+    messages = (
+        _build_stays_action_messages(
+            message, selected, destination, history, trip_turn, booking_wording=False
+        )
+        if operation
+        else _build_carried_destination_messages(
+            message, selected, destination, history, trip_turn
+        )
+    )
     reply = _stream_ai_reply(
-        _build_carried_destination_messages(message, selected, destination, history, trip_turn),
+        messages,
         message,
         ai_provider=ai_provider,
         remember=remember,
         conversation_key=conversation_key,
+        strip_links=operation,
     )
-    if trip_turn is None or not trip_turn.changed:
+    if trip_turn is None or not (trip_turn.changed or trip_turn.ask_rooms):
         return StreamingOrchestrationResult([], reply)
+    return _stays_card_result(reply, selected, destination, trip_turn.trip)
+
+
+def _place_record(destination: Destination) -> dict:
+    return {"slug": destination.slug, "name": destination.name, "country": destination.country}
+
+
+def _stays_card_result(
+    reply: Iterator[str], place: dict, destination: Destination | None, trip
+) -> StreamingOrchestrationResult:
+    """A reply that carries the stays action: the "Search stays" card with the
+    link and caption of the resolved trip. It neither chooses nor replaces a
+    destination, so it records no selection (is_accommodation_reply)."""
     if destination is not None:
         scored = ScoredDestination(
             destination=destination,
@@ -1898,15 +1887,79 @@ def _stream_carried_reply(
             reply,
             is_destination_detail=True,
             is_accommodation_reply=True,
-            trip=trip_turn.trip,
+            trip=trip,
         )
     return StreamingOrchestrationResult(
         [],
         reply,
-        trip=trip_turn.trip,
-        accommodation_freeform_name=selected["name"],
-        accommodation_freeform_country=selected.get("country") or "",
+        trip=trip,
+        accommodation_freeform_name=place["name"],
+        accommodation_freeform_country=place.get("country") or "",
     )
+
+
+def _stays_target(
+    intent: dict, stored_selection: dict | None, *, ai_provider: AIProvider, conversation_key
+) -> tuple[dict, Destination | None] | None:
+    """The place a stays search is about, for a message that isn't itself a
+    stays request (a booking request): the place it names, else the
+    destination already chosen. None when there is nothing to search for."""
+    name = intent["accommodation_place_name"]
+    if name:
+        named = _resolve_destination(
+            name, ai_provider=ai_provider, conversation_key=conversation_key
+        )
+        if named is not None:
+            return _place_record(named), named
+    if stored_selection is not None:
+        slug = stored_selection.get("slug")
+        destination = Destination.objects.filter(slug=slug).first() if slug else None
+        if slug and destination is None:
+            return None
+        return stored_selection, destination
+    return None
+
+
+def _stays_turn(
+    message: str,
+    place: dict,
+    destination: Destination | None,
+    trip_turn: trip_details.TripTurn,
+    *,
+    booking_wording: bool,
+    history: list[dict] | None,
+    ai_provider: AIProvider,
+    remember,
+    conversation_key: str | None,
+) -> StreamingOrchestrationResult:
+    """One turn of the stays action. Nobody has said how many adults are going:
+    that is asked first, before any link is generated (Booking's own default
+    for a search with no count isn't whatever the traveler has in mind).
+    Otherwise the stays reply, with the card."""
+    if trip_turn.trip.adults is None:
+        label = f"{place['name']}, {place['country']}" if place.get("country") else place["name"]
+        reply = _stream_ai_reply(
+            _build_accommodation_party_size_question_messages(
+                message, label, history, trip_turn, booking_wording=booking_wording
+            ),
+            message,
+            ai_provider=ai_provider,
+            remember=remember,
+            conversation_key=conversation_key,
+            strip_links=True,
+        )
+        return StreamingOrchestrationResult([], reply)
+    reply = _stream_ai_reply(
+        _build_stays_action_messages(
+            message, place, destination, history, trip_turn, booking_wording=booking_wording
+        ),
+        message,
+        ai_provider=ai_provider,
+        remember=remember,
+        conversation_key=conversation_key,
+        strip_links=True,
+    )
+    return _stays_card_result(reply, place, destination, trip_turn.trip)
 
 
 def _same_place(first: dict | None, second: dict | None) -> bool:
@@ -1921,26 +1974,9 @@ def _same_place(first: dict | None, second: dict | None) -> bool:
     )
 
 
-def _build_carried_destination_messages(
-    message: str,
-    selected: dict,
-    destination: Destination | None,
-    history: list[dict] | None,
-    trip_turn: trip_details.TripTurn | None = None,
-) -> list[AIMessage]:
-    """The reply for a turn on which the chosen destination is only carried
-    over from earlier ones. The traveler's message leads: a complaint, a
-    correction or a question about an earlier reply is answered itself rather
-    than with a tour of the place, and the destination's facts are reference
-    material - used when they help, never recited. Unlike the reply to the
-    turn that made the choice, this one gets no climate line, no video offer
-    and no closing-question instruction, because each of those turned every
-    follow-up into another description of the place.
-
-    The grounding rule is spelled out here as well as in SYSTEM_PROMPT because
-    this is where it bites: a traveler who reports a wrong date or number of
-    travelers on the booking link must hear that Wanderes can't set those,
-    not that it fixed them."""
+def _place_reference(selected: dict, destination: Destination | None) -> tuple[str, str]:
+    """(label, reference facts) for a place the reply is about but isn't the
+    subject of: the facts are background to draw on only when they help."""
     if destination is not None:
         label = f"{destination.name}, {destination.country}"
         reference = (
@@ -1967,6 +2003,30 @@ def _build_carried_destination_messages(
             "about it; anything you say about the place comes from general knowledge, "
             "and should be said as such.\n\n"
         )
+    return label, reference
+
+
+def _build_carried_destination_messages(
+    message: str,
+    selected: dict,
+    destination: Destination | None,
+    history: list[dict] | None,
+    trip_turn: trip_details.TripTurn | None = None,
+) -> list[AIMessage]:
+    """The reply for a turn on which the chosen destination is only carried
+    over from earlier ones. The traveler's message leads: a complaint, a
+    correction or a question about an earlier reply is answered itself rather
+    than with a tour of the place, and the destination's facts are reference
+    material - used when they help, never recited. Unlike the reply to the
+    turn that made the choice, this one gets no climate line, no video offer
+    and no closing-question instruction, because each of those turned every
+    follow-up into another description of the place.
+
+    The grounding rule is spelled out here as well as in SYSTEM_PROMPT because
+    this is where it bites: a traveler who reports a wrong date or number of
+    travelers on the booking link must hear that Wanderes can't set those,
+    not that it fixed them."""
+    label, reference = _place_reference(selected, destination)
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
     messages.append(
@@ -2007,6 +2067,99 @@ def _build_carried_destination_messages(
                 "Do not mention saving this as a trip or any button or interface element. "
                 "Reply in the same language the traveler has been using in this conversation "
                 "(check the history above, not just this message)."
+            ),
+        )
+    )
+    return messages
+
+
+def _build_stays_action_messages(
+    message: str,
+    place: dict,
+    destination: Destination | None,
+    history: list[dict] | None,
+    trip_turn: trip_details.TripTurn,
+    *,
+    booking_wording: bool,
+) -> list[AIMessage]:
+    """The reply on a stay search. The traveler is operating a search, not
+    asking for a destination essay: when they changed a detail it is confirmed
+    in a sentence, when they only asked to see stays it says the search is
+    ready, and when something is missing or can't be represented it is that one
+    question. Areas, types and tips come only when the message asks for them.
+    The destination is context for the search, never permission to describe it."""
+    label, reference = _place_reference(place, destination)
+    facts = trip_details.fact_block(
+        trip_turn,
+        always=True,
+        unsupported_filter=trip_details.names_unsupported_filter(message),
+    )
+    if destination is not None:
+        # A search action doesn't need the place described to it; the
+        # description and points of interest were what invited the essay.
+        reference = ""
+    if trip_turn.must_ask:
+        rules = (
+            "1. The search can't be right yet. Your whole reply is ONE concise question "
+            "asking only for what the trip details above list under 'Needs clarification' "
+            "- nothing else: no confirmation of other details, no neighborhood or "
+            "accommodation advice, no offer of other help.\n"
+        )
+    else:
+        rules = (
+            "1. Do what they asked, directly and briefly. If they changed a detail of the "
+            "search (rooms, dates, travelers), confirm it in one short sentence from the "
+            "trip details above - the search link shown right after your reply carries "
+            "exactly what is listed there. If they only asked to see, search or find "
+            "stays, say in a sentence or two that the search is ready and what it carries. "
+            "Do NOT write a guide: no list of neighborhoods, attractions, transport, "
+            "accommodation types or tips unless their message actually asks for that - "
+            "and then answer just that question, briefly, with no hotel names, prices or "
+            "availability.\n"
+            "2. Only when their message itself asks for something the search can't do - "
+            "a price level or budget (cheap, barato, luxury), star rating, property type, "
+            "amenity (pool, breakfast, pet-friendly) or any other filter, or live prices and "
+            "availability - say so in one sentence: Wanderes has no verified live prices and "
+            "can't filter the search that way, so it is not limited to that, and they can "
+            "apply it once the Booking search is open. Never describe the search as being "
+            "for that (not 'a "
+            "search for cheap hotels'), don't recommend specific hotels or quote prices, and "
+            "don't replace the request with a guide. Otherwise never mention filters, prices "
+            "or availability at all.\n"
+        )
+        if trip_turn.trip.children_pending:
+            rules += (
+                "3. A child's age is still missing, so the child isn't in the search yet. If "
+                "their message only asked to see, search or find stays, your whole reply is "
+                "one short question asking for the age - no guide. If it asked about areas "
+                "or types of places, answer that briefly first and end with that one "
+                "question.\n"
+            )
+        if booking_wording:
+            rules += (
+                "4. They used booking wording (book, reserve, buy). Say in one short clause "
+                "that Wanderes can't complete a booking - the reservation is finished on "
+                "Booking.com - and still do what the rest of their message asked; never "
+                "refuse the request.\n"
+            )
+    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
+    messages.extend(_history_messages(history))
+    messages.append(
+        AIMessage(
+            role="user",
+            content=(
+                f"The traveler is working on a stay search for {label}. "
+                f'What they just said: "{message}"\n\n'
+                f"{reference}"
+                f"{facts}"
+                "How to reply:\n"
+                f"{rules}"
+                "Never invent a preference, intent, question or need they didn't express. "
+                "Never write a URL or a link yourself, and don't announce one ('here is the "
+                "link') - the search link appears right after your reply. "
+                "Do not mention saving this as a trip or any button or interface element. "
+                "Reply in the same language the traveler has been using in this "
+                "conversation (check the history above, not just this message)."
             ),
         )
     )
@@ -2058,15 +2211,12 @@ def _build_destination_detail_messages(
     avg_high_c: float | None,
     profile: TravelerProfile | None,
     history: list[dict] | None,
-    accommodation_focus: bool = False,
     chosen_destination: bool = False,
     trip_turn: trip_details.TripTurn | None = None,
 ) -> list[AIMessage]:
     poi = ", ".join(destination.points_of_interest) if destination.points_of_interest else ""
     climate_line = f"\n- Current typical avg high: {avg_high_c}C" if avg_high_c is not None else ""
-    # A stays reply is told who is going by the trip facts below alone; the
-    # profile's usual group size must not pass as this trip's.
-    traveler_note = _traveler_context_note(profile, include_party=not accommodation_focus)
+    traveler_note = _traveler_context_note(profile)
     entry_requirements_note = _entry_requirements_note(profile, [destination])
     video_note = _video_availability_note([destination])
     video_offer = (
@@ -2074,26 +2224,7 @@ def _build_destination_detail_messages(
         "only when one was actually noted as available, never speculatively. "
     )
 
-    if accommodation_focus:
-        # A where-to-stay answer isn't the place to reopen the weather or pitch a video.
-        climate_line = ""
-        video_note = ""
-        video_offer = ""
-        context_line = (
-            f"The traveler asked about places to stay in {destination.name}, "
-            f"{destination.country}. "
-        )
-        message_line = f'Their message was: "{message}"\n\n'
-        conversation_note = (
-            "Focus your reply on what's genuinely useful for choosing where "
-            "to stay there - good areas/neighborhoods, what kind of "
-            "accommodation fits this destination's character, practical "
-            "tips - grounded only in the real facts listed below, never a "
-            "specific hotel name, price, or availability claim you can't "
-            "verify. Still ground it in a real, detailed sense of the place "
-            "(the description and points of interest below), the way a "
-        )
-    elif chosen_destination:
+    if chosen_destination:
         context_line = (
             f"The traveler has chosen {destination.name}, {destination.country} as "
             "where they want to go. "
@@ -2137,7 +2268,7 @@ def _build_destination_detail_messages(
                 f"{traveler_note}"
                 f"{entry_requirements_note}"
                 f"{video_note}\n\n"
-                f"{trip_details.fact_block(trip_turn, always=accommodation_focus)}"
+                f"{trip_details.fact_block(trip_turn)}"
                 f"{message_line}"
                 f"{conversation_note}"
                 "thoughtful travel consultant would once a client has settled "
@@ -2153,6 +2284,61 @@ def _build_destination_detail_messages(
     return messages
 
 
+# A link the model writes itself is never the real one (the card beside the reply
+# carries that), so it is taken out of the reply. Everything from the first place a
+# link could begin is held back and cleaned as one piece: how the stream happens to
+# be cut into chunks can't change the result, and nothing before it is delayed.
+_LINK_START = re.compile(r"https?:|www\.|\[|<", re.IGNORECASE)
+_MARKDOWN_LINK = r"!?\[[^\]]{0,300}\]\((?:[^()\n]|\([^()\n]*\))*\)"
+_AUTOLINK = r"<(?:https?://|www\.)[^>\s]*>"
+_BARE_URL = r"(?:https?://|www\.)[^\s)\]>]*"
+_LINK_ENDING_A_LINE = re.compile(
+    rf"[ \t]*(?:{_MARKDOWN_LINK}|{_AUTOLINK}|{_BARE_URL})[ \t]*[.!]?[ \t]*(?=\n|\Z)", re.IGNORECASE
+)
+_CUT_OFF_LINK = re.compile(r"[ \t]*!?\[[^\]]{0,300}\]\([^)\n]*\Z")
+_LABELLED_LINK = re.compile(r"\[([^\]]{0,300})\]\((?:[^()\n]|\([^()\n]*\))*\)")
+_OTHER_LINK = re.compile(f"{_AUTOLINK}|{_BARE_URL}", re.IGNORECASE)
+
+
+def _drop_links(text: str) -> str:
+    """The text without its links and URLs. One that ends its line (the "here is
+    the link" kind) goes with its label, which would otherwise read like a link
+    that isn't there; one in the middle of a sentence leaves its label."""
+    text = _CUT_OFF_LINK.sub("", text)
+    text = _LINK_ENDING_A_LINE.sub("", text)
+    text = _OTHER_LINK.sub("", _LABELLED_LINK.sub(r"\1", text))
+    return re.sub(r"(?<=\S)[ \t]{2,}(?=\S)", " ", re.sub(r"\n{3,}", "\n\n", text))
+
+
+def _partial_link_length(text: str) -> int:
+    """How many characters at the end of the text could be the first letters of
+    "https:" or "www." that haven't all arrived yet."""
+    lowered = text.lower()
+    for start in ("https:", "www."):
+        for size in range(len(start) - 1, 0, -1):
+            if lowered.endswith(start[:size]):
+                return size
+    return 0
+
+
+def _without_links(chunks: Iterator[str]) -> Iterator[str]:
+    pending, held = "", False
+    for chunk in chunks:
+        pending += chunk
+        if held:
+            continue
+        found = _LINK_START.search(pending)
+        held = found is not None
+        end = found.start() if found else len(pending) - _partial_link_length(pending)
+        ready = pending[:end].rstrip()  # whitespace waits: a link may come right after it
+        if ready:
+            yield ready
+        pending = pending[len(ready) :]
+    tail = _drop_links(pending).rstrip() if held else pending
+    if tail:
+        yield tail
+
+
 def _stream_ai_reply(
     messages: list[AIMessage],
     message: str,
@@ -2161,6 +2347,7 @@ def _stream_ai_reply(
     remember,
     temperature: float | None = None,
     conversation_key: str | None = None,
+    strip_links: bool = False,
 ) -> Iterator[str]:
     """Stream one AI reply, saving the full text to memory once it's done
     (or fails partway) - shared by every branch above, they all need the
@@ -2170,6 +2357,10 @@ def _stream_ai_reply(
     variety is fine or even good in a normal explanation. Pass 0 only when
     the job is faithfully relaying already-verified facts, not writing
     creatively (see the visa-question caller).
+
+    strip_links is for a reply that sits beside a card carrying the real
+    link: the model can't know that URL and writes an invented one when
+    allowed to, so nothing of the kind reaches the traveler or the history.
 
     This is the only place in the codebase that calls
     AIProvider.stream_reply, so wrapping it here with track_llm_call
@@ -2181,7 +2372,8 @@ def _stream_ai_reply(
     collected = []
     try:
         with track_llm_call(operation="stream_reply", conversation_key=conversation_key):
-            for chunk in ai_provider.stream_reply(messages, temperature=temperature):
+            stream = ai_provider.stream_reply(messages, temperature=temperature)
+            for chunk in _without_links(stream) if strip_links else stream:
                 collected.append(chunk)
                 yield chunk
     except AIProviderError:
@@ -2741,9 +2933,7 @@ def _has_confirmable_profile_data(profile: TravelerProfile | None) -> bool:
     )
 
 
-def _traveler_context_note(
-    profile: TravelerProfile | None, *, always_mention: bool = False, include_party: bool = True
-) -> str:
+def _traveler_context_note(profile: TravelerProfile | None, *, always_mention: bool = False) -> str:
     """A short free-text note the AI can factor into its reasoning when
     relevant - never a hard constraint, those stay message-only via
     RecommendationRequest. budget_amount always goes through
@@ -2783,7 +2973,7 @@ def _traveler_context_note(
             bits.append(f"generally prefers a {str(cost_label).lower()} cost of living")
     if profile.home_country:
         bits.append(f"traveling from {profile.home_country}")
-    if profile.travelers_count and include_party:
+    if profile.travelers_count:
         bits.append(
             f"usually travels with {profile.travelers_count} people total (including themselves)"
         )
@@ -2946,7 +3136,7 @@ def _extract_trip_details_signal(
     except AIProviderError:
         logger.warning("Could not extract trip details - AI provider failure. message=%r", message)
         data = {}
-    return trip_details.restrict_clears(trip_details.validate_components(data), message)
+    return trip_details.guard_components(trip_details.validate_components(data), message)
 
 
 def _read_trip_details(
@@ -2968,7 +3158,7 @@ def _read_trip_details(
     today = _today()
     read_key = state_write_key()
     stored = memory.get_climate_budget(read_key)["trip_details"] if read_key else None
-    record, issues, ask = stored, (), False
+    record, issues, ask, ask_rooms = stored, (), False, False
     before = trip_details.resolve(stored, today)
     if _should_read_trip_details(message, intent, stored):
         components = _extract_trip_details_signal(
@@ -2976,6 +3166,16 @@ def _read_trip_details(
         )
         applied = trip_details.apply_components(stored, components, today)
         record, issues, ask = applied.record, applied.issues, applied.ask_child_ages
+        resolved = trip_details.resolve(record, today)
+        # A request that names a detail the search can't carry yet is answered
+        # with the question about exactly that detail: a child with no age
+        # ("hospedagem para crianças"), rooms that outnumber the adults.
+        ask = ask or (
+            resolved.children_pending and trip_details.names_detail(message, "child_ages")
+        )
+        ask_rooms = resolved.rooms_conflict and (
+            applied.rooms_changed or trip_details.names_detail(message, "rooms")
+        )
         write_key = state_write_key()
         if applied.changed and write_key is not None:
             if record is None:
@@ -2987,6 +3187,7 @@ def _read_trip_details(
         trip=trip,
         issues=issues,
         ask_child_ages=ask,
+        ask_rooms=ask_rooms,
         today=today,
         changed=trip.booking_kwargs() != before.booking_kwargs(),
     )
@@ -3626,11 +3827,12 @@ def _build_booking_request_messages(
                 "similar). You cannot actually make bookings or purchases - be "
                 "upfront and clear about that near the start of your reply, in "
                 "your own natural words (not a canned sentence), without over-"
-                "apologizing. Then pivot to being genuinely helpful with what "
-                "you CAN do instead - e.g. help them think through "
-                "destinations, timing, or general travel planning. Reply in "
-                "the same language the traveler has been using in this "
-                "conversation."
+                "apologizing. Then offer the nearest thing you CAN do: set up "
+                "a stay search once they tell you where (and when, and who is "
+                "going) - it opens on Booking.com, where the booking is "
+                "completed. Don't pivot to destination ideas or general travel "
+                "planning they didn't ask for. Reply in the same language the "
+                "traveler has been using in this conversation."
             ),
         )
     )
@@ -4113,6 +4315,8 @@ def _build_accommodation_party_size_question_messages(
     destination_label: str,
     history: list[dict] | None = None,
     trip_turn: trip_details.TripTurn | None = None,
+    *,
+    booking_wording: bool = False,
 ) -> list[AIMessage]:
     """Built when is_accommodation_request resolves to a real destination
     (catalog or freeform) but nobody has said how many adults are going
@@ -4128,6 +4332,12 @@ def _build_accommodation_party_size_question_messages(
     so the same builder covers a freeform (non-catalog) place too - this
     question doesn't need any curated data, just something to name back
     to the traveler."""
+    booking_clause = (
+        " They used booking wording: add one short clause that Wanderes can't complete "
+        "a booking - the reservation is finished on Booking.com."
+        if booking_wording
+        else ""
+    )
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
     messages.append(
@@ -4143,61 +4353,7 @@ def _build_accommodation_party_size_question_messages(
                 "don't repeat information you already gave them earlier in this "
                 "conversation. Reply in the same language the traveler has been using "
                 "in this conversation (check the history above, not just this "
-                f"message).\n\n{trip_details.fact_block(trip_turn)}".rstrip()
-            ),
-        )
-    )
-    return messages
-
-
-def _build_freeform_accommodation_messages(
-    message: str,
-    place_name: str,
-    place_country: str,
-    *,
-    trip_turn: trip_details.TripTurn | None,
-    profile: TravelerProfile | None,
-    history: list[dict] | None = None,
-) -> list[AIMessage]:
-    """Built when is_accommodation_request names a place _resolve_destination
-    can't match in the curated catalog, but _resolve_freeform_place
-    confirmed is real - e.g. Wuhan, which Wanderes has never scored or
-    written a description for, but is still a real city Booking.com can
-    search directly (2026-09-25, direct user report: asked about Wuhan,
-    got a canned "can't search" reply with no party-size question at all,
-    even though a live accommodation search never actually depended on
-    the curated catalog).
-
-    No description/points_of_interest/climate/entry-requirements
-    grounding here, unlike _build_destination_detail_messages - none of
-    that exists for a non-catalog place, and inventing it would break
-    "never invent travel data." ai/views.py attaches the real "Search
-    stays" link from place_name/place_country directly - the reply just
-    needs to know one is coming so it doesn't claim it can't help."""
-    location_label = f"{place_name}, {place_country}" if place_country else place_name
-    traveler_note = _traveler_context_note(profile, include_party=False)
-    messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
-    messages.extend(_history_messages(history))
-    messages.append(
-        AIMessage(
-            role="user",
-            content=(
-                f'The traveler just said: "{message}" - asking about places to '
-                f"stay in {location_label}. This isn't one of our "
-                "curated destinations, so there's no researched description or "
-                "climate data on file for it - but it's a real place, so a live "
-                "accommodation search link IS being shown to them separately "
-                "right after your reply (don't say you can't help with a "
-                "search, and don't paste a URL yourself - just don't dwell on "
-                "the lack of one). Using your own general travel knowledge, say "
-                "something genuinely useful about staying there - good "
-                "areas/neighborhoods, what to expect - the way a knowledgeable "
-                "consultant would. Never invent a specific hotel name, price, "
-                "or rating. Do not mention saving this as a trip. Reply in the "
-                "same language the traveler has been using in this "
-                "conversation (check the history above, not just this "
-                f"message).{traveler_note}\n\n"
-                f"{trip_details.fact_block(trip_turn, always=True)}".rstrip()
+                f"message).{booking_clause}\n\n{trip_details.fact_block(trip_turn)}".rstrip()
             ),
         )
     )

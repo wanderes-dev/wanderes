@@ -29,6 +29,20 @@ def stays(place="Barcelona", **trip):
     )
 
 
+def booking(place=None, **trip):
+    """A turn the intent call files as a request to book (optionally also a
+    stays request for `place`), with the trip components for it."""
+    flags = {"is_booking_request": True}
+    if place:
+        flags.update(is_accommodation_request=True, accommodation_place_name=place)
+    return turn(spain(**flags), **({"trip_details": trip} if trip else {}))
+
+
+def plain(**trip):
+    """A turn the intent call files as ordinary conversation."""
+    return turn(spain(), **({"trip_details": trip} if trip else {}))
+
+
 def query_of(url) -> list[tuple[str, str]]:
     return parse_qsl(urlparse(url).query)
 
@@ -309,6 +323,607 @@ class LongStayTests(_TripCase):
         self.assertEqual((link["checkin"], link["checkout"]), ("2026-11-05", "2026-12-20"))
         self.assertIn("(45 nights)", result.trip.caption("Barcelona"))
         self.assertNotIn("longer than", self.prompt_of_last_reply(provider))
+
+
+LINK_WITH_ROOMS = [
+    ("ss", "Barcelona, Spain"),
+    ("checkin", "2026-11-05"),
+    ("checkout", "2026-11-08"),
+    ("group_adults", "3"),
+    ("no_rooms", "2"),
+    ("group_children", "1"),
+    ("age", "5"),
+]
+NO_GUIDE = "Do NOT write a guide"
+
+
+class _ActionCase(_TripCase):
+    """A conversation already at Barcelona, 5-8 Nov, 3 adults, 1 child aged 5."""
+
+    def conversation(self, *later):
+        provider = ScriptedProvider(
+            [
+                turn(spain(selected_destination_name="Barcelona")),
+                stays(adults=3, children=1, child_ages=[5]),
+                plain(start={"day": 5}, stay_length=3, stay_unit="days"),
+                *later,
+            ]
+        )
+        self.say(provider, "quero ir pra Barcelona")
+        self.say(provider, "hospedagem pra 3 adultos e uma criança de 5 anos")
+        self.say(provider, "quero ir dia 05 e ficar 3 dias")
+        return provider
+
+
+class RoomsProductionSequenceTests(_TripCase):
+    def test_the_whole_production_sequence_ends_with_two_rooms_in_the_search(self):
+        provider = ScriptedProvider(
+            [
+                turn(
+                    spain(selected_destination_name="Barcelona"),
+                    trip_details={"stay_length": 10, "stay_unit": "days"},
+                ),
+                stays(),
+                stays(adults=3, children=1),
+                stays(child_ages=[5]),
+                plain(start={"day": 5}, stay_length=3, stay_unit="days"),
+                stays(rooms=2),
+                stays(rooms=2),
+            ]
+        )
+        self.say(provider, "Quero ir pra Barcelona 10 dias")
+
+        asked, _, _ = self.say(provider, "quero hospedagens")
+        self.assertEqual(asked.recommendations, [])  # who is going? - nothing else
+        self.assertIn("how many adults", self.prompt_of_last_reply(provider))
+
+        child, _, _ = self.say(provider, "3 adultos e uma criança")
+        # An answer to the occupancy question is not a request for a guide:
+        # the one thing still missing is the child's age, and that is the reply.
+        self.assertIn("ONE concise question", self.prompt_of_last_reply(provider))
+        self.assertIn("a child's age is missing", self.prompt_of_last_reply(provider))
+        self.assertNotIn("Do what they asked", self.prompt_of_last_reply(provider))
+        self.assertEqual(dict(query_of(self.url_of(child)))["group_adults"], "3")
+        self.assertNotIn("group_children", dict(query_of(self.url_of(child))))
+
+        aged, _, _ = self.say(provider, "5 anos")
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertIn("ages 5 - included in the search", prompt)
+        self.assertNotIn("ONE concise question", prompt)
+        self.assertIn(NO_GUIDE, prompt)
+
+        self.say(provider, "quero ir dia 05 e ficar 3 dias")
+
+        rooms, _, state = self.say(provider, "quero dois quartos por favor")
+        self.assertEqual(query_of(self.url_of(rooms)), LINK_WITH_ROOMS)
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertIn("Rooms: 2 - included in the search.", prompt)
+        self.assertIn(
+            "carries exactly: dates 2026-11-05 to 2026-11-08, 3 adults, 1 children, 2 rooms", prompt
+        )
+        self.assertIn(NO_GUIDE, prompt)
+        self.assertNotIn("asking to book, reserve", prompt)  # no reservation disclaimer
+        self.assertNotIn("Points of interest", prompt)  # nothing to describe Barcelona with
+        self.assertEqual(
+            rooms.trip.caption("Barcelona"),
+            "Booking search: Barcelona · 5 Nov 2026 – 8 Nov 2026 (3 nights), month assumed"
+            " · 3 adults · 1 child (age 5) · 2 rooms",
+        )
+        self.assertEqual(
+            {k: v for k, v in state["trip_details"].items() if k != "rooms"},
+            {
+                "start_date": "2026-11-05",
+                "start_assumed_month": True,
+                "stay_length": 3,
+                "stay_unit": "days",
+                "adults": 3,
+                "children": 1,
+                "child_ages": [5],
+            },
+        )
+        self.assertEqual(state["trip_details"]["rooms"], 2)
+
+        again, _, state_again = self.say(provider, "quero uma pesquisa para dois quartos")
+        self.assertEqual(query_of(self.url_of(again)), LINK_WITH_ROOMS)  # same action
+        self.assertEqual(state_again["trip_details"], state["trip_details"])
+        self.assertIn(NO_GUIDE, self.prompt_of_last_reply(provider))
+
+
+class RoomsMutationRoutingTests(_ActionCase):
+    def test_a_rooms_change_is_a_short_action_however_the_intent_labelled_it(self):
+        # The intent call has filed "quero dois quartos por favor" three ways.
+        for label, turn_for_rooms in (
+            ("a stays request", stays(rooms=2)),
+            ("ordinary conversation", plain(rooms=2)),
+            ("a request to book", booking(rooms=2)),
+        ):
+            with self.subTest(label=label):
+                memory.clear_history(self.key)  # a fresh conversation for each labelling
+                provider = self.conversation(turn_for_rooms)
+
+                result, _, _ = self.say(provider, "quero dois quartos por favor")
+
+                self.assertEqual(query_of(self.url_of(result)), LINK_WITH_ROOMS)
+                prompt = self.prompt_of_last_reply(provider)
+                self.assertNotIn("asking to book, reserve", prompt)  # not the disclaimer prompt
+                self.assertNotIn("Points of interest", prompt)
+                self.assertIn("Rooms: 2 - included in the search.", prompt)
+
+    def test_a_correction_changes_only_the_rooms(self):
+        provider = self.conversation(stays(rooms=2), plain(rooms=1))
+        self.say(provider, "quero dois quartos por favor")
+
+        result, _, state = self.say(provider, "na verdade 1 quarto")
+
+        link = dict(query_of(self.url_of(result)))
+        self.assertEqual(link["no_rooms"], "1")
+        self.assertEqual(
+            (link["checkin"], link["checkout"], link["group_adults"]),
+            ("2026-11-05", "2026-11-08", "3"),
+        )
+        self.assertEqual(state["trip_details"]["child_ages"], [5])
+
+    def test_clearing_the_rooms_clears_only_the_rooms(self):
+        provider = self.conversation(stays(rooms=2), plain(cleared_fields=["rooms"]))
+        self.say(provider, "quero dois quartos por favor")
+
+        result, _, state = self.say(provider, "esquece os quartos")
+
+        self.assertNotIn("no_rooms", dict(query_of(self.url_of(result))))
+        self.assertIsNone(state["trip_details"]["rooms"])
+        self.assertEqual(state["trip_details"]["adults"], 3)
+
+    def test_two_rooms_never_become_two_adults(self):
+        # The model once read "dois quartos" as a party of two.
+        provider = self.conversation(stays(adults=2, children=2, rooms=2))
+
+        result, _, state = self.say(provider, "quero uma pesquisa para dois quartos")
+
+        self.assertEqual(
+            (state["trip_details"]["adults"], state["trip_details"]["children"]), (3, 1)
+        )
+        self.assertEqual(state["trip_details"]["child_ages"], [5])
+        self.assertEqual(state["trip_details"]["rooms"], 2)
+
+    def test_a_stray_age_of_zero_does_not_replace_the_known_age_but_a_correction_does(self):
+        provider = self.conversation(
+            stays(rooms=2, child_ages=[0]),  # a spurious 0 beside a rooms request
+            plain(child_ages=[0]),  # the traveler really correcting it
+        )
+
+        _, _, state = self.say(provider, "quero dois quartos por favor")
+        self.assertEqual(state["trip_details"]["child_ages"], [5])
+
+        _, _, state = self.say(provider, "na verdade ela tem 0 anos")
+        self.assertEqual(state["trip_details"]["child_ages"], [0])
+
+    def test_a_stray_age_of_zero_beside_the_party_keeps_the_known_age(self):
+        provider = self.conversation(plain(adults=3, children=1, child_ages=[0]))
+
+        _, _, state = self.say(provider, "somos 3 adultos e uma criança")
+
+        self.assertEqual(state["trip_details"]["child_ages"], [5])
+
+    def test_a_rooms_message_makes_exactly_one_extra_call_and_a_cue_less_one_none(self):
+        provider = self.conversation(plain(rooms=1))
+        calls = len(provider.structured_calls)
+
+        self.say(provider, "quero um quarto")
+
+        self.assertEqual(provider.structured_calls[calls:].count("trip_details_signal"), 1)
+
+
+class BookingWordingTests(_ActionCase):
+    def test_reserve_two_rooms_applies_the_rooms_and_says_the_limit_in_one_clause(self):
+        provider = self.conversation(booking(rooms=2))
+
+        result, _, state = self.say(provider, "reserve dois quartos para mim")
+
+        self.assertEqual(query_of(self.url_of(result)), LINK_WITH_ROOMS)
+        self.assertEqual(state["trip_details"]["rooms"], 2)
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertIn("They used booking wording", prompt)
+        self.assertIn("the reservation is finished on Booking.com", prompt)
+        self.assertIn("never refuse the request", prompt)
+        self.assertNotIn("asking to book, reserve", prompt)
+
+    def test_a_booking_request_for_the_chosen_place_gets_the_search_not_a_planning_pivot(self):
+        provider = self.conversation(booking())
+
+        result, _, _ = self.say(provider, "reserve um hotel pra mim")
+
+        self.assertTrue(result.recommendations)  # the existing stays search
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertIn("They used booking wording", prompt)
+        self.assertNotIn("help them think through destinations", prompt)
+
+    def test_a_booking_request_with_nowhere_to_search_keeps_the_limit_and_points_at_the_search(
+        self,
+    ):
+        provider = ScriptedProvider([booking()])
+
+        result, _, _ = self.say(provider, "reserve um hotel pra mim")
+
+        self.assertEqual(result.recommendations, [])
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertIn("asking to book, reserve", prompt)
+        self.assertIn("You cannot actually make bookings", prompt)
+        self.assertIn("set up a stay search once they tell you where", prompt)
+        self.assertIn("Don't pivot to destination ideas or general travel planning", prompt)
+
+    def test_a_booking_request_before_anyone_said_who_is_going_asks_that_with_the_limit(self):
+        provider = ScriptedProvider([turn(spain(selected_destination_name="Barcelona")), booking()])
+        self.say(provider, "quero ir pra Barcelona")
+
+        result, _, _ = self.say(provider, "reserve um hotel pra mim")
+
+        self.assertEqual(result.recommendations, [])
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertIn("how many adults", prompt)
+        self.assertIn("They used booking wording", prompt)
+
+
+class GenericAndInformationalStaysTests(_ActionCase):
+    def test_a_generic_stays_request_is_a_search_action_not_a_guide(self):
+        for message in ("quero hospedagens", "me ajuda com hospedagem"):
+            with self.subTest(message=message):
+                provider = self.conversation(stays())
+
+                result, _, _ = self.say(provider, message)
+
+                self.assertTrue(result.recommendations)  # the search action
+                prompt = self.prompt_of_last_reply(provider)
+                self.assertIn(NO_GUIDE, prompt)
+                self.assertIn("say in a sentence or two that the search is ready", prompt)
+                self.assertNotIn("Points of interest", prompt)
+                self.assertNotIn("Description:", prompt)
+
+    def test_a_question_about_areas_is_still_allowed_its_answer(self):
+        provider = self.conversation(stays())
+
+        result, _, _ = self.say(provider, "qual bairro é melhor para ficar?")
+
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertIn(
+            "unless their message actually asks for that - and then answer just that question",
+            prompt,
+        )
+        self.assertTrue(result.recommendations)
+
+    def test_an_unsupported_filter_gets_the_limit_and_the_nearest_action(self):
+        provider = self.conversation(stays())
+
+        result, _, _ = self.say(provider, "quero hotel barato")
+
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertIn(
+            "Only when their message itself asks for something the search can't do", prompt
+        )
+        self.assertIn("star rating, property type, amenity (pool, breakfast, pet-friendly)", prompt)
+        self.assertIn("cheap, barato, luxury", prompt)
+        self.assertIn("Never describe the search as being for that", prompt)
+        # ... and the facts carry the same limit, triggered by the words themselves.
+        self.assertIn("asked for a price level, star rating or amenity", prompt)
+        self.assertIn("Never describe the search as being for it", prompt)
+        self.assertIn("Otherwise never mention filters, prices or availability at all", prompt)
+        self.assertIn("Wanderes has no verified live prices and can't filter", prompt)
+        self.assertIn("they can apply it once the Booking search is open", prompt)
+        self.assertIn("don't recommend specific hotels or quote prices", prompt)
+        self.assertEqual(
+            dict(query_of(self.url_of(result)))["group_adults"], "3"
+        )  # the search itself carries no invented filter
+        self.assertNotIn("order", dict(query_of(self.url_of(result))))
+
+    def test_the_limit_is_triggered_by_the_words_and_only_by_them(self):
+        for message, expect_line in (
+            ("quero hotel barato", True),
+            ("quero um hotel de luxo com piscina", True),
+            ("hotel de 4 estrelas", True),
+            ("quero hospedagens", False),
+            ("quanto custa?", False),
+            ("qual bairro é melhor para ficar?", False),
+        ):
+            with self.subTest(message=message):
+                memory.clear_history(self.key)
+                provider = self.conversation(stays())
+
+                self.say(provider, message)
+
+                line = "asked for a price level, star rating or amenity"
+                self.assertEqual(line in self.prompt_of_last_reply(provider), expect_line)
+
+    def test_a_filter_request_costs_no_extra_model_call(self):
+        provider = self.conversation(stays())
+        calls = len(provider.structured_calls)
+
+        self.say(provider, "quero hotel barato")
+
+        self.assertNotIn("trip_details_signal", provider.structured_calls[calls:])
+
+    def test_nothing_in_the_stays_prompt_invites_a_preference_or_an_intent(self):
+        provider = self.conversation(stays())
+        self.say(provider, "quero hospedagens")
+
+        prompt = self.prompt_of_last_reply(provider)
+
+        self.assertIn(
+            "Never invent a preference, intent, question or need they didn't express", prompt
+        )
+        self.assertIn(
+            "Never write a URL or a link yourself, and don't announce one", prompt
+        )
+
+class UnsupportedFilterScopeTests(_ActionCase):
+    """A price level, star rating or amenity is something the Booking search can't
+    apply, so it is said to a traveler working on that search - and only then."""
+
+    LINE = "asked for a price level, star rating or amenity"
+
+    def test_an_informational_question_is_never_told_the_search_cannot_filter(self):
+        for message in (
+            "onde comer barato em Barcelona?",
+            "restaurantes baratos perto da Sagrada Família?",
+            "are there cheap tapas bars?",
+            "é um destino caro?",
+        ):
+            with self.subTest(message=message):
+                memory.clear_history(self.key)
+                provider = self.conversation(plain())
+
+                self.say(provider, message)
+
+                self.assertNotIn(self.LINE, self.prompt_of_last_reply(provider))
+
+    def test_choosing_a_destination_in_words_that_mention_a_budget_is_not_a_stays_request(self):
+        provider = ScriptedProvider([turn(spain(selected_destination_name="Barcelona"))])
+
+        self.say(provider, "quero ir pra Barcelona, algo barato")
+
+        self.assertNotIn(self.LINE, self.prompt_of_last_reply(provider))
+
+    def test_a_stays_search_for_one_still_gets_it(self):
+        provider = self.conversation(stays())
+
+        self.say(provider, "quero um hotel barato")
+
+        self.assertIn(self.LINE, self.prompt_of_last_reply(provider))
+
+    def test_the_limitation_does_not_claim_the_supported_details_are_missing(self):
+        provider = self.conversation(stays())
+
+        self.say(provider, "quero um hotel de luxo com piscina")
+
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertNotIn("no verified live prices or filters", prompt)
+        self.assertIn("can't filter the Booking search by price level, star rating", prompt)
+        self.assertIn("The Booking search link carries exactly: dates", prompt)  # dates are in
+
+
+class PendingDetailTests(_TripCase):
+    def pending_age(self, *later):
+        provider = ScriptedProvider(
+            [
+                turn(spain(selected_destination_name="Barcelona")),
+                stays(adults=3, children=1),
+                *later,
+            ]
+        )
+        self.say(provider, "quero ir pra Barcelona")
+        self.say(provider, "hospedagem pra 3 adultos e uma criança")
+        return provider
+
+    def test_a_request_that_names_the_children_while_the_age_is_missing_asks_for_the_age_only(self):
+        provider = self.pending_age(stays())
+
+        result, _, _ = self.say(provider, "quero hospedagem para crianças")
+
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertIn("ONE concise question", prompt)
+        self.assertIn("a child's age is missing", prompt)
+        self.assertNotIn("Do what they asked", prompt)  # no guide, no suggestions
+        self.assertEqual(
+            dict(query_of(self.url_of(result))), {"ss": "Barcelona, Spain", "group_adults": "3"}
+        )
+
+    def test_a_generic_request_while_the_age_is_missing_carries_the_rule_to_ask_for_it(self):
+        provider = self.pending_age(stays())
+
+        self.say(provider, "quero hospedagens")
+
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertIn("A child's age is still missing", prompt)
+        self.assertIn(
+            "your whole reply is one short question asking for the age - no guide", prompt
+        )
+
+    def test_a_question_about_areas_while_the_age_is_missing_is_not_blocked(self):
+        provider = self.pending_age(stays())
+
+        self.say(provider, "qual bairro é melhor para ficar?")
+
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertNotIn("ONE concise question", prompt)
+        self.assertIn("answer that briefly first and end with that one question", prompt)
+
+    def test_the_conversation_goes_on_asking_until_the_action_is_representable(self):
+        provider = self.pending_age(stays(), stays(child_ages=[5]))
+
+        self.say(provider, "quero hospedagem para crianças")
+        result, _, _ = self.say(provider, "5 anos")
+
+        self.assertEqual(
+            dict(query_of(self.url_of(result))),
+            {"ss": "Barcelona, Spain", "group_adults": "3", "group_children": "1", "age": "5"},
+        )
+        self.assertIn(NO_GUIDE, self.prompt_of_last_reply(provider))
+        self.assertNotIn("ONE concise question", self.prompt_of_last_reply(provider))
+
+
+class RoomsMoreThanAdultsTests(_TripCase):
+    def conversation(self, *later):
+        provider = ScriptedProvider(
+            [turn(spain(selected_destination_name="Barcelona")), stays(adults=1, rooms=3), *later]
+        )
+        self.say(provider, "quero ir pra Barcelona")
+        return provider
+
+    def test_three_rooms_for_one_adult_is_asked_about_and_never_claimed(self):
+        provider = self.conversation()
+
+        result, _, state = self.say(provider, "1 adulto, 3 quartos")
+
+        prompt = self.prompt_of_last_reply(provider)
+        self.assertIn("ONE concise question", prompt)
+        self.assertIn("3 rooms can't go in the search with 1 adult(s)", prompt)
+        self.assertIn(
+            "whether to change the number of adults or use fewer rooms (at most 1)", prompt
+        )
+        self.assertIn("the rooms are NOT in the Booking search", prompt)
+        link = dict(query_of(self.url_of(result)))
+        self.assertEqual(link, {"ss": "Barcelona, Spain", "group_adults": "1"})  # never no_rooms=3
+        self.assertIn(
+            "3 rooms not included - Booking needs an adult in every room",
+            result.trip.caption("Barcelona"),
+        )
+        self.assertEqual(state["trip_details"]["rooms"], 3)  # what they asked for stays on record
+        self.assertIsNone(result.trip.link_summary()["rooms"])
+
+    def test_either_answer_makes_the_rooms_representable(self):
+        for answer, components, expected in (
+            ("1 quarto mesmo", {"rooms": 1}, "1"),
+            ("então somos 3 adultos", {"adults": 3}, "3"),
+        ):
+            with self.subTest(answer=answer):
+                provider = self.conversation(plain(**components))
+                self.say(provider, "1 adulto, 3 quartos")
+
+                result, _, _ = self.say(provider, answer)
+
+                self.assertEqual(dict(query_of(self.url_of(result)))["no_rooms"], expected)
+
+    def test_rooms_that_do_not_fit_are_explained_on_the_card_even_when_the_link_stays_put(self):
+        # One adult is already on record, so asking for 3 rooms changes nothing the
+        # link carries - the card still goes out again, so the caption can say why
+        # the rooms are not in the search.
+        provider = ScriptedProvider(
+            [turn(spain(selected_destination_name="Barcelona")), plain(adults=1), plain(rooms=3)]
+        )
+        self.say(provider, "quero ir pra Barcelona")
+        self.say(provider, "1 adulto")
+
+        result, _, state = self.say(provider, "quero 3 quartos")
+
+        self.assertEqual(state["trip_details"]["rooms"], 3)
+        self.assertEqual(
+            dict(query_of(self.url_of(result))), {"ss": "Barcelona, Spain", "group_adults": "1"}
+        )
+        self.assertIn("3 rooms not included", result.trip.caption("Barcelona"))
+        self.assertIn("ONE concise question", self.prompt_of_last_reply(provider))
+
+    def test_a_message_that_is_not_about_the_rooms_does_not_nag_about_them(self):
+        provider = self.conversation(
+            stays(),
+        )
+        self.say(provider, "1 adulto, 3 quartos")
+
+        self.say(provider, "quero hospedagens")
+
+        self.assertNotIn("ONE concise question", self.prompt_of_last_reply(provider))
+        self.assertNotIn("can't go in the search", self.prompt_of_last_reply(provider))
+
+class InventedLinkTests(_ActionCase):
+    """The model can't know the real search URL and writes one when it can; the
+    card beside the reply carries the actual link, so none of that gets out."""
+
+    INVENTED = (
+        "Pronto! [Pesquisar hospedagens](https://www.booking.com/searchresults.pt-br.html"
+        "?ss=Barcelona&no_rooms=3) Boa viagem!"
+    )
+
+    def spoken(self, provider, message):
+        from ai.orchestration import stream_travel_recommendation
+
+        result = stream_travel_recommendation(
+            message, user=self.user, ai_provider=provider, climate_provider=self.climate
+        )
+        return result, "".join(result.reply_chunks)
+
+    def test_a_stays_action_reply_never_carries_a_link_the_model_wrote(self):
+        provider = self.conversation(plain(rooms=2))
+        provider.reply_text = self.INVENTED
+
+        result, spoken = self.spoken(provider, "quero dois quartos por favor")
+
+        self.assertEqual(spoken, "Pronto! Pesquisar hospedagens Boa viagem!")
+        self.assertNotIn("booking.com", memory.get_history(self.key)[-1]["content"])
+        self.assertIn("no_rooms=2", self.url_of(result))  # the card's link is the real one
+
+    def test_a_search_request_reply_is_held_to_the_same(self):
+        provider = self.conversation(stays())
+        provider.reply_text = self.INVENTED
+
+        _, spoken = self.spoken(provider, "quero hospedagens")
+
+        self.assertNotIn("http", spoken)
+
+    def test_the_question_about_who_is_going_is_held_to_the_same(self):
+        provider = ScriptedProvider([turn(spain(selected_destination_name="Barcelona")), stays()])
+        provider.reply_text = self.INVENTED
+        self.say(provider, "quero ir pra Barcelona")
+
+        result, spoken = self.spoken(provider, "quero hospedagens")
+
+        self.assertEqual(result.recommendations, [])  # nothing to search yet - just the question
+        self.assertNotIn("http", spoken)
+        self.assertNotIn("booking.com", memory.get_history(self.key)[-1]["content"])
+
+    def test_what_the_traveler_is_shown_is_what_is_remembered(self):
+        provider = self.conversation(plain(rooms=2))
+        provider.reply_text = self.INVENTED
+
+        _, spoken = self.spoken(provider, "quero dois quartos por favor")
+
+        self.assertEqual(memory.get_history(self.key)[-1]["content"], spoken)
+
+    def test_other_replies_are_left_alone(self):
+        provider = self.conversation(plain())
+        provider.reply_text = "Veja https://example.com/guia"
+
+        _, spoken = self.spoken(provider, "obrigado")
+
+        self.assertEqual(spoken, "Veja https://example.com/guia")
+
+
+class RoomsStateTests(_OrchestrationCase):
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch("ai.orchestration._today", return_value=TODAY)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @staticmethod
+    def _t(trip=None):
+        return {
+            "intent": intent(),
+            "climate_budget": {},
+            "state_clear": {},
+            "trip_details": trip or {},
+        }
+
+    def test_the_owner_writes_the_rooms_and_a_foreign_conversation_does_not(self):
+        self._own(5, trip_details={"adults": 3})
+
+        _, owned = self._override_turn(
+            ScriptedProvider([self._t({"rooms": 2})]), 5, message="quero dois quartos"
+        )
+        self.assertEqual(owned["trip_details"]["rooms"], 2)
+
+        _, foreign = self._override_turn(
+            ScriptedProvider([self._t({"rooms": 9})]), 6, message="quero nove quartos"
+        )
+        self.assertEqual(foreign, {})
+        self.assertEqual(memory.get_climate_budget(self.key)["trip_details"]["rooms"], 2)
+        self.assertEqual(memory.get_state_owner(self.key), 5)
 
 
 class StaysActionResurfacingTests(_TripCase):
