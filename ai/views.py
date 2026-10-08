@@ -35,6 +35,11 @@ RECOMMENDATIONS_DELIMITER = "\n<<<WANDERES_RECOMMENDATIONS>>>\n"
 # authenticated users; anonymous visitors can't save conversations.
 CONVERSATION_DELIMITER = "\n<<<WANDERES_CONVERSATION>>>\n"
 
+# Sent when a turn changed what the Booking search carries (or whether there is
+# one at all): the buttons already on the page are out of date, so the page
+# retires them before it draws the new cards.
+STAYS_DELIMITER = "\n<<<WANDERES_STAYS>>>\n"
+
 
 def _chat_i18n_json() -> str:
     """Translated strings the chat page's JS needs at runtime - loading
@@ -110,6 +115,23 @@ def _parse_conversation_id(raw: str | None) -> int | None:
     return None
 
 
+def _stays_action_data(trip, name: str, country: str) -> dict:
+    """The Booking search action for a card: the link, the line under it and
+    what the link carries - or nothing at all while the trip isn't ready for a
+    search (see ResolvedTrip.missing_for_search). Every card that can carry the
+    action is built through here, so no path can show a search the traveler
+    hasn't given enough for; with no trip at all, there's no action."""
+    if trip is None or not trip.search_ready:
+        return {}
+    return {
+        "accommodation_search_url": get_accommodation_search_link_provider().build_search_url(
+            destination=name, country=country, **trip.booking_kwargs()
+        ),
+        "accommodation_caption": trip.caption(name),
+        "accommodation_link": trip.link_summary(),
+    }
+
+
 def _recommendation_card_data(scored_destination, *, detail_shown=False, trip=None):
     """Shape one ScoredDestination into what the chat page's recommendation
     cards need. `05_AI_DESIGN.md` §7's "never invent travel data" applies
@@ -130,7 +152,8 @@ def _recommendation_card_data(scored_destination, *, detail_shown=False, trip=No
 
     `trip` is the ResolvedTrip ai.orchestration produced for this turn: the
     link carries exactly what it holds and the caption says so, both read
-    from that one object - nothing is guessed or defaulted here."""
+    from that one object - nothing is guessed or defaulted here. Until the
+    trip is ready for a search the card has no Booking action at all."""
     destination = scored_destination.destination
     fit_reasons = []
     if scored_destination.preference_fit > 0:
@@ -151,15 +174,7 @@ def _recommendation_card_data(scored_destination, *, detail_shown=False, trip=No
         "detail_shown": detail_shown,
     }
     if detail_shown:
-        trip = trip or trip_details.ResolvedTrip()
-        accommodation_provider = get_accommodation_search_link_provider()
-        data["accommodation_search_url"] = accommodation_provider.build_search_url(
-            destination=destination.name,
-            country=destination.country,
-            **trip.booking_kwargs(),
-        )
-        data["accommodation_caption"] = trip.caption(destination.name)
-        data["accommodation_link"] = trip.link_summary()
+        data.update(_stays_action_data(trip, destination.name, destination.country))
     return data
 
 
@@ -340,7 +355,16 @@ def recommendations_stream(request):
             yield chunk
         full_reply = "".join(collected)
 
-        if result.recommendations:
+        if result.retire_stays:
+            # What the Booking buttons already on the page carry is out of date.
+            yield STAYS_DELIMITER + json.dumps({"retire": True})
+
+        # A card that exists only to show the Booking action has nothing to
+        # show while the trip isn't ready for a search.
+        stays_only_and_unready = result.is_accommodation_reply and not (
+            result.trip is not None and result.trip.search_ready
+        )
+        if result.recommendations and not stays_only_and_unready:
             # Already capped to MAX_RECOMMENDATIONS by ai.orchestration
             # before it reaches this view - this slice is a no-op today,
             # kept so a future caller that doesn't pre-cap can't flood the
@@ -363,23 +387,22 @@ def recommendations_stream(request):
             # freeform=True tells the card template to skip "Save this
             # trip" (trips.Trip.destination is a hard FK to
             # travel.Destination; this place was never written there).
-            accommodation_provider = get_accommodation_search_link_provider()
-            trip = result.trip or trip_details.ResolvedTrip()
-            payload = [
-                {
-                    "name": result.accommodation_freeform_name,
-                    "country": result.accommodation_freeform_country or "",
-                    "detail_shown": True,
-                    "freeform": True,
-                    "accommodation_search_url": accommodation_provider.build_search_url(
-                        destination=result.accommodation_freeform_name,
-                        country=result.accommodation_freeform_country or "",
-                        **trip.booking_kwargs(),
-                    ),
-                    "accommodation_caption": trip.caption(result.accommodation_freeform_name),
-                }
-            ]
-            yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)
+            action = _stays_action_data(
+                result.trip,
+                result.accommodation_freeform_name,
+                result.accommodation_freeform_country or "",
+            )
+            if action:  # the card is only that action
+                payload = [
+                    {
+                        "name": result.accommodation_freeform_name,
+                        "country": result.accommodation_freeform_country or "",
+                        "detail_shown": True,
+                        "freeform": True,
+                        **action,
+                    }
+                ]
+                yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)
 
         if user is not None:
             # A degraded reply (provider unreachable, or failed

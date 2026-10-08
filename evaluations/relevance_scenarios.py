@@ -163,7 +163,7 @@ SCENARIOS = (
         (
             _CHOOSE,
             Step(
-                "e hospedagem? somos 2",
+                "e hospedagem? dia 5, 3 dias, somos 2",
                 expect_card=True,
                 forbid=("fix_claim", "price_figures", "video", "climate"),
             ),

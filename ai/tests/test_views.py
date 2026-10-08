@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -11,12 +12,27 @@ from ai.trip_details import ResolvedTrip
 from ai.views import (
     CONVERSATION_DELIMITER,
     RECOMMENDATIONS_DELIMITER,
+    STAYS_DELIMITER,
     _recommendation_card_data,
 )
 from analytics.models import Event
 from recommendations.scoring import ScoredDestination
 from travel.models import Destination
 from users.models import User
+
+
+def ready_trip(**overrides) -> ResolvedTrip:
+    """A trip with everything a Booking search needs: 5-8 November, 3 adults."""
+    fields = {
+        "start_date": date(2026, 11, 5),
+        "check_in": date(2026, 11, 5),
+        "check_out": date(2026, 11, 8),
+        "nights": 3,
+        "stay_length": 3,
+        "stay_unit": "days",
+        "adults": 3,
+    }
+    return ResolvedTrip(**{**fields, **overrides})
 
 
 class StubSubjectProvider:
@@ -337,7 +353,9 @@ class RecommendationsStreamViewTests(TestCase):
         self.assertTrue(parsed[0]["detail_shown"])
 
     @patch("ai.views.stream_travel_recommendation")
-    def test_destination_detail_card_includes_an_accommodation_search_url(self, mock_stream):
+    def test_a_detail_card_with_nothing_known_about_the_trip_has_no_booking_action(
+        self, mock_stream
+    ):
         destination = Destination.objects.create(
             slug="bali-id",
             name="Bali",
@@ -375,12 +393,13 @@ class RecommendationsStreamViewTests(TestCase):
         content = b"".join(response.streaming_content).decode()
         _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
         parsed = json.loads(json_part)
-        accommodation_url = parsed[0]["accommodation_search_url"]
-        self.assertIn("https://www.booking.com/searchresults.en-gb.html?", accommodation_url)
-        self.assertIn("ss=Bali%2C+Indonesia", accommodation_url)
-        # No party size known on this path (a plain "Choose this trip"
-        # click, not an accommodation request) - never guessed.
-        self.assertNotIn("group_adults", accommodation_url)
+        # A plain "Choose this trip" click: nothing is known about the trip, so
+        # the card has no Booking search - not even a partial one - and keeps
+        # everything else, "Save this trip" included.
+        self.assertTrue(parsed[0]["detail_shown"])
+        self.assertEqual(parsed[0]["slug"], "bali-id")
+        for key in ("accommodation_search_url", "accommodation_caption", "accommodation_link"):
+            self.assertNotIn(key, parsed[0])
 
     @patch("ai.views.stream_travel_recommendation")
     def test_accommodation_search_url_reflects_a_known_party_size(self, mock_stream):
@@ -415,7 +434,7 @@ class RecommendationsStreamViewTests(TestCase):
             recommendations=[scored],
             reply_chunks=iter(["Here's more about Bali."]),
             is_destination_detail=True,
-            trip=ResolvedTrip(adults=3),
+            trip=ready_trip(adults=3),
         )
 
         response = self.client.post(
@@ -426,7 +445,10 @@ class RecommendationsStreamViewTests(TestCase):
         content = b"".join(response.streaming_content).decode()
         _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
         parsed = json.loads(json_part)
-        self.assertIn("group_adults=3", parsed[0]["accommodation_search_url"])
+        url = parsed[0]["accommodation_search_url"]
+        self.assertIn("group_adults=3", url)
+        self.assertIn("checkin=2026-11-05", url)
+        self.assertIn("checkout=2026-11-08", url)
 
     @patch("ai.views.stream_travel_recommendation")
     def test_browse_stage_cards_have_no_accommodation_search_url(self, mock_stream):
@@ -488,7 +510,7 @@ class FreeformAccommodationCardTests(TestCase):
         mock_stream.return_value = StreamingOrchestrationResult(
             recommendations=[],
             reply_chunks=iter(["Wuhan has some great riverside areas to stay in."]),
-            trip=ResolvedTrip(adults=3),
+            trip=ready_trip(adults=3),
             accommodation_freeform_name="Wuhan",
             accommodation_freeform_country="China",
         )
@@ -519,7 +541,7 @@ class FreeformAccommodationCardTests(TestCase):
         mock_stream.return_value = StreamingOrchestrationResult(
             recommendations=[],
             reply_chunks=iter(["Here's what to expect."]),
-            trip=ResolvedTrip(adults=2),
+            trip=ready_trip(adults=2),
             accommodation_freeform_name="Wuhan",
             accommodation_freeform_country="",
         )
@@ -1186,8 +1208,6 @@ class AccommodationClickViewTests(TestCase):
                 self.assertNotIn("link", event.metadata)
 
     def test_the_card_hands_the_page_exactly_what_the_link_carries(self):
-        from ai.trip_details import ResolvedTrip
-
         scored = ScoredDestination(
             destination=self.destination,
             avg_high_c=None,
@@ -1198,15 +1218,15 @@ class AccommodationClickViewTests(TestCase):
             repetition_penalty=0,
             score=0,
         )
-        trip = ResolvedTrip(adults=3, children=1, child_ages=(5,), rooms=2)
+        trip = ready_trip(adults=3, children=1, child_ages=(5,), rooms=2)
 
         card = _recommendation_card_data(scored, detail_shown=True, trip=trip)
 
         self.assertEqual(
             card["accommodation_link"],
             {
-                "check_in": None,
-                "check_out": None,
+                "check_in": "2026-11-05",
+                "check_out": "2026-11-08",
                 "adults": 3,
                 "children": 1,
                 "child_ages": [5],
@@ -1218,9 +1238,7 @@ class AccommodationClickViewTests(TestCase):
             {**trip.link_summary()},
         )
 
-    def test_a_room_count_the_link_does_not_carry_is_not_reported_as_carried(self):
-        from ai.trip_details import ResolvedTrip
-
+    def test_a_room_count_the_search_cannot_carry_means_there_is_no_search_to_report(self):
         scored = ScoredDestination(
             destination=self.destination,
             avg_high_c=None,
@@ -1233,11 +1251,11 @@ class AccommodationClickViewTests(TestCase):
         )
 
         card = _recommendation_card_data(
-            scored, detail_shown=True, trip=ResolvedTrip(adults=1, rooms=3)
+            scored, detail_shown=True, trip=ready_trip(adults=1, rooms=3)
         )
 
-        self.assertIsNone(card["accommodation_link"]["rooms"])
-        self.assertNotIn("no_rooms", card["accommodation_search_url"])
+        for key in ("accommodation_search_url", "accommodation_caption", "accommodation_link"):
+            self.assertNotIn(key, card)
 
     def test_records_the_acquisition_snapshot_when_the_session_has_one(self):
         self.client.get("/", {"utm_source": "tiktok", "utm_campaign": "warm_november"})
@@ -1301,3 +1319,192 @@ class AccommodationClickViewTests(TestCase):
         response = self.client.get(reverse("ai:accommodation-click"))
 
         self.assertEqual(response.status_code, 405)
+
+
+class BookingActionReadinessTests(TestCase):
+    """The card carries a Booking search only when the trip is ready for one:
+    a start date and a length, who is going, every child's age, and rooms that
+    fit the adults. Otherwise there is no search at all - never a smaller one."""
+
+    ACTION_KEYS = ("accommodation_search_url", "accommodation_caption", "accommodation_link")
+
+    def setUp(self):
+        self.destination = Destination.objects.create(
+            slug="bali-id",
+            name="Bali",
+            country="Indonesia",
+            latitude="-8.34000",
+            longitude="115.09000",
+            trip_type="beach",
+            cost_of_living=1,
+            best_season="Apr-Oct",
+            worst_season="Dec-Mar",
+            short_description="A tropical island.",
+            points_of_interest=[],
+        )
+        self.scored = ScoredDestination(
+            destination=self.destination,
+            avg_high_c=None,
+            avg_low_c=None,
+            preference_fit=0,
+            budget_fit=0,
+            temperature_fit=0,
+            repetition_penalty=0,
+            score=0,
+        )
+
+    def post(self, mock_stream, **result_fields):
+        mock_stream.return_value = StreamingOrchestrationResult(
+            reply_chunks=iter(["A reply."]), **result_fields
+        )
+        response = self.client.post(reverse("ai:recommendations-api"), {"message": "a message"})
+        return b"".join(response.streaming_content).decode()
+
+    def cards_in(self, content):
+        _, _, json_part = content.partition(RECOMMENDATIONS_DELIMITER)
+        return json.loads(json_part)
+
+    def test_each_missing_detail_keeps_the_action_off_the_card(self):
+        cases = {
+            "no trip at all": None,
+            "nothing known": ResolvedTrip(),
+            "adults but no dates": ResolvedTrip(adults=3),
+            "a start with no length": ResolvedTrip(start_date=date(2026, 11, 5), adults=3),
+            "a length with no start": ResolvedTrip(stay_length=3, stay_unit="days", adults=3),
+            "dates but no adults": ready_trip(adults=None),
+            "a child with no age": ready_trip(adults=2, children=1),
+            "rooms that outnumber the adults": ready_trip(adults=1, rooms=3),
+        }
+        for name, trip in cases.items():
+            with self.subTest(name):
+                card = _recommendation_card_data(self.scored, detail_shown=True, trip=trip)
+
+                for key in self.ACTION_KEYS:
+                    self.assertNotIn(key, card)
+                self.assertTrue(card["detail_shown"])  # the card itself, "Save this trip", stays
+
+    def test_a_ready_trip_gets_the_action_with_exactly_what_it_carries(self):
+        card = _recommendation_card_data(
+            self.scored, detail_shown=True, trip=ready_trip(adults=3, children=1, child_ages=(5,))
+        )
+
+        url = card["accommodation_search_url"]
+        for part in ("checkin=2026-11-05", "checkout=2026-11-08", "group_adults=3", "age=5"):
+            self.assertIn(part, url)
+        self.assertIn("5 Nov 2026", card["accommodation_caption"])
+        self.assertEqual(card["accommodation_link"]["adults"], 3)
+
+    def test_a_browse_card_never_has_the_action_even_for_a_ready_trip(self):
+        card = _recommendation_card_data(self.scored, detail_shown=False, trip=ready_trip())
+
+        for key in self.ACTION_KEYS:
+            self.assertNotIn(key, card)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_a_card_that_exists_only_for_the_action_is_left_out_until_ready(self, mock_stream):
+        content = self.post(
+            mock_stream,
+            recommendations=[self.scored],
+            is_destination_detail=True,
+            is_accommodation_reply=True,
+            trip=ResolvedTrip(adults=3),
+        )
+
+        self.assertNotIn(RECOMMENDATIONS_DELIMITER, content)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_that_same_card_appears_once_the_trip_is_ready(self, mock_stream):
+        content = self.post(
+            mock_stream,
+            recommendations=[self.scored],
+            is_destination_detail=True,
+            is_accommodation_reply=True,
+            trip=ready_trip(),
+        )
+
+        self.assertIn("checkin=2026-11-05", self.cards_in(content)[0]["accommodation_search_url"])
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_a_destination_card_stays_without_the_action_while_unready(self, mock_stream):
+        content = self.post(
+            mock_stream,
+            recommendations=[self.scored],
+            is_destination_detail=True,
+            trip=ResolvedTrip(stay_length=10, stay_unit="days"),
+        )
+
+        card = self.cards_in(content)[0]
+        self.assertTrue(card["detail_shown"])
+        for key in self.ACTION_KEYS:
+            self.assertNotIn(key, card)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_a_freeform_place_gets_a_card_only_when_the_trip_is_ready(self, mock_stream):
+        for trip, expect_card in ((ResolvedTrip(adults=2), False), (ready_trip(adults=2), True)):
+            with self.subTest(ready=expect_card):
+                content = self.post(
+                    mock_stream,
+                    recommendations=[],
+                    trip=trip,
+                    accommodation_freeform_name="Wuhan",
+                    accommodation_freeform_country="China",
+                )
+
+                self.assertEqual(RECOMMENDATIONS_DELIMITER in content, expect_card)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_the_page_is_told_to_retire_old_buttons_when_there_is_no_new_card(self, mock_stream):
+        content = self.post(mock_stream, recommendations=[], retire_stays=True)
+
+        _, _, json_part = content.partition(STAYS_DELIMITER)
+        self.assertEqual(json.loads(json_part), {"retire": True})
+        self.assertNotIn(RECOMMENDATIONS_DELIMITER, content)
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_the_retire_notice_comes_before_the_new_cards(self, mock_stream):
+        content = self.post(
+            mock_stream,
+            recommendations=[self.scored],
+            is_destination_detail=True,
+            is_accommodation_reply=True,
+            trip=ready_trip(),
+            retire_stays=True,
+        )
+
+        self.assertLess(content.index(STAYS_DELIMITER), content.index(RECOMMENDATIONS_DELIMITER))
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_nothing_is_sent_when_nothing_about_the_search_changed(self, mock_stream):
+        content = self.post(mock_stream, recommendations=[])
+
+        self.assertNotIn(STAYS_DELIMITER, content)
+
+
+class ChatPageFootersTests(TestCase):
+    """The page is JavaScript this suite can't run, so what it must agree with the
+    view on is checked on the page's text: the footers it parses and how it retires
+    a Booking button."""
+
+    def setUp(self):
+        self.html = self.client.get(reverse("ai:chat")).content.decode()
+
+    def test_the_page_knows_every_footer_the_view_can_send(self):
+        for name, value in (
+            ("RECOMMENDATIONS_DELIMITER", RECOMMENDATIONS_DELIMITER),
+            ("CONVERSATION_DELIMITER", CONVERSATION_DELIMITER),
+            ("STAYS_DELIMITER", STAYS_DELIMITER),
+        ):
+            with self.subTest(footer=name):
+                self.assertIn(f"const {name} = {json.dumps(value)};", self.html)
+
+    def test_the_page_retires_marked_buttons_before_drawing_the_new_cards(self):
+        self.assertIn("function retireStaysActions()", self.html)
+        self.assertIn('querySelectorAll(".stays-action")', self.html)
+        # both the button and the line under it carry the mark ...
+        self.assertIn('stayLink.className = "btn btn-secondary stays-action";', self.html)
+        self.assertIn('caption.className = "accommodation-caption stays-action";', self.html)
+        # ... and the retiring happens first, in the footer handler
+        handler = self.html[self.html.index("const footers = splitFooters(buffer);") :]
+        self.assertLess(
+            handler.index("retireStaysActions();"), handler.index("addRecommendationCards(")
+        )

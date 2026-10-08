@@ -28,7 +28,7 @@ from django.urls import reverse
 
 from ai import orchestration
 from ai.provider.base import AIResponse
-from ai.views import CONVERSATION_DELIMITER, RECOMMENDATIONS_DELIMITER
+from ai.views import CONVERSATION_DELIMITER, RECOMMENDATIONS_DELIMITER, STAYS_DELIMITER
 
 _UNSET = object()
 
@@ -57,6 +57,9 @@ class ViewTurn:
     # The cards the page would render, as the view sent them (including the
     # "Search stays" URL and its caption).
     cards: list = field(default_factory=list)
+    # The view told the page that the Booking buttons it already shows are out
+    # of date (what the search carries changed, or there is no search now).
+    retire_stays: bool = False
 
 
 def _allowed_host() -> str:
@@ -116,7 +119,14 @@ class ViewSession:
         footer = {}
         if CONVERSATION_DELIMITER in body:
             footer = json.loads(body.split(CONVERSATION_DELIMITER, 1)[1])
-        reply = body.split(RECOMMENDATIONS_DELIMITER, 1)[0].split(CONVERSATION_DELIMITER, 1)[0]
+        delimiters = (STAYS_DELIMITER, RECOMMENDATIONS_DELIMITER, CONVERSATION_DELIMITER)
+        reply = body[: min((body.index(d) for d in delimiters if d in body), default=len(body))]
+
+        retire_stays = False
+        if STAYS_DELIMITER in body:
+            stays = body.split(STAYS_DELIMITER, 1)[1]
+            stays = stays.split(RECOMMENDATIONS_DELIMITER, 1)[0].split(CONVERSATION_DELIMITER, 1)[0]
+            retire_stays = bool(json.loads(stays).get("retire"))
 
         if footer.get("saved") and footer.get("conversation_id"):
             self.conversation_id = footer["conversation_id"]
@@ -135,6 +145,7 @@ class ViewSession:
             conversation_id=footer.get("conversation_id"),
             view_kwargs=captured["kwargs"],
             cards=cards,
+            retire_stays=retire_stays,
         )
 
     def new_conversation(self) -> None:

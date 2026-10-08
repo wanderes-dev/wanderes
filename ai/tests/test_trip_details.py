@@ -22,6 +22,7 @@ from ai.trip_details import (
     resolve,
     restrict_clears,
     validate_components,
+    with_party_offer,
 )
 
 TODAY = date(2026, 10, 7)
@@ -41,6 +42,7 @@ def comps(
     children=None,
     ages=(),
     rooms=None,
+    confirms=False,
     cleared=(),
 ):
     return validate_components(
@@ -53,6 +55,7 @@ def comps(
             "children": children,
             "child_ages": list(ages),
             "rooms": rooms,
+            "confirms_party_offer": confirms,
             "cleared_fields": list(cleared),
         }
     )
@@ -922,8 +925,10 @@ class OneObjectDrivesEverythingTests(SimpleTestCase):
                     self.assertIn(
                         f"{kwargs['check_in']:%-d %b %Y}".replace("-", ""), caption.replace("-", "")
                     )
-                    self.assertIn(kwargs["check_in"].isoformat(), facts)
-                    self.assertIn(kwargs["check_out"].isoformat(), facts)
+                    self.assertIn("Check-in:", facts)
+                    if trip.search_ready:  # the summary of what the link carries
+                        self.assertIn(kwargs["check_in"].isoformat(), facts)
+                        self.assertIn(kwargs["check_out"].isoformat(), facts)
                 else:
                     self.assertIn("no dates set", caption)
                 # adults
@@ -959,9 +964,13 @@ class OneObjectDrivesEverythingTests(SimpleTestCase):
                     self.assertNotIn(
                         "room", caption.replace("rooms", "room").split("Booking search:")[1]
                     )
-                # the summary line of what the link carries
-                if not kwargs:
-                    self.assertIn("carries exactly: only the destination", facts)
+                # what the search carries - or that there is none yet
+                if trip.search_ready:
+                    self.assertIn("The Booking search link carries exactly:", facts)
+                    self.assertNotIn("NO Booking search action", facts)
+                else:
+                    self.assertIn("There is NO Booking search action yet", facts)
+                    self.assertNotIn("carries exactly", facts)
 
     def test_the_caption_for_the_finished_conversation(self):
         trip = _trip(
@@ -993,7 +1002,11 @@ class OneObjectDrivesEverythingTests(SimpleTestCase):
 
     def test_the_facts_disclose_the_assumed_month_and_the_days_counted_as_nights(self):
         trip = _trip(
-            start_date="2026-11-05", start_assumed_month=True, stay_length=3, stay_unit="days"
+            start_date="2026-11-05",
+            start_assumed_month=True,
+            stay_length=3,
+            stay_unit="days",
+            adults=2,
         )
 
         facts = fact_block(TripTurn(trip=trip, today=TODAY))
@@ -1002,7 +1015,7 @@ class OneObjectDrivesEverythingTests(SimpleTestCase):
         self.assertIn("the month was assumed", facts)
         self.assertIn("Check-out: Sunday 8 November 2026 (3 nights).", facts)
         self.assertIn('The traveler said "3 days", counted as 3 nights.', facts)
-        self.assertIn("carries exactly: dates 2026-11-05 to 2026-11-08", facts)
+        self.assertIn("carries exactly: dates 2026-11-05 to 2026-11-08, 2 adults", facts)
 
     def test_the_facts_carry_what_this_turn_raised(self):
         applied = apply(day=5, relative="this", adults=3, children=1)
@@ -1026,3 +1039,238 @@ class OneObjectDrivesEverythingTests(SimpleTestCase):
         self.assertEqual(fact_block(None), "")
         self.assertEqual(fact_block(turn), "")
         self.assertIn("Dates: none set", fact_block(turn, always=True))
+
+
+READY = {
+    "start_date": "2026-11-05",
+    "start_assumed_month": True,
+    "stay_length": 3,
+    "stay_unit": "days",
+    "adults": 2,
+}
+
+
+class SearchReadinessTests(SimpleTestCase):
+    """One decision - `missing_for_search` - says whether there is a Booking
+    search at all, and what to ask for next, in a fixed order."""
+
+    def test_what_is_missing_comes_back_in_the_order_to_ask_for_it(self):
+        cases = (
+            (record(), ("check_in", "stay_length", "adults")),
+            (record(stay_length=10, stay_unit="days"), ("check_in", "adults")),
+            (record(start_date="2026-11-05"), ("stay_length", "adults")),
+            (record(adults=2), ("check_in", "stay_length")),
+            (record(**{**READY, "adults": None}), ("adults",)),
+            (record(**READY), ()),
+            (record(**READY, children=1), ("child_ages",)),
+            (record(**READY, children=2, child_ages=[5]), ("child_ages",)),
+            (record(**READY, children=1, child_ages=[5]), ()),
+            (record(**{**READY, "adults": None}, children=1, child_ages=[5]), ("adults",)),
+            (record(**{**READY, "adults": 1}, rooms=3), ("rooms",)),
+            (record(**READY, rooms=2), ()),
+            # the start the traveler gave has already passed: as good as no start
+            (record(**{**READY, "start_date": "2026-10-01"}), ("check_in",)),
+        )
+        for stored, expected in cases:
+            with self.subTest(expected=expected, stored=stored):
+                self.assertEqual(resolve(stored, TODAY).missing_for_search, expected)
+
+    def test_everything_missing_is_listed_with_the_earliest_first(self):
+        stored = record(adults=1, rooms=3, children=1)
+
+        trip = resolve(stored, TODAY)
+
+        self.assertEqual(
+            trip.missing_for_search, ("check_in", "stay_length", "child_ages", "rooms")
+        )
+
+    def test_the_search_is_ready_exactly_when_nothing_is_missing(self):
+        for stored in (record(), record(adults=3), record(**READY, children=1), record(**READY)):
+            with self.subTest(stored=stored):
+                trip = resolve(stored, TODAY)
+
+                self.assertEqual(trip.search_ready, not trip.missing_for_search)
+
+    def test_an_unready_trip_has_no_search_at_all_not_a_smaller_one(self):
+        trip = resolve(record(adults=3), TODAY)
+
+        self.assertIsNone(trip.search_kwargs())
+        self.assertEqual(trip.booking_kwargs(), {"adults": 3})  # the formatter itself is unchanged
+
+    def test_a_ready_trip_searches_with_exactly_what_it_holds(self):
+        trip = resolve(record(**READY, children=1, child_ages=[5], rooms=2), TODAY)
+
+        self.assertEqual(trip.search_kwargs(), trip.booking_kwargs())
+        self.assertEqual(trip.search_kwargs()["rooms"], 2)
+
+    def test_the_start_is_known_even_before_the_length_is(self):
+        trip = resolve(record(start_date="2026-11-05"), TODAY)
+
+        self.assertEqual(trip.start_date, date(2026, 11, 5))
+        self.assertFalse(trip.has_dates)
+
+
+class PartyOfferTests(SimpleTestCase):
+    """The party size on the traveler's profile is only ever a question. A clear
+    "sim" to that question confirms it; nothing else turns it into adults."""
+
+    ASKED = record(**{**READY, "adults": None}, adults_offer=2)
+
+    def test_a_yes_confirms_the_offered_party_as_adults(self):
+        applied = apply(self.ASKED, confirms=True)
+
+        self.assertEqual(applied.record["adults"], 2)
+        self.assertTrue(applied.details_changed)
+        self.assertNotIn("adults_offer", applied.record)
+
+    def test_what_the_traveler_says_about_who_is_going_wins_over_the_offer(self):
+        applied = apply(self.ASKED, confirms=True, adults=3)
+
+        self.assertEqual(applied.record["adults"], 3)
+
+    def test_anything_but_a_clear_yes_leaves_the_adults_unknown(self):
+        applied = apply(self.ASKED)  # "não", a different topic, silence
+
+        self.assertIsNone(applied.record["adults"])
+
+    def test_a_yes_with_no_question_asked_confirms_nothing(self):
+        applied = apply(record(**{**READY, "adults": None}), confirms=True)
+
+        self.assertIsNone(applied.record["adults"])
+
+    def test_a_yes_cannot_survive_the_traveler_taking_the_adults_back(self):
+        applied = apply(self.ASKED, confirms=True, cleared=["adults"])
+
+        self.assertIsNone(applied.record["adults"])
+
+    def test_the_offer_is_good_for_one_reply_only(self):
+        first = apply(self.ASKED, length=4, unit="days")
+
+        self.assertNotIn("adults_offer", first.record)
+        later = apply(first.record, confirms=True)  # a stray "sim" a turn later
+        self.assertIsNone(later.record["adults"])
+
+    def test_an_offer_lapsing_is_not_a_change_to_the_trip(self):
+        applied = apply(self.ASKED)
+
+        self.assertTrue(applied.changed)  # the record is rewritten without the offer ...
+        self.assertFalse(applied.details_changed)  # ... but nothing the search uses moved
+
+    def test_the_offer_never_reaches_the_search(self):
+        trip = resolve(self.ASKED, TODAY)
+
+        self.assertIsNone(trip.adults)
+        self.assertNotIn("adults", trip.booking_kwargs())
+        self.assertEqual(trip.missing_for_search, ("adults",))
+
+    def test_remembering_the_question_keeps_the_rest_of_the_trip(self):
+        noted = with_party_offer(record(**{**READY, "adults": None}), 4)
+
+        self.assertEqual(noted["adults_offer"], 4)
+        self.assertEqual(noted["stay_length"], 3)
+        self.assertIsNone(with_party_offer(None, 999)["adults_offer"])  # out of range: no offer
+
+    def test_a_record_without_a_pending_question_is_stored_as_it_always_was(self):
+        applied = apply(None, length=3, unit="days")
+
+        self.assertNotIn("adults_offer", applied.record)
+        self.assertIsNone(apply(None).record)
+
+
+class AskTheNextThingTests(SimpleTestCase):
+    """A reply that asks asks for the first thing the search is missing - one
+    question - and tells the reply there is no search yet."""
+
+    def turn(self, stored, **fields):
+        return TripTurn(trip=resolve(stored, TODAY), today=TODAY, **fields)
+
+    def test_each_step_asks_one_question_in_order(self):
+        steps = (
+            (record(), "start date is missing"),
+            (record(stay_length=10, stay_unit="days"), "start date is missing"),
+            (record(start_date="2026-11-05"), "length of the stay is missing"),
+            (
+                record(start_date="2026-11-05", stay_length=3, stay_unit="days"),
+                "nobody has said how many adults are going",
+            ),
+            (record(**READY, children=1), "a child's age is missing"),
+            (record(**{**READY, "adults": 1}, rooms=3), "3 rooms can't go in the search"),
+        )
+        for stored, expected in steps:
+            with self.subTest(expected=expected):
+                facts = fact_block(self.turn(stored), ask_missing=True)
+
+                self.assertEqual(facts.count("Needs clarification"), 1)
+                self.assertIn(expected, facts)
+
+    def test_it_says_what_the_search_is_waiting_for(self):
+        facts = fact_block(self.turn(record(stay_length=10, stay_unit="days")), ask_missing=True)
+
+        self.assertIn("There is NO Booking search action yet", facts)
+        self.assertIn("a start date, the number of adults", facts)
+        self.assertIn("Never say a search or a link is ready", facts)
+        self.assertNotIn("carries exactly", facts)
+
+    def test_a_ready_trip_asks_nothing(self):
+        facts = fact_block(self.turn(record(**READY)), ask_missing=True)
+
+        self.assertNotIn("Needs clarification", facts)
+        self.assertIn("carries exactly: dates 2026-11-05 to 2026-11-08, 2 adults", facts)
+
+    def test_a_reply_that_is_not_asking_is_not_told_to(self):
+        facts = fact_block(self.turn(record(stay_length=10, stay_unit="days")))
+
+        self.assertNotIn("Needs clarification", facts)
+        self.assertIn("There is NO Booking search action yet", facts)
+
+    def test_a_reply_that_asks_is_told_the_facts_even_when_nothing_is_known(self):
+        self.assertEqual(fact_block(self.turn(None)), "")
+
+        facts = fact_block(self.turn(None), ask_missing=True)
+
+        self.assertIn("start date is missing", facts)
+
+    def test_a_date_that_could_not_be_used_is_the_one_question(self):
+        past = apply(day=1, relative="this")
+        turn = self.turn(past.record, issues=past.issues)
+
+        facts = fact_block(turn, ask_missing=True)
+
+        self.assertEqual(facts.count("Needs clarification"), 1)
+        self.assertIn("already passed", facts)
+
+    def test_the_profiles_party_is_asked_about_when_who_is_going_is_next(self):
+        stored = record(start_date="2026-11-05", stay_length=3, stay_unit="days")
+        turn = self.turn(stored, profile_party=2)
+
+        facts = fact_block(turn, ask_missing=True)
+
+        self.assertEqual(turn.party_offer, 2)
+        self.assertIn("profile says they usually travel with 2 people", facts)
+        self.assertIn("whether those 2 people are all adults", facts)
+        self.assertIn("do not assume it", facts)
+        self.assertNotIn("how many adults are going and whether any children", facts)
+
+    def test_without_a_profile_party_the_question_is_the_plain_one(self):
+        stored = record(start_date="2026-11-05", stay_length=3, stay_unit="days")
+
+        facts = fact_block(self.turn(stored), ask_missing=True)
+
+        self.assertIsNone(self.turn(stored).party_offer)
+        self.assertIn("how many adults are going and whether any children", facts)
+        self.assertNotIn("profile", facts)
+
+    def test_the_profiles_party_is_not_offered_while_something_earlier_is_missing(self):
+        for stored in (record(), record(stay_length=10, stay_unit="days"), record(**READY)):
+            with self.subTest(stored=stored):
+                turn = self.turn(stored, profile_party=2)
+
+                self.assertIsNone(turn.party_offer)
+                self.assertNotIn("profile", fact_block(turn, ask_missing=True))
+
+    def test_the_profiles_party_is_not_offered_over_an_unusable_date(self):
+        past = apply(day=1, relative="this", length=3, unit="days")
+
+        turn = self.turn(past.record, issues=past.issues, profile_party=2)
+
+        self.assertIsNone(turn.party_offer)

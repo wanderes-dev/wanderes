@@ -14,7 +14,7 @@ from ai import memory
 from ai.orchestration import _build_carried_destination_messages, _same_place
 from ai.prompts import SYSTEM_PROMPT
 from ai.tests.helpers import FixedClimateProvider, ScriptedProvider, make_destination
-from ai.tests.test_selected_destination import _Case, barcelona_record, spain, turn
+from ai.tests.test_selected_destination import WHEN, _Case, barcelona_record, spain, turn
 from analytics.models import Event
 from evaluations.view_path import ViewSession
 from travel.models import CountryEntryRequirement, Destination
@@ -191,7 +191,7 @@ class FreshVersusCarriedReplyTests(_CarriedCase):
                 turn(spain(selected_destination_name="Barcelona")),
                 turn(
                     spain(is_accommodation_request=True, accommodation_place_name="Barcelona"),
-                    trip_details={"adults": 2},
+                    trip_details={**WHEN, "adults": 2},
                 ),
             ]
         )
@@ -209,7 +209,7 @@ class FreshVersusCarriedReplyTests(_CarriedCase):
                 turn(spain(selected_destination_name="Barcelona")),
                 turn(
                     spain(is_accommodation_request=True, accommodation_place_name="Barcelona"),
-                    trip_details={"adults": 2},
+                    trip_details={**WHEN, "adults": 2},
                 ),
             ]
         )
@@ -405,7 +405,7 @@ class CardAndAnalyticsTests(TestCase):
         def stays(place):
             return turn(
                 spain(is_accommodation_request=True, accommodation_place_name=place),
-                trip_details={"adults": 2},
+                trip_details={**WHEN, "adults": 2},
             )
 
         provider = ScriptedProvider(

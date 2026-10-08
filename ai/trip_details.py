@@ -19,7 +19,8 @@ date is computed here, against an explicit `today`.
 
 import re
 import unicodedata
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from django.utils.formats import date_format
@@ -47,6 +48,10 @@ EMPTY_RECORD = {
     "children": None,  # None = unknown, 0 = they said there are none
     "child_ages": None,  # the ages known so far; complete only at len == children
     "rooms": None,  # how many rooms they asked for (never adults, never children)
+    # The party size on the profile that the assistant just asked about. It lives
+    # for the one reply that follows, only ever becomes `adults` when the traveler
+    # clearly says yes, and is never read for the search.
+    "adults_offer": None,
 }
 
 TRIP_DETAILS_SYSTEM_PROMPT = (
@@ -91,6 +96,10 @@ TRIP_DETAILS_SYSTEM_PROMPT = (
     "rooms - how many rooms they want ('dois quartos' -> 2, 'um quarto' -> 1, 'two rooms' "
     "-> 2). A number of rooms is never adults or children and says nothing about who is going: "
     "'quero dois quartos' leaves adults null. Null if not stated.\n\n"
+    "confirms_party_offer - true ONLY when the assistant's previous question (shown) asked "
+    "whether the people on the traveler's profile are all adults and the traveler clearly "
+    "agrees ('sim', 'yes', 'isso mesmo', 'todos adultos'). False in every other case, "
+    "including when they give their own numbers, disagree or say anything else.\n\n"
     "cleared_fields - only when the traveler explicitly takes a detail back or says it is "
     "no longer known/decided ('ainda não sei as datas', 'forget the dates', 'sem crianças "
     "afinal' clears children): any of 'start', 'stay', 'adults', 'children', 'child_ages', "
@@ -133,6 +142,7 @@ TRIP_DETAILS_SCHEMA = {
             "children": {"type": ["integer", "null"]},
             "child_ages": {"type": "array", "items": {"type": "integer"}},
             "rooms": {"type": ["integer", "null"]},
+            "confirms_party_offer": {"type": "boolean"},
             "cleared_fields": {
                 "type": "array",
                 "items": {
@@ -150,6 +160,7 @@ TRIP_DETAILS_SCHEMA = {
             "children",
             "child_ages",
             "rooms",
+            "confirms_party_offer",
             "cleared_fields",
         ],
         "additionalProperties": False,
@@ -393,6 +404,7 @@ def validate_components(raw) -> dict:
         "children": _int_in(raw.get("children"), 0, MAX_CHILDREN),
         "child_ages": ages,
         "rooms": _int_in(raw.get("rooms"), 1, MAX_ROOMS),
+        "confirms_party_offer": raw.get("confirms_party_offer") is True,
         "cleared_fields": cleared,
     }
 
@@ -424,6 +436,7 @@ def _normalize(record) -> dict:
         out["stay_unit"] = record["stay_unit"]
     out["adults"] = _int_in(record.get("adults"), 1, MAX_ADULTS)
     out["rooms"] = _int_in(record.get("rooms"), 1, MAX_ROOMS)
+    out["adults_offer"] = _int_in(record.get("adults_offer"), 1, MAX_ADULTS)
     children = _int_in(record.get("children"), 0, MAX_CHILDREN)
     out["children"] = children
     ages = record.get("child_ages")
@@ -434,9 +447,20 @@ def _normalize(record) -> dict:
     return out
 
 
+def with_party_offer(record: dict | None, count: int) -> dict:
+    """The stored record with the profile's party size noted as the question
+    just asked - what the traveler's next "sim" is read against."""
+    rec = _normalize(record)
+    rec["adults_offer"] = _int_in(count, 1, MAX_ADULTS)
+    return rec
+
+
 def _stored(record: dict) -> dict | None:
-    """The record to persist: None when nothing is known."""
-    return None if record == EMPTY_RECORD else record
+    """The record to persist: None when nothing is known. A lapsed offer is
+    simply absent, so a record with no pending question looks as it always did."""
+    if record == EMPTY_RECORD:
+        return None
+    return {k: v for k, v in record.items() if k != "adults_offer" or v is not None}
 
 
 @dataclass(frozen=True)
@@ -456,6 +480,8 @@ class Applied:
     ask_child_ages: bool = False
     # This message set or changed the number of rooms.
     rooms_changed: bool = False
+    # Something the search is built from changed - not just an offer that lapsed.
+    details_changed: bool = False
 
 
 def _safe_date(year: int, month: int, day: int) -> date | None:
@@ -633,6 +659,18 @@ def apply_components(current: dict | None, components: dict, today: date) -> App
     if not rec["children"]:
         rec["child_ages"] = None
 
+    # A "yes" to the question about the profile's party only counts while that
+    # question is the one being answered, and anything they say about adults wins.
+    offered = before["adults_offer"]
+    if (
+        offered
+        and components.get("confirms_party_offer")
+        and components["adults"] is None
+        and "adults" not in components["cleared_fields"]
+    ):
+        rec["adults"] = offered
+    rec["adults_offer"] = None  # good for the one reply it was made for
+
     rec = _normalize(rec)
     # Ask when this message moved the children's details forward without
     # completing them: a child mentioned with no age, or some ages of several.
@@ -641,12 +679,16 @@ def apply_components(current: dict | None, components: dict, today: date) -> App
         and len(rec["child_ages"] or []) != rec["children"]
         and (rec["children"] != before["children"] or rec["child_ages"] != before["child_ages"])
     )
+    def details(record: dict) -> dict:
+        return {k: v for k, v in record.items() if k != "adults_offer"}
+
     return Applied(
         _stored(rec),
         rec != before,
         tuple(issues),
         ask,
         rooms_changed=rec["rooms"] != before["rooms"],
+        details_changed=details(rec) != details(before),
     )
 
 
@@ -658,6 +700,7 @@ class ResolvedTrip:
     """What is known about the trip right now, as one object. The URL, the
     caption and the reply's facts are all read from this."""
 
+    start_date: date | None = None  # a usable start, with or without a length yet
     check_in: date | None = None
     check_out: date | None = None
     nights: int | None = None
@@ -705,6 +748,35 @@ class ResolvedTrip:
             or self.rooms is not None
             or self.start_date_past
         )
+
+    @property
+    def missing_for_search(self) -> tuple[str, ...]:
+        """What the Booking search still needs, in the order to ask for it:
+        the start date, the length of the stay, who is going, the children's
+        ages, a room count that fits. Empty when the search is ready. This is
+        the one readiness decision - the card, the reply and the buttons already
+        on the page all follow it."""
+        missing = []
+        if self.start_date is None:
+            missing.append("check_in")
+        if self.stay_length is None:
+            missing.append("stay_length")
+        if self.adults is None:
+            missing.append("adults")
+        if self.children_pending:
+            missing.append("child_ages")
+        if self.rooms_conflict:
+            missing.append("rooms")
+        return tuple(missing)
+
+    @property
+    def search_ready(self) -> bool:
+        return not self.missing_for_search
+
+    def search_kwargs(self) -> dict | None:
+        """What the search carries, or None while it isn't ready: then there is
+        no search to link to at all, not a smaller one."""
+        return self.booking_kwargs() if self.search_ready else None
 
     def booking_kwargs(self) -> dict:
         """The keyword arguments for build_search_url, holding exactly what is
@@ -810,6 +882,7 @@ def resolve(record: dict | None, today: date) -> ResolvedTrip:
         check_in, check_out = start, start + timedelta(days=nights)
     ages = tuple(rec["child_ages"] or ())
     return ResolvedTrip(
+        start_date=start,
         check_in=check_in,
         check_out=check_out,
         nights=nights,
@@ -838,17 +911,36 @@ class TripTurn:
     # The rooms asked for don't fit the adults (and this message is about them).
     ask_rooms: bool = False
     today: date | None = None
-    # This message changed what the search link carries, so the one the
-    # traveler last saw (if any) is out of date. A detail the link doesn't
-    # carry (a length with no start date, a child still waiting for an age)
-    # doesn't count: nothing about the link would be new.
-    changed: bool = False
+    # This message changed a detail the search is built from (an offer lapsing
+    # doesn't count).
+    details_changed: bool = False
+    # This message changed the search itself: it became ready, stopped being
+    # ready, or is ready with something else in it. Whatever search button the
+    # traveler last saw is out of date. Details that leave the search unready
+    # (a start date with no occupancy yet) change nothing here: there was no
+    # search before and there is none now.
+    search_changed: bool = False
+    # How many people the signed-in traveler's profile says they usually travel
+    # with: a suggestion to ask about, never a value to use.
+    profile_party: int | None = None
+    # Remembers that the question about that number was asked (the traveler's
+    # "sim" is read against it on the next turn). Set by the orchestrator, which
+    # owns the state.
+    offer_party: Callable[[int], None] | None = field(default=None, compare=False, repr=False)
 
     @property
     def must_ask(self) -> bool:
         """Something has to be asked before the search can be right - the
         reply is then that one question, and nothing else."""
         return bool(self.issues) or self.ask_child_ages or self.ask_rooms
+
+    @property
+    def party_offer(self) -> int | None:
+        """The profile's party size, when who is going is the next thing to ask."""
+        asking_who_is_going = self.trip.missing_for_search[:1] == ("adults",)
+        if self.profile_party and asking_who_is_going and not self.issues:
+            return self.profile_party
+        return None
 
     @property
     def is_informative(self) -> bool:
@@ -871,15 +963,76 @@ def _issue_line(issue: Issue, today: date | None) -> str:
     return "The traveler gave a date that doesn't exist on the calendar. Ask them to restate it."
 
 
+_NEEDS = {
+    "check_in": "a start date",
+    "stay_length": "a length of stay",
+    "adults": "the number of adults",
+    "child_ages": "every child's age",
+    "rooms": "a number of rooms that fits the adults",
+}
+
+
+def _missing_line(turn: TripTurn) -> str:
+    """The one question the reply asks next, for the first thing the search is
+    missing."""
+    trip = turn.trip
+    first = trip.missing_for_search[0]
+    if first == "check_in":
+        return (
+            "- Needs clarification: the trip's start date is missing. Ask on what date the "
+            "trip starts - just that one question."
+        )
+    if first == "stay_length":
+        return (
+            "- Needs clarification: the length of the stay is missing. Ask how many nights "
+            "(or days) they will stay - just that one question."
+        )
+    if first == "adults":
+        offer = turn.party_offer
+        if offer:
+            return (
+                "- Needs clarification: nobody has said how many adults are going, but the "
+                f"traveler's profile says they usually travel with {offer} people. Ask in "
+                f"one short question whether those {offer} people are all adults - do not "
+                "assume it and do not say the search will use that number; if they say no, "
+                "they will tell you who is going."
+            )
+        return (
+            "- Needs clarification: nobody has said how many adults are going. Ask how many "
+            "adults are going and whether any children come (and, if so, how old each is, "
+            "since Booking needs the ages) - one short, natural question."
+        )
+    if first == "child_ages":
+        return (
+            "- Needs clarification: a child's age is missing - ask for the age (each age, if "
+            "several), briefly, because Booking needs it to price the stay."
+        )
+    return (
+        f"- Needs clarification: {trip.rooms} rooms can't go in the search with "
+        f"{trip.adults} adult(s). Ask in one short question whether to change the number "
+        f"of adults or use fewer rooms (at most {trip.adults})."
+    )
+
+
 def fact_block(
-    turn: TripTurn | None, *, always: bool = False, unsupported_filter: bool = False
+    turn: TripTurn | None,
+    *,
+    always: bool = False,
+    unsupported_filter: bool = False,
+    ask_missing: bool = False,
 ) -> str:
     """The trip facts for a reply prompt. Empty when there's nothing to say
     (unless `always`, for the stays replies, where "nothing is set" is itself
     the fact). The reply may state dates and numbers of travelers only as
     listed here. `unsupported_filter` is for the stays-action reply alone: the
-    traveler asked the search for something it can't do."""
-    if turn is None or not (always or turn.is_informative):
+    traveler asked the search for something it can't do. `ask_missing` is for a
+    reply that asks for the next thing the search needs (the stays replies and
+    the reply to choosing a destination): it is then shown even when nothing
+    is known yet."""
+    if turn is None:
+        return ""
+    asking = ask_missing and not turn.trip.search_ready
+    if not (always or asking or turn.is_informative):
         return ""
     trip = turn.trip
     lines = [
@@ -953,14 +1106,21 @@ def fact_block(
             carried.append(f"{trip.children} children")
         if trip.rooms_in_search:
             carried.append(f"{trip.rooms} rooms")
-    lines.append(
-        "- The Booking search link carries exactly: "
-        + (", ".join(carried) if carried else "only the destination")
-        + ". Nothing else."
-    )
+    if trip.search_ready:
+        lines.append(
+            "- The Booking search link carries exactly: " + ", ".join(carried) + ". Nothing else."
+        )
+    else:
+        needs = ", ".join(_NEEDS[item] for item in trip.missing_for_search)
+        lines.append(
+            f"- There is NO Booking search action yet: it appears once the trip has {needs}. "
+            "Never say a search or a link is ready, prepared or being opened."
+        )
     for issue in turn.issues:
         lines.append("- Needs clarification: " + _issue_line(issue, turn.today))
-    if turn.ask_child_ages:
+    if asking and not turn.issues:
+        lines.append(_missing_line(turn))
+    if turn.ask_child_ages and not ask_missing:
         lines.append(
             "- Needs clarification: a child's age is missing - ask for the age (each age, if "
             "several), briefly, because Booking needs it to price the stay."
@@ -973,7 +1133,7 @@ def fact_block(
             "and that they can apply it once the Booking search is open. Never describe the "
             "search as being for it, and don't recommend specific hotels or quote prices."
         )
-    if turn.ask_rooms:
+    if turn.ask_rooms and not ask_missing:
         lines.append(
             f"- Needs clarification: {trip.rooms} rooms can't go in the search with "
             f"{trip.adults} adult(s). Ask in one short question whether to change the number "

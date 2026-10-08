@@ -444,6 +444,7 @@
     const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]").value;
     const RECOMMENDATIONS_DELIMITER = "\n<<<WANDERES_RECOMMENDATIONS>>>\n";
     const CONVERSATION_DELIMITER = "\n<<<WANDERES_CONVERSATION>>>\n";
+    const STAYS_DELIMITER = "\n<<<WANDERES_STAYS>>>\n";
 
     // currentConversationId is null for a conversation not yet (or no
     // longer) tracked in the database. saveBlockedForThread is a
@@ -573,6 +574,26 @@
         return loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
     }
 
+    // A turn that changed what the Booking search carries (or whether there is
+    // one) leaves every search button already on the page out of date: it would
+    // open Booking with details the traveler has since changed or taken back.
+    // They go, and a card that was only that button goes with them. The turn's
+    // own cards are drawn afterwards, so they stay.
+    function retireStaysActions() {
+        messages.querySelectorAll(".stays-action").forEach(function (node) {
+            const card = node.closest(".recommendation-card");
+            node.remove();
+            if (card && !card.querySelector("a, button")) {
+                card.remove();
+            }
+        });
+        messages.querySelectorAll(".recommendation-cards").forEach(function (group) {
+            if (!group.children.length) {
+                group.remove();
+            }
+        });
+    }
+
     function addRecommendationCards(destinations) {
         if (!destinations || !destinations.length) {
             return;
@@ -660,7 +681,7 @@
 
                 if (destination.accommodation_search_url) {
                     const stayLink = document.createElement("a");
-                    stayLink.className = "btn btn-secondary";
+                    stayLink.className = "btn btn-secondary stays-action";
                     stayLink.href = destination.accommodation_search_url;
                     stayLink.target = "_blank";
                     stayLink.rel = "noopener noreferrer";
@@ -700,7 +721,7 @@
                     // resolved trip as the URL, so the two can't differ.
                     if (destination.accommodation_caption) {
                         const caption = document.createElement("p");
-                        caption.className = "accommodation-caption";
+                        caption.className = "accommodation-caption stays-action";
                         caption.textContent = destination.accommodation_caption;
                         card.appendChild(caption);
                     }
@@ -723,30 +744,36 @@
         messages.scrollTop = messages.scrollHeight;
     }
 
-    // Splits the raw streamed buffer into the visible reply text plus two
-    // optional trailing footers. Both share the same "delimiter + JSON"
-    // shape - following the precedent set by RECOMMENDATIONS_DELIMITER -
-    // so the server can report structured data without a second endpoint
-    // or server-side session state. The server always writes the
-    // recommendations footer (if any) before the conversation one - see
-    // ai/views.py - so the conversation JSON is just "everything after
-    // CONVERSATION_DELIMITER".
+    // Splits the raw streamed buffer into the visible reply text plus the
+    // optional trailing footers. All share the same "delimiter + JSON" shape -
+    // following the precedent set by RECOMMENDATIONS_DELIMITER - so the server
+    // can report structured data without a second endpoint or server-side
+    // session state. Each footer runs to the start of the next one, in
+    // whatever order they arrive.
     function splitFooters(buffer) {
-        const recIndex = buffer.indexOf(RECOMMENDATIONS_DELIMITER);
-        const convIndex = buffer.indexOf(CONVERSATION_DELIMITER);
-        const presentIndices = [recIndex, convIndex].filter(function (i) { return i !== -1; });
-        const firstIndex = presentIndices.length ? Math.min.apply(null, presentIndices) : -1;
+        const footers = [
+            ["recommendationsJson", RECOMMENDATIONS_DELIMITER],
+            ["conversationJson", CONVERSATION_DELIMITER],
+            ["staysJson", STAYS_DELIMITER],
+        ].map(function (footer) {
+            return { key: footer[0], delimiter: footer[1], index: buffer.indexOf(footer[1]) };
+        }).filter(function (footer) {
+            return footer.index !== -1;
+        }).sort(function (a, b) {
+            return a.index - b.index;
+        });
 
-        return {
-            visibleText: firstIndex === -1 ? buffer : buffer.slice(0, firstIndex),
-            recommendationsJson: recIndex === -1 ? null : buffer.slice(
-                recIndex + RECOMMENDATIONS_DELIMITER.length,
-                convIndex !== -1 && convIndex > recIndex ? convIndex : buffer.length
-            ),
-            conversationJson: convIndex === -1 ? null : buffer.slice(
-                convIndex + CONVERSATION_DELIMITER.length
-            ),
+        const result = {
+            visibleText: footers.length ? buffer.slice(0, footers[0].index) : buffer,
+            recommendationsJson: null,
+            conversationJson: null,
+            staysJson: null,
         };
+        footers.forEach(function (footer, i) {
+            const end = i + 1 < footers.length ? footers[i + 1].index : buffer.length;
+            result[footer.key] = buffer.slice(footer.index + footer.delimiter.length, end);
+        });
+        return result;
     }
 
     const emptyState = document.getElementById("chat-empty-state");
@@ -1154,6 +1181,15 @@
         }
 
         const footers = splitFooters(buffer);
+        if (footers.staysJson) {
+            try {
+                if (JSON.parse(footers.staysJson).retire) {
+                    retireStaysActions();
+                }
+            } catch (parseError) {
+                // No usable stays footer - the old buttons simply stay.
+            }
+        }
         if (footers.recommendationsJson) {
             try {
                 addRecommendationCards(JSON.parse(footers.recommendationsJson));

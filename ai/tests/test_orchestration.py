@@ -32,6 +32,9 @@ from trips.models import Feedback, TravelHistoryEntry, Trip
 from users.currency import convert_to_usd
 from users.models import TravelerProfile, User
 
+# What a stays search needs besides who is going: a start and a length.
+WHEN = {"start": {"day": 5}, "stay_length": 3, "stay_unit": "days"}
+
 
 class StubClimateProvider:
     def __init__(self, climate_by_coords):
@@ -266,6 +269,9 @@ class LinkStrippingTests(SimpleTestCase):
             "Dois links e outro seguidos",
         ),
         ("Veja <https://a.com/x>.", "Veja"),
+        # an image is a link too, and its "!" goes with it
+        ("Você pode ver as opções: ![Buscar](https://a.com/i.png)", "Você pode ver as opções:"),
+        ("Boa viagem! Veja ![mapa](https://a.com/i.png) agora", "Boa viagem! Veja mapa agora"),
         ("Veja <https://a.com/x> agora", "Veja  agora"),
         ("Linha 1\n[Link\nquebrado](https://a.com)\nLinha 3", "Linha 1\n\nLinha 3"),
         ("Terminando com [abc](https://a.com", "Terminando com"),
@@ -2198,7 +2204,7 @@ class AccommodationRequestTests(TestCase):
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
             ),
-            trip_details={"adults": 2},
+            trip_details={**WHEN, "adults": 2},
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
 
@@ -2224,7 +2230,7 @@ class AccommodationRequestTests(TestCase):
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
             ),
-            trip_details={"adults": 2},
+            trip_details={**WHEN, "adults": 2},
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
 
@@ -2243,7 +2249,7 @@ class AccommodationRequestTests(TestCase):
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
             ),
-            trip_details={"adults": 2},
+            trip_details={**WHEN, "adults": 2},
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
 
@@ -2264,7 +2270,7 @@ class AccommodationRequestTests(TestCase):
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
             ),
-            trip_details={"adults": 3},
+            trip_details={**WHEN, "adults": 3},
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
 
@@ -2283,7 +2289,7 @@ class AccommodationRequestTests(TestCase):
                 is_accommodation_request=True,
                 accommodation_place_name="Tokyo",
             ),
-            trip_details={"adults": 3},
+            trip_details={**WHEN, "adults": 3},
             reply_text="Here's what's good to know about staying in Tokyo.",
         )
 
@@ -2296,11 +2302,9 @@ class AccommodationRequestTests(TestCase):
         prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertIn("- Adults: 3.", prompt)
 
-    def test_unknown_party_size_asks_before_suggesting_anything(self):
-        # Direct user report (2026-09-24): the AI should always ask how
-        # many people a stay is for before suggesting - and critically,
-        # before building any "Search stays" link at all (which would
-        # otherwise silently default to Booking.com's own guess).
+    def test_a_stays_request_with_nothing_known_asks_before_offering_a_search(self):
+        # No search is offered on guesses: with no dates and no head count there
+        # is nothing to link to, so the reply asks and there is no card.
         ai_provider = StubAIProvider(
             structured_response=_intent(
                 is_accommodation_request=True,
@@ -2318,10 +2322,10 @@ class AccommodationRequestTests(TestCase):
 
         self.assertEqual(result.recommendations, [])
         self.assertFalse(result.is_destination_detail)
-        self.assertIsNone(result.trip)
+        self.assertFalse(result.trip.search_ready)
         self.assertEqual(reply, "Claro! Quantas pessoas vão viajar? ")
 
-    def test_party_size_question_prompt_names_the_resolved_destination(self):
+    def test_the_question_prompt_names_the_resolved_destination_and_what_is_missing(self):
         ai_provider = StubAIProvider(
             structured_response=_intent(
                 is_accommodation_request=True,
@@ -2338,7 +2342,8 @@ class AccommodationRequestTests(TestCase):
 
         prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertIn("Tokyo, Japan", prompt)
-        self.assertIn("hasn't said how many people", prompt)
+        self.assertIn("start date is missing", prompt)
+        self.assertIn("There is NO Booking search action yet", prompt)
 
     def test_unresolvable_destination_gets_an_honest_reply_no_cards(self):
         # Not in the catalog, AND the AI itself isn't confident it's a
@@ -2396,7 +2401,7 @@ class AccommodationRequestTests(TestCase):
                     is_accommodation_request=True,
                     accommodation_place_name="Xangai",
                 ),
-                "trip_details_signal": {"adults": 2},
+                "trip_details_signal": {**WHEN, "adults": 2},
                 "destination_resolution": {"slug": "shanghai-cn"},
             },
             reply_text="Here's what's good to know about staying in Shanghai.",
@@ -2491,7 +2496,7 @@ class FreeformAccommodationRequestTests(TestCase):
                     is_accommodation_request=True,
                     accommodation_place_name="Wuhan",
                 ),
-                "trip_details_signal": {"adults": 3},
+                "trip_details_signal": {**WHEN, "adults": 3},
                 "destination_resolution": {"slug": None},
                 "freeform_place_resolution": {
                     "is_real_place": True,
@@ -2514,7 +2519,7 @@ class FreeformAccommodationRequestTests(TestCase):
         self.assertEqual(result.accommodation_freeform_country, "China")
         self.assertEqual(result.trip.adults, 3)
 
-    def test_asks_for_party_size_before_resolving_a_freeform_reply(self):
+    def test_asks_before_offering_a_search_for_a_freeform_place(self):
         ai_provider = SchemaAwareStubAIProvider(
             responses_by_schema={
                 "travel_message": _intent(
@@ -2538,10 +2543,10 @@ class FreeformAccommodationRequestTests(TestCase):
 
         self.assertEqual(result.recommendations, [])
         self.assertIsNone(result.accommodation_freeform_name)
-        self.assertIsNone(result.trip)
+        self.assertFalse(result.trip.search_ready)
         self.assertEqual(reply, "Claro! Quantas pessoas vão viajar? ")
 
-    def test_party_size_question_names_the_resolved_place(self):
+    def test_the_question_names_the_resolved_place_and_what_is_missing(self):
         ai_provider = SchemaAwareStubAIProvider(
             responses_by_schema={
                 "travel_message": _intent(
@@ -2564,7 +2569,7 @@ class FreeformAccommodationRequestTests(TestCase):
 
         prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertIn("Wuhan, China", prompt)
-        self.assertIn("hasn't said how many people", prompt)
+        self.assertIn("start date is missing", prompt)
 
     def test_freeform_reply_prompt_never_claims_it_cant_search(self):
         ai_provider = SchemaAwareStubAIProvider(
@@ -2573,7 +2578,7 @@ class FreeformAccommodationRequestTests(TestCase):
                     is_accommodation_request=True,
                     accommodation_place_name="Wuhan",
                 ),
-                "trip_details_signal": {"adults": 2},
+                "trip_details_signal": {**WHEN, "adults": 2},
                 "destination_resolution": {"slug": None},
                 "freeform_place_resolution": {
                     "is_real_place": True,
@@ -2605,7 +2610,7 @@ class FreeformAccommodationRequestTests(TestCase):
                     is_accommodation_request=True,
                     accommodation_place_name="Wuhan",
                 ),
-                "trip_details_signal": {"adults": 2},
+                "trip_details_signal": {**WHEN, "adults": 2},
                 "destination_resolution": {"slug": None},
             },
             reply_text="I can't pull up a live search for it.",
