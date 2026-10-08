@@ -34,6 +34,7 @@ MAX_STAY_LENGTH = 365
 MAX_ADULTS = 30
 MAX_CHILDREN = 10
 MAX_CHILD_AGE = 17  # Booking's own range for a child is 0-17
+MAX_ROOMS = 10
 
 # The stored record. Every value is what the traveler said or something code
 # derived from it at the time they said it (start_date); never the check-out.
@@ -45,6 +46,7 @@ EMPTY_RECORD = {
     "adults": None,
     "children": None,  # None = unknown, 0 = they said there are none
     "child_ages": None,  # the ages known so far; complete only at len == children
+    "rooms": None,  # how many rooms they asked for (never adults, never children)
 }
 
 TRIP_DETAILS_SYSTEM_PROMPT = (
@@ -86,9 +88,13 @@ TRIP_DETAILS_SYSTEM_PROMPT = (
     "child's age -> child_ages [5] with children null. A reply that gives only ages ('tem 6 "
     "anos', 'the eldest is 10 and the other 3') leaves children null: the count was given "
     "earlier.\n\n"
+    "rooms - how many rooms they want ('dois quartos' -> 2, 'um quarto' -> 1, 'two rooms' "
+    "-> 2). A number of rooms is never adults or children and says nothing about who is going: "
+    "'quero dois quartos' leaves adults null. Null if not stated.\n\n"
     "cleared_fields - only when the traveler explicitly takes a detail back or says it is "
     "no longer known/decided ('ainda não sei as datas', 'forget the dates', 'sem crianças "
-    "afinal' clears children): any of 'start', 'stay', 'adults', 'children', 'child_ages'. "
+    "afinal' clears children): any of 'start', 'stay', 'adults', 'children', 'child_ages', "
+    "'rooms'. "
     "A new value for a detail is a correction, not a clear - report the new value and leave "
     "cleared_fields empty."
 )
@@ -126,11 +132,12 @@ TRIP_DETAILS_SCHEMA = {
             "adults": {"type": ["integer", "null"]},
             "children": {"type": ["integer", "null"]},
             "child_ages": {"type": "array", "items": {"type": "integer"}},
+            "rooms": {"type": ["integer", "null"]},
             "cleared_fields": {
                 "type": "array",
                 "items": {
                     "type": "string",
-                    "enum": ["start", "stay", "adults", "children", "child_ages"],
+                    "enum": ["start", "stay", "adults", "children", "child_ages", "rooms"],
                 },
             },
         },
@@ -142,6 +149,7 @@ TRIP_DETAILS_SCHEMA = {
             "adults",
             "children",
             "child_ages",
+            "rooms",
             "cleared_fields",
         ],
         "additionalProperties": False,
@@ -159,6 +167,7 @@ _CUE_WORDS = frozenset(
     """
     dia dias noite noites semana semanas mes meses hoje amanha depois proximo proxima
     data datas duracao date dates duration fecha fechas duracion duree datum dauer durata
+    quarto quartos room rooms habitacion habitaciones chambre chambres camera camere zimmer
     adulto adultos crianca criancas bebe bebes filho filha filhos filhas esposa esposo
     marido mulher namorado namorada casal familia sozinho sozinha pessoa pessoas
     viajante viajantes ano anos somos dois duas tres quatro cinco seis sete oito nove dez
@@ -236,8 +245,36 @@ _CLEAR_VOCABULARY = {
     "children": _CHILDREN_WORDS,
     "child_ages": _CHILDREN_WORDS
     + " idade idades age ages anos year years edad edades ans eta alter jahre",
+    "rooms": """
+        quarto quartos room rooms habitacion habitaciones chambre chambres camera camere
+        zimmer
+    """,
 }
 _CLEAR_VOCABULARY = {field: frozenset(words.split()) for field, words in _CLEAR_VOCABULARY.items()}
+
+# Words that say who is going: the adults' vocabulary plus the family words and the
+# children's. A message about ROOMS that has none of them says nothing about the
+# party, so whatever count the model read into it ("dois quartos" -> 2 adults) is
+# dropped.
+_PEOPLE_WORDS = (
+    _CLEAR_VOCABULARY["adults"]
+    | _CLEAR_VOCABULARY["children"]
+    | frozenset(
+        """
+    somos esposa esposo marido mulher namorado namorada casal amigo amiga amigos amigas
+    familia sozinho sozinha wife husband partner couple friend friends family alone solo
+    nous femme mari amis famille seul seule noi moglie marito amici famiglia
+    """.split()
+    )
+)
+# Words that talk about an age, so that an extracted age of 0 can be believed
+# (a baby, "8 meses"). A stray 0 from a message with none of them is not an age.
+_AGE_WORDS = frozenset(
+    """
+    idade idades age ages anos ano year years edad edades ans eta alter jahre bebe bebes
+    baby babies infant meses mes month months mois mesi monate recem newborn
+    """.split()
+)
 
 
 def restrict_clears(components: dict, message: str) -> dict:
@@ -248,6 +285,50 @@ def restrict_clears(components: dict, message: str) -> dict:
     tokens = set(_plain_tokens(message))
     kept = [f for f in components["cleared_fields"] if tokens & _CLEAR_VOCABULARY[f]]
     return {**components, "cleared_fields": kept}
+
+
+def names_detail(message: str, field: str) -> bool:
+    """Whether the message names this detail ("criancas", "quartos") - the
+    deterministic way to tell that a request is about it."""
+    return bool(set(_plain_tokens(message)) & _CLEAR_VOCABULARY[field])
+
+
+# What the Booking search link can't be told: a price level, a star rating, an
+# amenity. A message that names one is asking for something Wanderes can't
+# apply, and the reply has to say so rather than describe the search as being
+# "for cheap hotels". Deliberately narrow (and without the plain word "price",
+# which every cost question has): a miss only leaves today's behavior.
+_UNSUPPORTED_FILTER_WORDS = frozenset(
+    """
+    barato barata baratos baratas baratinho economico economica economicos economicas
+    cheap cheaper cheapest budget luxo luxuoso luxuosa luxury luxurious expensive caro
+    estrela estrelas star stars estrella estrellas etoile etoiles stelle sterne
+    piscina pool piscine pet pets
+    """.split()
+)
+
+
+def names_unsupported_filter(message: str) -> bool:
+    """Whether the message asks for a price level, star rating or amenity - a
+    filter the search can't apply."""
+    return bool(set(_plain_tokens(message)) & _UNSUPPORTED_FILTER_WORDS)
+
+
+def guard_components(components: dict, message: str) -> dict:
+    """What the extraction found, held to what the message says: a clear only
+    for the detail it names (restrict_clears); a message about rooms that says
+    nothing about who is going cannot change the adults or the children; and an
+    age of 0 only from a message that talks about an age."""
+    components = restrict_clears(components, message)
+    tokens = set(_plain_tokens(message))
+    out = dict(components)
+    if tokens & _CLEAR_VOCABULARY["rooms"] and not tokens & _PEOPLE_WORDS:
+        out["adults"] = None
+        out["children"] = None
+        out["child_ages"] = []
+    if 0 in out["child_ages"] and not tokens & _AGE_WORDS:
+        out["child_ages"] = [a for a in out["child_ages"] if a != 0]
+    return out
 
 
 def previous_question_for_extraction(history: list[dict] | None, message: str) -> str | None:
@@ -292,7 +373,7 @@ def validate_components(raw) -> dict:
     cleared = [
         f
         for f in (cleared_raw if isinstance(cleared_raw, list) else [])
-        if f in ("start", "stay", "adults", "children", "child_ages")
+        if f in ("start", "stay", "adults", "children", "child_ages", "rooms")
     ]
     return {
         "start": {
@@ -311,6 +392,7 @@ def validate_components(raw) -> dict:
         "adults": _int_in(raw.get("adults"), 1, MAX_ADULTS),
         "children": _int_in(raw.get("children"), 0, MAX_CHILDREN),
         "child_ages": ages,
+        "rooms": _int_in(raw.get("rooms"), 1, MAX_ROOMS),
         "cleared_fields": cleared,
     }
 
@@ -341,6 +423,7 @@ def _normalize(record) -> dict:
         out["stay_length"] = length
         out["stay_unit"] = record["stay_unit"]
     out["adults"] = _int_in(record.get("adults"), 1, MAX_ADULTS)
+    out["rooms"] = _int_in(record.get("rooms"), 1, MAX_ROOMS)
     children = _int_in(record.get("children"), 0, MAX_CHILDREN)
     out["children"] = children
     ages = record.get("child_ages")
@@ -371,6 +454,8 @@ class Applied:
     issues: tuple[Issue, ...] = ()
     # The traveler just told us about a child without an age: ask for it, once.
     ask_child_ages: bool = False
+    # This message set or changed the number of rooms.
+    rooms_changed: bool = False
 
 
 def _safe_date(year: int, month: int, day: int) -> date | None:
@@ -492,6 +577,8 @@ def apply_components(current: dict | None, components: dict, today: date) -> App
             rec["children"], rec["child_ages"] = None, None
         elif field_name == "child_ages":
             rec["child_ages"] = None
+        elif field_name == "rooms":
+            rec["rooms"] = None
 
     start_date = None
     if any(v is not None for v in components["start"].values()):
@@ -522,6 +609,8 @@ def apply_components(current: dict | None, components: dict, today: date) -> App
 
     if components["adults"] is not None:
         rec["adults"] = components["adults"]
+    if components["rooms"] is not None:
+        rec["rooms"] = components["rooms"]
     ages = components["child_ages"]
     children = components["children"]
     if children is not None and ages and before["children"] and children == len(ages):
@@ -552,7 +641,13 @@ def apply_components(current: dict | None, components: dict, today: date) -> App
         and len(rec["child_ages"] or []) != rec["children"]
         and (rec["children"] != before["children"] or rec["child_ages"] != before["child_ages"])
     )
-    return Applied(_stored(rec), rec != before, tuple(issues), ask)
+    return Applied(
+        _stored(rec),
+        rec != before,
+        tuple(issues),
+        ask,
+        rooms_changed=rec["rooms"] != before["rooms"],
+    )
 
 
 # --- the single resolved view -----------------------------------------------
@@ -572,6 +667,7 @@ class ResolvedTrip:
     adults: int | None = None
     children: int | None = None
     child_ages: tuple[int, ...] = ()
+    rooms: int | None = None
     # Why a known detail isn't in the search.
     start_date_past: bool = False
 
@@ -589,12 +685,24 @@ class ResolvedTrip:
         return bool(self.children) and not self.children_complete
 
     @property
+    def rooms_in_search(self) -> bool:
+        """Booking silently clamps the rooms to the number of adults, so a room
+        count is only sent - and only claimed - when it fits."""
+        return self.rooms is not None and self.adults is not None and self.rooms <= self.adults
+
+    @property
+    def rooms_conflict(self) -> bool:
+        """More rooms asked for than adults: not representable in the search."""
+        return self.rooms is not None and self.adults is not None and self.rooms > self.adults
+
+    @property
     def is_informative(self) -> bool:
         return (
             self.has_dates
             or self.stay_length is not None
             or self.adults is not None
             or bool(self.children)
+            or self.rooms is not None
             or self.start_date_past
         )
 
@@ -611,7 +719,22 @@ class ResolvedTrip:
             if self.children_complete:
                 kwargs["children"] = self.children
                 kwargs["child_ages"] = list(self.child_ages)
+            if self.rooms_in_search:
+                kwargs["rooms"] = self.rooms
         return kwargs
+
+    def link_summary(self) -> dict:
+        """What the search link carries, as plain values - for the diagnostic
+        record of a click. Only these operational details; never the URL."""
+        kwargs = self.booking_kwargs()
+        return {
+            "check_in": kwargs["check_in"].isoformat() if "check_in" in kwargs else None,
+            "check_out": kwargs["check_out"].isoformat() if "check_out" in kwargs else None,
+            "adults": kwargs.get("adults"),
+            "children": kwargs.get("children"),
+            "child_ages": kwargs.get("child_ages", []),
+            "rooms": kwargs.get("rooms"),
+        }
 
     # -- the readable forms ------------------------------------------------
 
@@ -649,6 +772,18 @@ class ResolvedTrip:
             }
         return _("%(count)s not included yet - the age is needed") % {"count": count}
 
+    def _rooms_text(self) -> str | None:
+        if self.rooms is None:
+            return None
+        count = ngettext("%(n)d room", "%(n)d rooms", self.rooms) % {"n": self.rooms}
+        if self.rooms_in_search:
+            return count
+        if self.adults is None:
+            return _("%(count)s not included yet - the number of adults is needed") % {
+                "count": count
+            }
+        return _("%(count)s not included - Booking needs an adult in every room") % {"count": count}
+
     def caption(self, place: str) -> str:
         """The line shown under the "Search stays" button: exactly what the
         link carries, and what is known but left out of it."""
@@ -656,6 +791,9 @@ class ResolvedTrip:
         children = self._children_text()
         if children:
             parts.append(children)
+        rooms = self._rooms_text()
+        if rooms:
+            parts.append(rooms)
         return _("Booking search: %(parts)s") % {"parts": " · ".join(parts)}
 
 
@@ -681,6 +819,7 @@ def resolve(record: dict | None, today: date) -> ResolvedTrip:
         adults=rec["adults"],
         children=rec["children"],
         child_ages=ages,
+        rooms=rec["rooms"],
         start_date_past=start_past,
     )
 
@@ -696,6 +835,8 @@ class TripTurn:
     trip: ResolvedTrip
     issues: tuple[Issue, ...] = ()
     ask_child_ages: bool = False
+    # The rooms asked for don't fit the adults (and this message is about them).
+    ask_rooms: bool = False
     today: date | None = None
     # This message changed what the search link carries, so the one the
     # traveler last saw (if any) is out of date. A detail the link doesn't
@@ -704,8 +845,14 @@ class TripTurn:
     changed: bool = False
 
     @property
+    def must_ask(self) -> bool:
+        """Something has to be asked before the search can be right - the
+        reply is then that one question, and nothing else."""
+        return bool(self.issues) or self.ask_child_ages or self.ask_rooms
+
+    @property
     def is_informative(self) -> bool:
-        return self.trip.is_informative or bool(self.issues) or self.ask_child_ages
+        return self.trip.is_informative or self.must_ask
 
 
 def _english_date(d: date) -> str:
@@ -724,18 +871,21 @@ def _issue_line(issue: Issue, today: date | None) -> str:
     return "The traveler gave a date that doesn't exist on the calendar. Ask them to restate it."
 
 
-def fact_block(turn: TripTurn | None, *, always: bool = False) -> str:
+def fact_block(
+    turn: TripTurn | None, *, always: bool = False, unsupported_filter: bool = False
+) -> str:
     """The trip facts for a reply prompt. Empty when there's nothing to say
     (unless `always`, for the stays replies, where "nothing is set" is itself
     the fact). The reply may state dates and numbers of travelers only as
-    listed here."""
+    listed here. `unsupported_filter` is for the stays-action reply alone: the
+    traveler asked the search for something it can't do."""
     if turn is None or not (always or turn.is_informative):
         return ""
     trip = turn.trip
     lines = [
-        "Trip details Wanderes holds for this traveler - the ONLY dates, stay length and "
-        "numbers of travelers you may state. Never calculate, infer or restate any other, and "
-        "never say a detail was set, changed or corrected unless it is listed here:"
+        "Trip details Wanderes holds for this traveler - the ONLY dates, stay length, "
+        "numbers of travelers and rooms you may state. Never calculate, infer or restate any "
+        "other, and never say a detail was set, changed or corrected unless it is listed here:"
     ]
     if trip.has_dates:
         assumed = (
@@ -782,6 +932,18 @@ def fact_block(turn: TripTurn | None, *, always: bool = False) -> str:
             "are NOT included in the Booking search until all ages are. Never count a child as an "
             "adult and never guess an age."
         )
+    if trip.rooms_in_search:
+        lines.append(f"- Rooms: {trip.rooms} - included in the search.")
+    elif trip.rooms_conflict:
+        lines.append(
+            f"- Rooms: {trip.rooms} asked for, but only {trip.adults} adult(s) are going: Booking "
+            "needs an adult in every room and would silently use fewer, so the rooms are NOT in "
+            "the Booking search. Never say the rooms were set."
+        )
+    elif trip.rooms is not None:
+        lines.append(
+            f"- Rooms: {trip.rooms} (noted), not in the search until the number of adults is known."
+        )
     carried = []
     if trip.has_dates:
         carried.append(f"dates {trip.check_in.isoformat()} to {trip.check_out.isoformat()}")
@@ -789,6 +951,8 @@ def fact_block(turn: TripTurn | None, *, always: bool = False) -> str:
         carried.append(f"{trip.adults} adults")
         if trip.children_complete:
             carried.append(f"{trip.children} children")
+        if trip.rooms_in_search:
+            carried.append(f"{trip.rooms} rooms")
     lines.append(
         "- The Booking search link carries exactly: "
         + (", ".join(carried) if carried else "only the destination")
@@ -798,7 +962,21 @@ def fact_block(turn: TripTurn | None, *, always: bool = False) -> str:
         lines.append("- Needs clarification: " + _issue_line(issue, turn.today))
     if turn.ask_child_ages:
         lines.append(
-            "- The traveler just mentioned a child without an age: ask for the age (each age, "
-            "if several), once and briefly, because Booking needs it to price the stay."
+            "- Needs clarification: a child's age is missing - ask for the age (each age, if "
+            "several), briefly, because Booking needs it to price the stay."
+        )
+    if unsupported_filter:
+        lines.append(
+            "- The traveler asked for a price level, star rating or amenity. Wanderes has no "
+            "verified live prices and can't filter the Booking search by price level, star "
+            "rating or amenity, so the search is not limited to it - say so in one sentence, "
+            "and that they can apply it once the Booking search is open. Never describe the "
+            "search as being for it, and don't recommend specific hotels or quote prices."
+        )
+    if turn.ask_rooms:
+        lines.append(
+            f"- Needs clarification: {trip.rooms} rooms can't go in the search with "
+            f"{trip.adults} adult(s). Ask in one short question whether to change the number "
+            f"of adults or use fewer rooms (at most {trip.adults})."
         )
     return "\n".join(lines) + "\n\n"

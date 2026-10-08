@@ -1,7 +1,7 @@
 """A small frozen set of phrases for the trip-details extraction: does the
 model report the components the traveler stated - and nothing else?
 
-Thirty phrases, no more, and no tuning loop around them: it exists to show
+Thirty-five phrases, no more, and no tuning loop around them: it exists to show
 the extraction behaves on the shapes this feature depends on (a bare day, a
 length, a range, who is going, an age given as a reply, a detail withdrawn)
 and on the ones that must yield nothing (a complaint about an earlier reply,
@@ -38,6 +38,7 @@ def expected_components(expect: dict) -> dict:
         "adults": expect.get("adults"),
         "children": expect.get("children"),
         "child_ages": expect.get("child_ages", []),
+        "rooms": expect.get("rooms"),
         "cleared_fields": expect.get("cleared_fields", []),
     }
 
@@ -124,6 +125,12 @@ PHRASES = (
         "2 adultos e 2 crianças, de 3 e 7 anos",
         {"adults": 2, "children": 2, "child_ages": [3, 7]},
     ),
+    # --- rooms: a number of rooms is never adults
+    Phrase("rooms-please", "quero dois quartos por favor", {"rooms": 2}),
+    Phrase("rooms-search", "quero uma pesquisa para dois quartos", {"rooms": 2}),
+    Phrase("rooms-correction", "na verdade 2 quartos", {"rooms": 2}),
+    Phrase("rooms-with-booking-wording", "reserve dois quartos para mim", {"rooms": 2}),
+    Phrase("rooms-forgotten", "esquece os quartos", {"cleared_fields": ["rooms"]}),
     # --- an answer that needs the question
     Phrase(
         "age-reply",

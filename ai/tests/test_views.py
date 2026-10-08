@@ -8,7 +8,11 @@ from ai.models import SavedConversation
 from ai.orchestration import FALLBACK_REPLY, StreamingOrchestrationResult
 from ai.provider.base import AIResponse
 from ai.trip_details import ResolvedTrip
-from ai.views import CONVERSATION_DELIMITER, RECOMMENDATIONS_DELIMITER
+from ai.views import (
+    CONVERSATION_DELIMITER,
+    RECOMMENDATIONS_DELIMITER,
+    _recommendation_card_data,
+)
 from analytics.models import Event
 from recommendations.scoring import ScoredDestination
 from travel.models import Destination
@@ -1081,6 +1085,159 @@ class AccommodationClickViewTests(TestCase):
         self.assertEqual(event.metadata["destination_trip_type"], "beach")
         self.assertEqual(event.metadata["destination_cost_of_living"], 1)
         self.assertNotIn("traveler_preferred_trip_types", event.metadata)
+
+    def test_records_what_the_clicked_link_carried_as_structured_values(self):
+        link = {
+            "check_in": "2026-11-05",
+            "check_out": "2026-11-08",
+            "adults": 3,
+            "children": 1,
+            "child_ages": [5],
+            "rooms": 2,
+        }
+
+        self.client.post(
+            reverse("ai:accommodation-click"),
+            {"destination_slug": "bali-id", "link": json.dumps(link)},
+        )
+
+        event = Event.objects.get(event_type="accommodation_outbound_click")
+        self.assertEqual(event.metadata["link"], link)
+
+    def test_a_link_with_nothing_but_the_destination_is_recorded_as_empty_values(self):
+        link = {
+            "check_in": None,
+            "check_out": None,
+            "adults": None,
+            "children": None,
+            "child_ages": [],
+            "rooms": None,
+        }
+
+        self.client.post(
+            reverse("ai:accommodation-click"),
+            {"destination_slug": "bali-id", "link": json.dumps(link)},
+        )
+
+        event = Event.objects.get(event_type="accommodation_outbound_click")
+        self.assertEqual(event.metadata["link"], link)
+
+    def test_only_the_six_operational_values_are_ever_stored(self):
+        hostile = {
+            "check_in": "2026-11-05",
+            "url": "https://www.booking.com/searchresults.en-gb.html?ss=Bali&aid=123",
+            "cjevent": "abc123",
+            "cookie": "session=secret",
+            "adults": 2,
+            "notes": "anything",
+        }
+
+        self.client.post(
+            reverse("ai:accommodation-click"),
+            {"destination_slug": "bali-id", "link": json.dumps(hostile)},
+        )
+
+        event = Event.objects.get(event_type="accommodation_outbound_click")
+        self.assertEqual(
+            set(event.metadata["link"]),
+            {"check_in", "check_out", "adults", "children", "child_ages", "rooms"},
+        )
+        stored = json.dumps(event.metadata)
+        for leaked in ("booking.com", "cjevent", "abc123", "secret", "aid=", "anything"):
+            self.assertNotIn(leaked, stored)
+
+    def test_values_outside_what_the_resolver_allows_are_dropped(self):
+        link = {
+            "check_in": "not-a-date",
+            "check_out": "2026-02-30",
+            "adults": 0,
+            "children": 99,
+            "child_ages": [5, 40, "x", True, -1],
+            "rooms": "2",
+        }
+
+        self.client.post(
+            reverse("ai:accommodation-click"),
+            {"destination_slug": "bali-id", "link": json.dumps(link)},
+        )
+
+        event = Event.objects.get(event_type="accommodation_outbound_click")
+        self.assertEqual(
+            event.metadata["link"],
+            {
+                "check_in": None,
+                "check_out": None,
+                "adults": None,
+                "children": None,
+                "child_ages": [5],
+                "rooms": None,
+            },
+        )
+
+    def test_a_missing_or_unreadable_link_records_the_click_without_one(self):
+        for body in ({}, {"link": "not json"}, {"link": json.dumps([1, 2])}):
+            with self.subTest(body=body):
+                Event.objects.all().delete()
+                self.client.post(
+                    reverse("ai:accommodation-click"), {"destination_slug": "bali-id", **body}
+                )
+
+                event = Event.objects.get(event_type="accommodation_outbound_click")
+                self.assertNotIn("link", event.metadata)
+
+    def test_the_card_hands_the_page_exactly_what_the_link_carries(self):
+        from ai.trip_details import ResolvedTrip
+
+        scored = ScoredDestination(
+            destination=self.destination,
+            avg_high_c=None,
+            avg_low_c=None,
+            preference_fit=0,
+            budget_fit=0,
+            temperature_fit=0,
+            repetition_penalty=0,
+            score=0,
+        )
+        trip = ResolvedTrip(adults=3, children=1, child_ages=(5,), rooms=2)
+
+        card = _recommendation_card_data(scored, detail_shown=True, trip=trip)
+
+        self.assertEqual(
+            card["accommodation_link"],
+            {
+                "check_in": None,
+                "check_out": None,
+                "adults": 3,
+                "children": 1,
+                "child_ages": [5],
+                "rooms": 2,
+            },
+        )
+        self.assertEqual(
+            card["accommodation_link"],
+            {**trip.link_summary()},
+        )
+
+    def test_a_room_count_the_link_does_not_carry_is_not_reported_as_carried(self):
+        from ai.trip_details import ResolvedTrip
+
+        scored = ScoredDestination(
+            destination=self.destination,
+            avg_high_c=None,
+            avg_low_c=None,
+            preference_fit=0,
+            budget_fit=0,
+            temperature_fit=0,
+            repetition_penalty=0,
+            score=0,
+        )
+
+        card = _recommendation_card_data(
+            scored, detail_shown=True, trip=ResolvedTrip(adults=1, rooms=3)
+        )
+
+        self.assertIsNone(card["accommodation_link"]["rooms"])
+        self.assertNotIn("no_rooms", card["accommodation_search_url"])
 
     def test_records_the_acquisition_snapshot_when_the_session_has_one(self):
         self.client.get("/", {"utm_source": "tiktok", "utm_campaign": "warm_november"})

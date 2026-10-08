@@ -203,7 +203,7 @@ class FreshVersusCarriedReplyTests(_CarriedCase):
         self.assertEqual(stays.trip.adults, 2)
         self.assertTrue(stays.is_accommodation_reply)
 
-    def test_a_stays_reply_keeps_the_place_facts_but_not_the_weather_or_a_video_pitch(self):
+    def test_a_stays_reply_is_a_search_action_not_a_description_of_the_place(self):
         provider = ScriptedProvider(
             [
                 turn(spain(selected_destination_name="Barcelona")),
@@ -218,8 +218,13 @@ class FreshVersusCarriedReplyTests(_CarriedCase):
         self.say(provider, "e hospedagem? somos 2")
 
         prompt = self.prompt_of_last_reply(provider)
-        self.assertIn("asked about places to stay in Barcelona", prompt)
-        self.assertIn("Points of interest: Sagrada Família, Park Güell", prompt)
+        self.assertIn("working on a stay search for Barcelona, Spain", prompt)
+        self.assertIn("Do NOT write a guide", prompt)
+        self.assertIn("Adults: 2.", prompt)
+        # Nothing to describe the place with: no description, no points of
+        # interest, no weather, no video.
+        self.assertNotIn("Points of interest", prompt)
+        self.assertNotIn("Description:", prompt)
         self.assertNotIn("Current typical avg high", prompt)
         self.assertNotIn("A real video is on file", prompt)
         self.assertNotIn("you may offer to show it", prompt)

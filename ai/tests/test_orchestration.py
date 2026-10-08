@@ -1,6 +1,7 @@
+import random
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from ai import memory
 from ai.orchestration import (
@@ -17,6 +18,7 @@ from ai.orchestration import (
     _sanitized_history_messages,
     _validate_climate_budget,
     _validate_state_clear,
+    _without_links,
     get_travel_recommendation,
     stream_travel_recommendation,
 )
@@ -225,6 +227,98 @@ def _intent(
         "is_accommodation_request": is_accommodation_request,
         "accommodation_place_name": accommodation_place_name,
     }
+
+
+class LinkStrippingTests(SimpleTestCase):
+    """The stays-action reply sits beside a card that carries the real link; any
+    link the model writes itself is an invented one and never gets through."""
+
+    CASES = (
+        # in the middle of a sentence: the label stays, the URL goes
+        (
+            "Pronto! [Pesquisar hospedagens em Barcelona]"
+            "(https://www.booking.com/searchresults.pt-br.html?ss=Barcelona&checkin=2026-11-05) "
+            "Boa viagem!",
+            "Pronto! Pesquisar hospedagens em Barcelona Boa viagem!",
+        ),
+        ("(veja [aqui](https://a.com/b)) ok", "(veja aqui) ok"),
+        ("Veja https://www.booking.com/x?y=1 agora", "Veja  agora"),
+        ("Acesse www.booking.com/abc para ver", "Acesse  para ver"),
+        # ending a line: the "here is the link" kind goes with its label, which
+        # would read like a link that isn't there
+        ("Aqui: [Veja os hotéis em Barcelona](#)", "Aqui:"),
+        (
+            "Aqui está o link para a pesquisa: [Clique aqui para ver a pesquisa.]"
+            "(https://www.booking.com).",
+            "Aqui está o link para a pesquisa:",
+        ),
+        (
+            "Detalhes: 2 quartos.\n\n[Booking Search](https://www.booking.com)\n\nA reserva é "
+            "concluída no Booking.com.",
+            "Detalhes: 2 quartos.\n\nA reserva é concluída no Booking.com.",
+        ),
+        ("Veja https://www.booking.com/x?y=1.", "Veja"),
+        # the shapes that would otherwise leave Markdown behind
+        ("[a (b) c](https://a.com/x) fim", "a (b) c fim"),
+        ('[label](https://a.com/x "title") fim', "label fim"),
+        (
+            "Dois [links](https://a.com) e [outro](https://b.com/c?d=(1)) seguidos",
+            "Dois links e outro seguidos",
+        ),
+        ("Veja <https://a.com/x>.", "Veja"),
+        ("Veja <https://a.com/x> agora", "Veja  agora"),
+        ("Linha 1\n[Link\nquebrado](https://a.com)\nLinha 3", "Linha 1\n\nLinha 3"),
+        ("Terminando com [abc](https://a.com", "Terminando com"),
+        # nothing here is a link
+        (
+            "Atualizei sua busca para 2 quartos (3 adultos) [ok]. What a happy holiday, how "
+            "wonderful - hello, who? Veja booking.com e [x",
+            "Atualizei sua busca para 2 quartos (3 adultos) [ok]. What a happy holiday, how "
+            "wonderful - hello, who? Veja booking.com e [x",
+        ),
+        ("Terminando com ht", "Terminando com ht"),
+        ("Terminando com www", "Terminando com www"),
+    )
+
+    def streamed(self, text, cuts):
+        pieces = [text[a:b] for a, b in zip([0, *cuts], [*cuts, len(text)], strict=True)]
+        return "".join(_without_links(iter(pieces)))
+
+    def test_links_and_urls_are_taken_out_and_ordinary_text_is_untouched(self):
+        for text, expected in self.CASES:
+            with self.subTest(text=text[:40]):
+                self.assertEqual(self.streamed(text, []), expected)
+
+    def test_the_result_does_not_depend_on_where_the_stream_is_cut(self):
+        rng = random.Random(7)
+        for text, expected in self.CASES:
+            every_character = list(range(1, len(text)))
+            cuts = [every_character] + [
+                sorted(rng.sample(every_character, rng.randint(1, min(12, len(every_character)))))
+                for _ in range(150)
+            ]
+            for these in cuts:
+                with self.subTest(text=text[:40], cuts=these[:6]):
+                    self.assertEqual(self.streamed(text, these), expected)
+
+    def test_text_before_a_possible_link_is_sent_as_it_arrives(self):
+        consumed = []
+
+        def source():
+            for piece in ("Atualizei ", "sua busca ", "para 2 quartos. ", "Aqui: [X](https://a.com)"):
+                consumed.append(piece)
+                yield piece
+
+        sent = _without_links(source())
+
+        self.assertEqual(next(sent), "Atualizei")
+        self.assertEqual(len(consumed), 1)  # not held back for later chunks
+        self.assertEqual("".join(sent), " sua busca para 2 quartos. Aqui:")
+
+    def test_text_that_never_looks_like_a_link_comes_out_exactly_as_it_went_in(self):
+        pieces = ["Atualizei ", "sua busca ", "para 2 quartos."]
+
+        self.assertEqual("".join(_without_links(iter(pieces))), "".join(pieces))
 
 
 class GetTravelRecommendationTests(TestCase):
@@ -2160,9 +2254,9 @@ class AccommodationRequestTests(TestCase):
         )
 
         prompt = ai_provider.stream_reply_calls[0][-1].content
-        self.assertIn("asked about places to stay in Tokyo", prompt)
+        self.assertIn("working on a stay search for Tokyo, Japan", prompt)
         self.assertNotIn('they clicked "Choose this trip"', prompt)
-        self.assertIn("never a specific hotel name, price, or availability claim", prompt)
+        self.assertIn("no hotel names, prices or availability", prompt)
 
     def test_known_party_size_reaches_the_result_for_the_link_builder(self):
         ai_provider = StubAIProvider(
@@ -2495,9 +2589,11 @@ class FreeformAccommodationRequestTests(TestCase):
         )
 
         prompt = ai_provider.stream_reply_calls[0][-1].content
-        self.assertIn("a live accommodation search link IS being shown", prompt)
-        self.assertIn("don't say you can't help with a search", prompt)
-        self.assertIn("Never invent a specific hotel name, price, or rating", prompt)
+        self.assertIn("working on a stay search for Wuhan, China", prompt)
+        # Not in the catalog: said honestly, and the search link still comes with the reply.
+        self.assertIn("It isn't in our curated destination dataset", prompt)
+        self.assertIn("the search link shown right after your reply", prompt)
+        self.assertIn("don't recommend specific hotels or quote prices", prompt)
 
     def test_ai_failure_during_freeform_resolution_falls_back_to_honest_reply(self):
         # _resolve_freeform_place must degrade the same way _resolve_destination

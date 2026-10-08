@@ -682,6 +682,8 @@
                         stayLink.addEventListener("click", function () {
                             const body = new FormData();
                             body.append("destination_slug", destination.slug);
+                            // What this link carries, for the diagnostic record.
+                            body.append("link", JSON.stringify(destination.accommodation_link || {}));
                             body.append("csrfmiddlewaretoken", csrfToken);
                             fetch("/api/v1/accommodation-click/", {
                                 method: "POST",

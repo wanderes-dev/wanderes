@@ -13,7 +13,10 @@ from ai.trip_details import (
     TripTurn,
     apply_components,
     fact_block,
+    guard_components,
     has_trip_detail_cues,
+    names_detail,
+    names_unsupported_filter,
     needs_occupancy,
     previous_question_for_extraction,
     resolve,
@@ -37,6 +40,7 @@ def comps(
     adults=None,
     children=None,
     ages=(),
+    rooms=None,
     cleared=(),
 ):
     return validate_components(
@@ -48,6 +52,7 @@ def comps(
             "adults": adults,
             "children": children,
             "child_ages": list(ages),
+            "rooms": rooms,
             "cleared_fields": list(cleared),
         }
     )
@@ -530,6 +535,9 @@ class CueGateTests(SimpleTestCase):
             "ficar três noites",
             "we are two adults and a kid",
             "viajo sozinho",
+            "quero um quarto",
+            "quero dois quartos por favor",
+            "I need two rooms",
             "ainda não sei as datas",
             "esquece a duração",
             "dia 05",
@@ -584,6 +592,252 @@ class ClearGuardTests(SimpleTestCase):
         parsed = comps(adults=2)
 
         self.assertIs(restrict_clears(parsed, "somos 2"), parsed)
+
+
+class RoomsTests(SimpleTestCase):
+    def test_rooms_are_set_on_their_own_and_never_touch_the_party(self):
+        known = apply(adults=3, children=1, ages=[5]).record
+
+        applied = apply(known, rooms=2)
+
+        self.assertEqual(applied.record["rooms"], 2)
+        self.assertEqual(
+            (applied.record["adults"], applied.record["children"], applied.record["child_ages"]),
+            (3, 1, [5]),
+        )
+        self.assertTrue(applied.rooms_changed)
+
+    def test_a_correction_changes_only_the_rooms_and_keeps_dates_and_occupancy(self):
+        known = apply(day=5, length=3, unit="days", adults=3, children=1, ages=[5], rooms=2).record
+
+        corrected = apply(known, rooms=1)
+
+        self.assertEqual(corrected.record["rooms"], 1)
+        self.assertEqual(
+            {k: v for k, v in corrected.record.items() if k != "rooms"},
+            {k: v for k, v in known.items() if k != "rooms"},
+        )
+
+    def test_clearing_the_rooms_clears_only_the_rooms(self):
+        known = apply(day=5, length=3, unit="days", adults=3, rooms=2).record
+
+        cleared = apply(known, cleared=["rooms"])
+
+        self.assertIsNone(cleared.record["rooms"])
+        self.assertEqual(cleared.record["adults"], 3)
+        self.assertEqual(cleared.record["start_date"], "2026-11-05")
+        self.assertTrue(cleared.rooms_changed)
+
+    def test_repeating_the_same_rooms_changes_nothing(self):
+        known = apply(adults=3, rooms=2).record
+
+        again = apply(known, rooms=2)
+
+        self.assertFalse(again.changed)
+        self.assertFalse(again.rooms_changed)
+
+    def test_rooms_that_fit_the_adults_go_into_the_search(self):
+        for adults, rooms in ((3, 2), (2, 2), (4, 1)):
+            with self.subTest(adults=adults, rooms=rooms):
+                trip = resolve(apply(adults=adults, rooms=rooms).record, TODAY)
+
+                self.assertTrue(trip.rooms_in_search)
+                self.assertEqual(trip.booking_kwargs()["rooms"], rooms)
+                self.assertEqual(trip.link_summary()["rooms"], rooms)
+
+    def test_more_rooms_than_adults_are_kept_but_never_claimed_or_sent(self):
+        # Booking silently uses at most one room per adult, so a caption or link
+        # saying 3 rooms for 1 adult would be false.
+        record = apply(adults=1, rooms=3).record
+
+        trip = resolve(record, TODAY)
+
+        self.assertEqual(record["rooms"], 3)  # what the traveler asked for stays on record
+        self.assertTrue(trip.rooms_conflict)
+        self.assertFalse(trip.rooms_in_search)
+        self.assertNotIn("rooms", trip.booking_kwargs())
+        self.assertIsNone(trip.link_summary()["rooms"])
+        self.assertIn(
+            "3 rooms not included - Booking needs an adult in every room", trip.caption("Barcelona")
+        )
+        facts = fact_block(TripTurn(trip=trip, ask_rooms=True, today=TODAY))
+        self.assertIn("the rooms are NOT in the Booking search", facts)
+        self.assertIn("Never say the rooms were set", facts)
+        self.assertIn(
+            "whether to change the number of adults or use fewer rooms (at most 1)", facts
+        )
+
+    def test_fixing_the_conflict_by_either_side_makes_the_rooms_representable(self):
+        record = apply(adults=1, rooms=3).record
+
+        fewer_rooms = resolve(apply(record, rooms=1).record, TODAY)
+        more_adults = resolve(apply(record, adults=3).record, TODAY)
+
+        self.assertEqual(fewer_rooms.booking_kwargs()["rooms"], 1)
+        self.assertEqual(more_adults.booking_kwargs()["rooms"], 3)
+
+    def test_rooms_with_nobody_known_to_sleep_in_them_are_noted_not_sent(self):
+        trip = resolve(apply(rooms=2).record, TODAY)
+
+        self.assertEqual(trip.booking_kwargs(), {})
+        self.assertIn(
+            "2 rooms not included yet - the number of adults is needed", trip.caption("Barcelona")
+        )
+        self.assertIn(
+            "Rooms: 2 (noted), not in the search until the number of adults is known",
+            fact_block(TripTurn(trip=trip, today=TODAY)),
+        )
+
+    def test_the_rooms_are_bounded_like_every_other_count(self):
+        for rooms in (0, -1, 11, 100):
+            with self.subTest(rooms=rooms):
+                self.assertIsNone(comps(rooms=rooms)["rooms"])
+        self.assertEqual(comps(rooms=10)["rooms"], 10)
+
+    def test_the_caption_of_the_finished_conversation_has_the_rooms(self):
+        trip = _trip(
+            start_date="2026-11-05",
+            start_assumed_month=True,
+            stay_length=3,
+            stay_unit="days",
+            adults=3,
+            children=1,
+            child_ages=[5],
+            rooms=2,
+        )
+
+        self.assertEqual(
+            trip.caption("Barcelona"),
+            "Booking search: Barcelona · 5 Nov 2026 – 8 Nov 2026 (3 nights), month assumed"
+            " · 3 adults · 1 child (age 5) · 2 rooms",
+        )
+        self.assertEqual(
+            trip.booking_kwargs(),
+            {
+                "check_in": date(2026, 11, 5),
+                "check_out": date(2026, 11, 8),
+                "adults": 3,
+                "children": 1,
+                "child_ages": [5],
+                "rooms": 2,
+            },
+        )
+
+    def test_the_rooms_conflict_is_asked_only_when_this_message_is_about_the_rooms(self):
+        # (the orchestration decides; this is the vocabulary it uses)
+        self.assertTrue(names_detail("quero dois quartos por favor", "rooms"))
+        self.assertTrue(names_detail("I need two rooms", "rooms"))
+        self.assertFalse(names_detail("somos 3 adultos", "rooms"))
+
+    def test_a_turn_with_something_to_ask_says_so(self):
+        trip = resolve(apply(adults=1, rooms=3).record, TODAY)
+
+        self.assertFalse(TripTurn(trip=trip, today=TODAY).must_ask)
+        self.assertTrue(TripTurn(trip=trip, ask_rooms=True, today=TODAY).must_ask)
+        self.assertTrue(TripTurn(trip=trip, ask_child_ages=True, today=TODAY).must_ask)
+        past = apply(day=5, relative="this")
+        self.assertTrue(TripTurn(trip=trip, issues=past.issues, today=TODAY).must_ask)
+
+
+class UnsupportedFilterVocabularyTests(SimpleTestCase):
+    def test_a_price_level_star_rating_or_amenity_is_a_filter_the_search_cannot_apply(self):
+        for message in (
+            "quero hotel barato",
+            "something cheap please",
+            "um hotel de luxo",
+            "hotel caro",
+            "hotel de 4 estrelas",
+            "a five star hotel",
+            "com piscina",
+            "pet friendly",
+        ):
+            with self.subTest(message=message):
+                self.assertTrue(names_unsupported_filter(message))
+
+    def test_ordinary_requests_and_cost_questions_are_not(self):
+        for message in (
+            "quero hospedagens",
+            "quanto custa?",
+            "qual o preço da passagem?",
+            "quero dois quartos por favor",
+            "qual bairro é melhor para ficar?",
+            "cara, quero hospedagens",
+        ):
+            with self.subTest(message=message):
+                self.assertFalse(names_unsupported_filter(message))
+
+
+class ComponentGuardTests(SimpleTestCase):
+    def guarded(self, current, message, **kwargs):
+        return apply_components(current, guard_components(comps(**kwargs), message), TODAY)
+
+    def test_a_message_about_rooms_cannot_change_who_is_going(self):
+        known = apply(adults=3, children=1, ages=[5]).record
+
+        for message in (
+            "quero dois quartos por favor",
+            "quero uma pesquisa para dois quartos",
+            "two rooms please",
+        ):
+            with self.subTest(message=message):
+                applied = self.guarded(known, message, adults=2, children=2, ages=[7, 8], rooms=2)
+
+                self.assertEqual(applied.record["rooms"], 2)
+                self.assertEqual(
+                    (
+                        applied.record["adults"],
+                        applied.record["children"],
+                        applied.record["child_ages"],
+                    ),
+                    (3, 1, [5]),
+                )
+
+    def test_rooms_said_together_with_the_party_keep_the_party(self):
+        applied = self.guarded(None, "2 adultos e 2 quartos", adults=2, rooms=2)
+
+        self.assertEqual((applied.record["adults"], applied.record["rooms"]), (2, 2))
+
+    def test_a_stray_age_of_zero_does_not_replace_a_known_age(self):
+        known = apply(adults=3, children=1, ages=[5]).record
+
+        applied = self.guarded(known, "quero dois quartos por favor", ages=[0], rooms=2)
+
+        self.assertEqual(applied.record["child_ages"], [5])
+        self.assertEqual(resolve(applied.record, TODAY).booking_kwargs()["child_ages"], [5])
+
+    def test_a_stray_age_of_zero_beside_other_details_does_not_replace_the_known_age(self):
+        # No rooms in these, so it is the age guard alone that holds the 5.
+        known = apply(adults=3, children=1, ages=[5]).record
+
+        for message in ("somos 3 adultos e uma criança", "quero ir dia 05", "ok, pode ser"):
+            with self.subTest(message=message):
+                applied = self.guarded(known, message, ages=[0])
+
+                self.assertEqual(applied.record["child_ages"], [5])
+
+    def test_an_explicit_correction_to_age_zero_is_honored(self):
+        known = apply(adults=3, children=1, ages=[5]).record
+
+        for message in (
+            "na verdade ela tem 0 anos",
+            "é um bebê de 8 meses",
+            "actually she is 0 years old",
+        ):
+            with self.subTest(message=message):
+                applied = self.guarded(known, message, ages=[0])
+
+                self.assertEqual(applied.record["child_ages"], [0])
+
+    def test_an_infant_is_a_legitimate_first_age(self):
+        applied = self.guarded(apply(adults=2, children=1).record, "um bebê, 3 meses", ages=[0])
+
+        self.assertEqual(applied.record["child_ages"], [0])
+
+    def test_age_zero_is_not_rejected_globally_only_unbacked(self):
+        # A positive age is never touched by the guard.
+        applied = self.guarded(apply(adults=2, children=1).record, "ela tem 5 anos", ages=[5])
+
+        self.assertEqual(applied.record["child_ages"], [5])
 
 
 class PreviousQuestionTests(SimpleTestCase):
@@ -648,6 +902,10 @@ class OneObjectDrivesEverythingTests(SimpleTestCase):
         "start already past": record(start_date="2026-10-01", stay_length=3, stay_unit="days"),
         "long stay": record(start_date="2026-11-05", stay_length=45, stay_unit="days"),
         "children without adults": record(children=1, child_ages=[5]),
+        "rooms that fit": record(adults=3, rooms=2),
+        "rooms equal to the adults": record(adults=2, rooms=2),
+        "more rooms than adults": record(adults=1, rooms=3),
+        "rooms, adults unknown": record(rooms=2),
     }
 
     def test_the_three_renderings_agree_for_every_state(self):
@@ -677,13 +935,30 @@ class OneObjectDrivesEverythingTests(SimpleTestCase):
                     self.assertIn("Travelers: not stated yet.", facts)
                 # children
                 self.assertEqual("children" in kwargs, "(age" in caption)
-                self.assertEqual("children" in kwargs, "included in the search." in facts)
+                children_line = next(
+                    (ln for ln in facts.splitlines() if ln.startswith("- Children:")), ""
+                )
+                self.assertEqual("children" in kwargs, "included in the search." in children_line)
                 self.assertEqual(
                     trip.children_pending, "not included yet - the age is needed" in caption
                 )
                 self.assertEqual(
                     trip.children_pending, "NOT included in the Booking search" in facts
                 )
+                # rooms
+                self.assertEqual("rooms" in kwargs, trip.rooms_in_search)
+                if "rooms" in kwargs:
+                    self.assertIn(f"{kwargs['rooms']} room", caption)
+                    self.assertIn(f"Rooms: {kwargs['rooms']} - included in the search.", facts)
+                elif trip.rooms is not None:
+                    self.assertIn(f"{trip.rooms} rooms not included", caption)
+                    self.assertNotIn(
+                        "included in the search", facts.split("Rooms:")[1].split("\n")[0]
+                    )
+                else:
+                    self.assertNotIn(
+                        "room", caption.replace("rooms", "room").split("Booking search:")[1]
+                    )
                 # the summary line of what the link carries
                 if not kwargs:
                     self.assertIn("carries exactly: only the destination", facts)
@@ -743,7 +1018,7 @@ class OneObjectDrivesEverythingTests(SimpleTestCase):
         self.assertIn("Needs clarification:", facts)
         self.assertIn("Monday 5 October 2026, which has already passed", facts)
         self.assertIn("Ask which date they mean.", facts)
-        self.assertIn("child without an age: ask for the age", facts)
+        self.assertIn("a child's age is missing - ask for the age", facts)
 
     def test_an_uninformative_turn_adds_nothing_unless_it_is_a_stays_reply(self):
         turn = TripTurn(trip=ResolvedTrip(), today=TODAY)
