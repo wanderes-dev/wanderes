@@ -210,10 +210,11 @@ class RunnerTests(TestCase):
         self.assertEqual([r.card for r in results], [True, False])
 
     def test_a_reply_that_recites_the_place_and_invents_prices_fails_the_follow_up(self):
+        # a trip budget that says it is an estimate: the price filter lets it through
         results = self.run_with(
             [
                 "Visite a Sagrada Família, o Parque Güell e a Rambla - " + "x" * 400,
-                "Uma diária custa €120. Não perca a Sagrada Família!",
+                "Calcule um orçamento aproximado de €120 por dia. Não perca a Sagrada Família!",
             ]
         )
 

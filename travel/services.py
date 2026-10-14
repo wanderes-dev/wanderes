@@ -18,6 +18,33 @@ ENTRY_REQUIREMENT_DISCLAIMER = (
 )
 
 
+# Countries whose entry-requirement entry the owner has checked against an official
+# government or consular source. EMPTY ON PURPOSE: travel/data/country_entry_requirements.json
+# says itself that it is compiled from general knowledge and not verified, has no
+# provenance per entry, and contradicts itself (every Schengen entry lists Brazil under
+# visa_required_nationalities while its notes say Brazilians enter visa-free for 90 days).
+# The data is kept for review, but nothing may assert a visa or entry rule from an entry
+# that is not listed here - the reply says it cannot verify the rule and points to the
+# official source.
+VERIFIED_ENTRY_COUNTRIES: frozenset[str] = frozenset()
+
+
+def entry_requirement_can_be_asserted(
+    requirement: CountryEntryRequirement | None, nationality: str | None
+) -> bool:
+    """Whether an entry may be used to state a visa rule to a traveler of this
+    nationality: it has to be a verified entry, and its structured list and its notes
+    must not disagree about that nationality (neither is trusted over the other)."""
+    if requirement is None or not nationality:
+        return False
+    if requirement.country not in VERIFIED_ENTRY_COUNTRIES:
+        return False
+    name = nationality.strip().lower()
+    listed = any(name == n.strip().lower() for n in requirement.visa_required_nationalities)
+    named_in_notes = name in (requirement.visa_notes or "").lower()
+    return not (listed and named_in_notes)
+
+
 def get_entry_requirements(country_name: str) -> CountryEntryRequirement | None:
     """Look up entry-requirement guidance for a country by name
     (case-insensitive). Returns None if nothing's on file - callers

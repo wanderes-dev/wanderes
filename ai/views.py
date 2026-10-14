@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import date
 
 from django.http import (
@@ -24,6 +25,32 @@ from .orchestration import FALLBACK_REPLY, MAX_RECOMMENDATIONS, stream_travel_re
 
 MAX_MESSAGE_LENGTH = 2000
 
+# A payment card number pasted into the chat would be kept in the conversation
+# history, sent to the model on every later turn and saved with the
+# conversation. Wanderes never takes payments, so it is removed on the way in;
+# the Luhn check keeps phone numbers and other long digit runs as they are.
+CARD_NUMBER_PLACEHOLDER = "[card number removed]"
+_CARD_NUMBER_CANDIDATE = re.compile(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)")
+
+
+def _passes_luhn(digits: str) -> bool:
+    total = 0
+    for position, char in enumerate(reversed(digits)):
+        value = int(char)
+        if position % 2 == 1:
+            value = value * 2 - 9 if value > 4 else value * 2
+        total += value
+    return total % 10 == 0
+
+
+def redact_card_numbers(text: str) -> str:
+    def replace(match):
+        digits = re.sub(r"\D", "", match.group())
+        return CARD_NUMBER_PLACEHOLDER if _passes_luhn(digits) else match.group()
+
+    return _CARD_NUMBER_CANDIDATE.sub(replace, text)
+
+
 # Appended after the streamed reply so the chat page can build "save as
 # trip" links without a second endpoint or server-side session state.
 # Distinctive enough real reply text won't collide with it by accident.
@@ -36,8 +63,9 @@ RECOMMENDATIONS_DELIMITER = "\n<<<WANDERES_RECOMMENDATIONS>>>\n"
 CONVERSATION_DELIMITER = "\n<<<WANDERES_CONVERSATION>>>\n"
 
 # Sent when a turn changed what the Booking search carries (or whether there is
-# one at all): the buttons already on the page are out of date, so the page
-# retires them before it draws the new cards.
+# one at all), or draws a Booking button of its own: the buttons already on the
+# page are out of date or replaced, so the page retires them before it draws the
+# new cards.
 STAYS_DELIMITER = "\n<<<WANDERES_STAYS>>>\n"
 
 
@@ -226,6 +254,7 @@ def recommendations_stream(request):
         return HttpResponseBadRequest("Message must not be empty.")
     if len(message) > MAX_MESSAGE_LENGTH:
         return HttpResponseBadRequest("Message is too long.")
+    message = redact_card_numbers(message)
 
     user = request.user if request.user.is_authenticated else None
 
@@ -355,21 +384,18 @@ def recommendations_stream(request):
             yield chunk
         full_reply = "".join(collected)
 
-        if result.retire_stays:
-            # What the Booking buttons already on the page carry is out of date.
-            yield STAYS_DELIMITER + json.dumps({"retire": True})
-
         # A card that exists only to show the Booking action has nothing to
         # show while the trip isn't ready for a search.
         stays_only_and_unready = result.is_accommodation_reply and not (
             result.trip is not None and result.trip.search_ready
         )
+        cards_payload = None
         if result.recommendations and not stays_only_and_unready:
             # Already capped to MAX_RECOMMENDATIONS by ai.orchestration
             # before it reaches this view - this slice is a no-op today,
             # kept so a future caller that doesn't pre-cap can't flood the
             # UI with cards.
-            payload = [
+            cards_payload = [
                 _recommendation_card_data(
                     r,
                     detail_shown=result.is_destination_detail,
@@ -377,11 +403,9 @@ def recommendations_stream(request):
                 )
                 for r in result.recommendations[:MAX_RECOMMENDATIONS]
             ]
-            yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)
         elif result.accommodation_freeform_name:
-            # A real place _resolve_destination couldn't match in the
-            # curated catalog (e.g. Wuhan) but ai.orchestration's
-            # _resolve_freeform_place confirmed exists - no
+            # A real place the curated catalog doesn't carry (e.g. Wuhan)
+            # that ai.orchestration's _named_place confirmed exists - no
             # ScoredDestination to build a normal card from, just a name
             # and country to hand Booking.com's own free-text search.
             # freeform=True tells the card template to skip "Save this
@@ -393,7 +417,7 @@ def recommendations_stream(request):
                 result.accommodation_freeform_country or "",
             )
             if action:  # the card is only that action
-                payload = [
+                cards_payload = [
                     {
                         "name": result.accommodation_freeform_name,
                         "country": result.accommodation_freeform_country or "",
@@ -402,7 +426,16 @@ def recommendations_stream(request):
                         **action,
                     }
                 ]
-                yield RECOMMENDATIONS_DELIMITER + json.dumps(payload)
+
+        # What the Booking buttons already on the page carry is out of date when
+        # this turn changed the search - and a button this turn draws replaces
+        # the ones before it, so the page never holds two live Booking buttons
+        # (an acknowledgment that gets the same search shown again, say).
+        draws_action = any(card.get("accommodation_search_url") for card in cards_payload or [])
+        if result.retire_stays or draws_action:
+            yield STAYS_DELIMITER + json.dumps({"retire": True})
+        if cards_payload:
+            yield RECOMMENDATIONS_DELIMITER + json.dumps(cards_payload)
 
         if user is not None:
             # A degraded reply (provider unreachable, or failed
