@@ -1479,6 +1479,47 @@ class BookingActionReadinessTests(TestCase):
 
         self.assertNotIn(STAYS_DELIMITER, content)
 
+    @patch("ai.views.stream_travel_recommendation")
+    def test_a_button_drawn_again_for_an_unchanged_search_replaces_the_old_one(self, mock_stream):
+        # An acknowledgment that gets the same ready search shown a second time
+        # must not leave two live Booking buttons on the page.
+        content = self.post(
+            mock_stream,
+            recommendations=[self.scored],
+            is_destination_detail=True,
+            is_accommodation_reply=True,
+            trip=ready_trip(),
+            retire_stays=False,
+        )
+
+        _, _, json_part = content.partition(STAYS_DELIMITER)
+        retire_footer = json_part.split(RECOMMENDATIONS_DELIMITER)[0]
+        self.assertEqual(json.loads(retire_footer), {"retire": True})
+        self.assertLess(content.index(STAYS_DELIMITER), content.index(RECOMMENDATIONS_DELIMITER))
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_a_freeform_place_button_replaces_the_old_one_too(self, mock_stream):
+        content = self.post(
+            mock_stream,
+            recommendations=[],
+            trip=ready_trip(adults=2),
+            accommodation_freeform_name="Wuhan",
+            accommodation_freeform_country="China",
+        )
+
+        self.assertLess(content.index(STAYS_DELIMITER), content.index(RECOMMENDATIONS_DELIMITER))
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_a_card_without_a_button_retires_nothing(self, mock_stream):
+        content = self.post(
+            mock_stream,
+            recommendations=[self.scored],
+            is_destination_detail=True,
+            trip=ResolvedTrip(stay_length=10, stay_unit="days"),
+        )
+
+        self.assertNotIn(STAYS_DELIMITER, content)
+
 
 class ChatPageFootersTests(TestCase):
     """The page is JavaScript this suite can't run, so what it must agree with the
@@ -1508,3 +1549,48 @@ class ChatPageFootersTests(TestCase):
         self.assertLess(
             handler.index("retireStaysActions();"), handler.index("addRecommendationCards(")
         )
+
+
+class CardNumberRedactionTests(TestCase):
+    """A card number pasted into the chat never reaches the conversation, the
+    model or the saved history."""
+
+    @patch("ai.views.stream_travel_recommendation")
+    def test_a_card_number_is_removed_before_anything_sees_the_message(self, mock_stream):
+        mock_stream.return_value = StreamingOrchestrationResult(
+            recommendations=[], reply_chunks=iter(["ok"])
+        )
+
+        response = self.client.post(
+            reverse("ai:recommendations-api"), {"message": "my credit card is 4111 1111 1111 1111"}
+        )
+        b"".join(response.streaming_content)
+
+        seen = mock_stream.call_args.args[0]
+        self.assertEqual(seen, "my credit card is [card number removed]")
+
+    def test_only_card_numbers_are_touched(self):
+        from ai.views import redact_card_numbers
+
+        for text in (
+            "call me on +351 912 345 678",
+            "booking 123456789012",
+            "dia 5 de dezembro, 3 noites, 2 adultos",
+            "4111 1111 1111 1112",  # fails the Luhn check
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(redact_card_numbers(text), text)
+
+    def test_the_usual_ways_of_writing_a_card_number_are_all_caught(self):
+        from ai.views import CARD_NUMBER_PLACEHOLDER, redact_card_numbers
+
+        for text in (
+            "4111111111111111",
+            "4111-1111-1111-1111",
+            "4111 1111 1111 1111",
+            "5500 0000 0000 0004",
+        ):
+            with self.subTest(text=text):
+                redacted = redact_card_numbers(f"it is {text} ok")
+
+                self.assertEqual(redacted, f"it is {CARD_NUMBER_PLACEHOLDER} ok")

@@ -1,5 +1,6 @@
 import random
 from decimal import Decimal
+from unittest import mock
 
 from django.test import SimpleTestCase, TestCase
 
@@ -7,6 +8,7 @@ from ai import memory
 from ai.orchestration import (
     CLIMATE_BUDGET_SCHEMA,
     CLIMATE_BUDGET_SYSTEM_PROMPT,
+    DESTINATION_RESOLUTION_SYSTEM_PROMPT,
     FALLBACK_REPLY,
     MAX_RECOMMENDATIONS,
     NEEDS_LOGIN_REPLY,
@@ -642,6 +644,7 @@ class TravelerProfileContextTests(TestCase):
         explanation_prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertNotIn("budget", explanation_prompt.lower())
 
+    @mock.patch("travel.services.VERIFIED_ENTRY_COUNTRIES", frozenset({"Testland"}))
     def test_entry_requirements_included_when_home_country_and_data_exist(self):
         TravelerProfile.objects.create(user=self.user, home_country="Brazil")
         CountryEntryRequirement.objects.create(
@@ -818,7 +821,7 @@ class StreamTravelRecommendationTests(TestCase):
     def test_valid_request_yields_multiple_chunks(self):
         ai_provider = StubAIProvider(
             structured_response=_intent(month=10, min_temp_c=20.0),
-            reply_text="Try the warm cheap destination",
+            reply_text="Try the warm cheap destination. It is lovely in October.",
         )
 
         result = stream_travel_recommendation(
@@ -826,8 +829,12 @@ class StreamTravelRecommendationTests(TestCase):
         )
         chunks = list(result.reply_chunks)
 
+        # one chunk per sentence: a sentence is held until it ends so that a price nobody
+        # gave can be taken out of it before anything is shown
         self.assertGreater(len(chunks), 1)
-        self.assertEqual("".join(chunks), "Try the warm cheap destination ")
+        self.assertEqual(
+            "".join(chunks), "Try the warm cheap destination. It is lovely in October. "
+        )
         self.assertEqual(len(result.recommendations), 1)
 
     def test_valid_request_populates_recommendation_constraints(self):
@@ -1607,6 +1614,11 @@ class VisaQuestionTests(TestCase):
     a dedicated handler carrying real, verified data."""
 
     def setUp(self):
+        # These tests are about what is done with an entry the owner has verified;
+        # what happens to an unverified one is in test_correction_cycle_regressions.
+        patcher = mock.patch("travel.services.VERIFIED_ENTRY_COUNTRIES", frozenset({"Japan"}))
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.destination = _make_destination("warm-cheap", lat=10.0, lon=10.0)
         self.climate = StubClimateProvider(
             {(10.0, 10.0): MonthlyClimateSummary(2025, 10, 28.0, 20.0, 5.0)}
@@ -1762,14 +1774,14 @@ class VisaQuestionTests(TestCase):
 
         self.assertEqual(ai_provider.stream_reply_temperatures, [0])
 
-    def test_no_known_nationality_falls_back_to_general_knowledge_disclosure(self):
+    def test_no_known_nationality_means_no_rule_is_stated_and_the_official_source_is_named(self):
         ai_provider = StubAIProvider(
             structured_response=_intent(
                 is_visa_or_entry_question=True,
                 visa_question_country="Japan",
                 visa_question_nationality=None,
             ),
-            reply_text="I'm not entirely sure, but generally...",
+            reply_text="I can't confirm the current rules.",
         )
 
         get_travel_recommendation(
@@ -1778,7 +1790,8 @@ class VisaQuestionTests(TestCase):
 
         prompt = ai_provider.stream_reply_calls[0][-1].content
         self.assertNotIn("Verified data on file", prompt)
-        self.assertIn("isn't independently verified", prompt)
+        self.assertIn("Do NOT say, from memory", prompt)
+        self.assertIn("official sources", prompt)
 
 
 class BookingRequestTests(TestCase):
@@ -2375,13 +2388,15 @@ class AccommodationRequestTests(TestCase):
         self.assertIn("Narnia", prompt)
         self.assertIn("isn't in our curated catalog", prompt)
 
-    def test_ai_fallback_resolves_a_misspelled_destination_end_to_end(self):
-        # The full reported scenario (2026-09-24): "quero hospedagens em
-        # Xangai" falsely reported "no data" for a real destination
-        # (Shanghai) because the naive DB lookup never matched. Confirms
-        # the AI-fallback resolution added to _resolve_destination()
-        # actually reaches this destination through the real pipeline,
-        # not just in isolation.
+    def test_a_misspelled_destination_reaches_the_catalog_through_its_standard_name(self):
+        # "quero hospedagens em Xangai" once reported "no data" for a real
+        # destination (Shanghai) because the plain name lookup never matched.
+        # A name in another language or spelling still reaches its catalog
+        # entry end to end - the way a chosen place does: the free-form step
+        # gives the place's standard English name and an exact lookup of THAT
+        # name, in the same country, finds Shanghai. The closest-match model
+        # call is never made, so it can't swap a place the catalog lacks for
+        # some other one.
         shanghai = Destination.objects.create(
             slug="shanghai-cn",
             name="Shanghai",
@@ -2402,7 +2417,11 @@ class AccommodationRequestTests(TestCase):
                     accommodation_place_name="Xangai",
                 ),
                 "trip_details_signal": {**WHEN, "adults": 2},
-                "destination_resolution": {"slug": "shanghai-cn"},
+                "freeform_place_resolution": {
+                    "is_real_place": True,
+                    "name": "Shanghai",
+                    "country": "China",
+                },
             },
             reply_text="Here's what's good to know about staying in Shanghai.",
         )
@@ -2417,6 +2436,8 @@ class AccommodationRequestTests(TestCase):
         self.assertEqual(len(result.recommendations), 1)
         self.assertEqual(result.recommendations[0].destination, shanghai)
         self.assertTrue(result.is_destination_detail)
+        asked = [call[0].content for call in ai_provider.generate_structured_reply_calls]
+        self.assertNotIn(DESTINATION_RESOLUTION_SYSTEM_PROMPT, asked)
 
     def test_extraction_prompt_requires_the_english_catalog_name(self):
         # Regression guard for the actual root cause of the Xangai/Toquio

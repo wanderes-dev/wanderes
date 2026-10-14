@@ -1,6 +1,7 @@
 import logging
 import re
 import unicodedata
+import zlib
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from datetime import date
@@ -25,6 +26,7 @@ from travel.models import (
 )
 from travel.services import (
     ENTRY_REQUIREMENT_DISCLAIMER,
+    entry_requirement_can_be_asserted,
     find_destination_slugs_by_name,
     get_entry_requirements,
     is_catalog_country_name,
@@ -857,10 +859,11 @@ class StreamingOrchestrationResult:
     # caption under it from this one object, so the link carries exactly what
     # is known and nothing Booking.com would have to guess.
     trip: trip_details.ResolvedTrip | None = None
-    # Set only when is_accommodation_request named a place _resolve_destination
-    # couldn't match in the catalog, but _resolve_freeform_place confirmed is
-    # real - e.g. Wuhan, which Wanderes has no scored Destination row for but
-    # is still a real city Booking.com can search. ai/views.py builds a
+    # Set only when is_accommodation_request named a real place that the
+    # catalog doesn't carry under its own name (_named_place found it through
+    # _resolve_freeform_place) - e.g. Wuhan, which Wanderes has no scored
+    # Destination row for but is still a real city Booking.com can search.
+    # ai/views.py builds a
     # minimal card from these two strings directly (no ScoredDestination, no
     # slug, no "Save this trip" - trips.Trip.destination is a hard FK to
     # travel.Destination and a freeform place was never written there).
@@ -1097,44 +1100,9 @@ def _route_turn(
         _remember(FALLBACK_REPLY)
         return StreamingOrchestrationResult([], iter([FALLBACK_REPLY]))
     _drop_unoffered_bare_selection(message, intent, history)
+    _drop_ungrounded_selection(message, intent)
     if intent_sink is not None:
         intent_sink.update(intent)
-
-    # Checked before message_type branching - a request to recall what we
-    # already said is orthogonal to message_type, and re-running
-    # generate_recommendations() here would defeat the point: the
-    # traveler's asking about the conversation, not asking for anything
-    # new.
-    if intent["is_recall_request"]:
-        recall_messages = _build_recall_messages(message, history)
-        recall_reply = _stream_ai_reply(
-            recall_messages,
-            message,
-            ai_provider=ai_provider,
-            remember=_remember,
-            conversation_key=conv_key,
-        )
-        return StreamingOrchestrationResult([], recall_reply)
-
-    # Same idea, checked next - a visa/entry question is the point of the
-    # message no matter what message_type came back as, and needs the
-    # real CountryEntryRequirement data, not pure general knowledge.
-    if intent["is_visa_or_entry_question"]:
-        visa_messages = _build_visa_question_messages(message, intent, profile, history)
-        # temperature=0 - default temperature let this contradict the
-        # verified data we handed it in the prompt now and then (e.g.
-        # claiming a visa's required for a nationality the data excludes).
-        # This is transcription, not creative writing - no reason to let
-        # it vary.
-        visa_reply = _stream_ai_reply(
-            visa_messages,
-            message,
-            ai_provider=ai_provider,
-            remember=_remember,
-            conversation_key=conv_key,
-            temperature=0,
-        )
-        return StreamingOrchestrationResult([], visa_reply)
 
     # What the traveler says about the trip itself - when, for how long, who
     # is going, how many rooms - is read by its own narrow call, and only when
@@ -1156,6 +1124,88 @@ def _route_turn(
     if search_turn is not None:
         search_turn["changed"] = trip_turn.search_changed
 
+    # Checked before message_type branching - a request to recall what we
+    # already said is orthogonal to message_type, and re-running
+    # generate_recommendations() here would defeat the point: the
+    # traveler's asking about the conversation, not asking for anything
+    # new. A message that changed a trip detail is not one, whatever the
+    # model made of its wording ("volta pra dia 12" is a date, not a recall),
+    # and neither is a request to see the stays again ("me mostra de novo as
+    # hospedagens"): that one gets the search, not a retelling.
+    opens_search = _asks_to_open_search(message, history)
+    if (
+        intent["is_recall_request"]
+        and not trip_turn.details_changed
+        and not intent["is_accommodation_request"]
+        and not opens_search
+    ):
+        recall_messages = _build_recall_messages(message, history)
+        recall_reply = _stream_ai_reply(
+            recall_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
+            strip_links=False,  # it repeats what was said, which may include a video link
+        )
+        return StreamingOrchestrationResult([], recall_reply)
+
+    # Same idea, checked next - a visa/entry question is the point of the
+    # message no matter what message_type came back as, and needs the
+    # real CountryEntryRequirement data, not pure general knowledge.
+    if intent["is_visa_or_entry_question"]:
+        visa_key = _state_write_key()
+        visa_selection = (
+            memory.get_climate_budget(visa_key)["selected_destination"] if visa_key else None
+        )
+        visa_messages = _build_visa_question_messages(
+            message,
+            intent,
+            profile,
+            history,
+            selected_country=(visa_selection or {}).get("country"),
+        )
+        # temperature=0 - default temperature let this contradict the
+        # verified data we handed it in the prompt now and then (e.g.
+        # claiming a visa's required for a nationality the data excludes).
+        # This is transcription, not creative writing - no reason to let
+        # it vary.
+        visa_reply = _stream_ai_reply(
+            visa_messages,
+            message,
+            ai_provider=ai_provider,
+            remember=_remember,
+            conversation_key=conv_key,
+            temperature=0,
+        )
+        return StreamingOrchestrationResult([], visa_reply)
+
+    # "Open it" / "abre la búsqueda otra vez": the search is shown by the application,
+    # never by the reply, so a request to open it gets the stays action for the
+    # place already chosen - the card when the trip is ready, the one missing
+    # question when it is not. Left to the model it answered "here is the link"
+    # with no card beside it.
+    if opens_search:
+        search_key = _state_write_key()
+        search_selection = (
+            memory.get_climate_budget(search_key)["selected_destination"] if search_key else None
+        )
+        search_target = _stays_target(
+            intent, search_selection, ai_provider=ai_provider, conversation_key=conv_key
+        )
+        if search_target is not None:
+            return _stays_turn(
+                message,
+                search_target[0],
+                search_target[1],
+                trip_turn,
+                booking_wording=False,
+                history=history,
+                ai_provider=ai_provider,
+                remember=_remember,
+                conversation_key=conv_key,
+            )
+
     # An explicit request to book can't be completed here, but it is rarely
     # only that: "reserve dois quartos para mim" also sets the rooms. With a
     # place to search stays for, it gets the search (updated by whatever the
@@ -1173,6 +1223,15 @@ def _route_turn(
         )
         if target is not None:
             place, target_destination = target
+            _record_stays_choice(
+                intent,
+                place,
+                stored_selection,
+                write_key=write_key,
+                thread_id=thread_id,
+                ai_provider=ai_provider,
+                conversation_key=conv_key,
+            )
             return _stays_turn(
                 message,
                 place,
@@ -1209,10 +1268,10 @@ def _route_turn(
         accommodation_place_name = intent["accommodation_place_name"]
         if accommodation_place_name:
             write_key = _state_write_key()
-            chosen = _chosen_place_named(
-                accommodation_place_name,
-                memory.get_climate_budget(write_key)["selected_destination"] if write_key else None,
+            stored_choice = (
+                memory.get_climate_budget(write_key)["selected_destination"] if write_key else None
             )
+            chosen = _chosen_place_named(accommodation_place_name, stored_choice)
             if chosen is not None:
                 return _stays_turn(
                     message,
@@ -1225,37 +1284,33 @@ def _route_turn(
                     remember=_remember,
                     conversation_key=conv_key,
                 )
-            accommodation_destination = _resolve_destination(
-                accommodation_place_name, ai_provider=ai_provider, conversation_key=conv_key
+            # The place they named, exactly - never a nearby catalog entry. A place
+            # outside the curated catalog is still a real place to search: a live
+            # accommodation search needs no catalog data (no scoring, no climate, no
+            # description), only a name Booking.com's own free-text search can
+            # resolve, so a real city with no Destination row (Wuhan) gets a real
+            # link instead of a canned "can't search" reply.
+            named = _named_place(
+                accommodation_place_name,
+                country_hint=intent["country"],
+                ai_provider=ai_provider,
+                conversation_key=conv_key,
             )
-            if accommodation_destination is not None:
-                return _stays_turn(
-                    message,
-                    _place_record(accommodation_destination),
-                    accommodation_destination,
-                    trip_turn,
-                    booking_wording=False,
-                    history=history,
+            if named is not None:
+                accommodation_place, accommodation_destination = named
+                _record_stays_choice(
+                    intent,
+                    accommodation_place,
+                    stored_choice,
+                    write_key=write_key,
+                    thread_id=thread_id,
                     ai_provider=ai_provider,
-                    remember=_remember,
                     conversation_key=conv_key,
                 )
-            # Not in our curated catalog - but a live accommodation search
-            # doesn't actually need catalog data (no scoring, no climate,
-            # no description), only a name Booking.com's own free-text
-            # search can resolve. Confirm it's a genuine place before
-            # offering a search for it (2026-09-25, direct user report:
-            # asked about Wuhan, a real city with no Destination row, and
-            # got a canned "can't search" reply instead of a real link).
-            freeform_place = _resolve_freeform_place(
-                accommodation_place_name, ai_provider=ai_provider, conversation_key=conv_key
-            )
-            if freeform_place is not None:
-                freeform_name, freeform_country = freeform_place
                 return _stays_turn(
                     message,
-                    {"slug": None, "name": freeform_name, "country": freeform_country},
-                    None,
+                    accommodation_place,
+                    accommodation_destination,
                     trip_turn,
                     booking_wording=False,
                     history=history,
@@ -1292,6 +1347,7 @@ def _route_turn(
             ai_provider=ai_provider,
             remember=_remember,
             conversation_key=conv_key,
+            strip_links=False,  # the one reply whose links are real: the videos on file
         )
         return StreamingOrchestrationResult([], video_reply)
 
@@ -1566,6 +1622,7 @@ def _route_turn(
             ai_provider=ai_provider,
             remember=_remember,
             conversation_key=conv_key,
+            strip_links=False,  # discovery: no stays or booking context yet
         )
         return StreamingOrchestrationResult([], open_ended_reply)
 
@@ -1587,6 +1644,7 @@ def _route_turn(
             ai_provider=ai_provider,
             remember=_remember,
             conversation_key=conv_key,
+            strip_links=False,  # discovery: no stays or booking context yet
         )
         return StreamingOrchestrationResult([], confirmation_reply)
 
@@ -1618,6 +1676,7 @@ def _route_turn(
             ai_provider=ai_provider,
             remember=_remember,
             conversation_key=conv_key,
+            strip_links=False,  # discovery: no stays or booking context yet
         )
         return StreamingOrchestrationResult([], no_match_reply)
 
@@ -1658,6 +1717,7 @@ def _route_turn(
             ai_provider=ai_provider,
             remember=_remember,
             conversation_key=conv_key,
+            strip_links=False,  # discovery: no stays or booking context yet
         )
         return StreamingOrchestrationResult([], no_match_reply)
 
@@ -1686,6 +1746,7 @@ def _route_turn(
             ai_provider=ai_provider,
             remember=_remember,
             conversation_key=conv_key,
+            strip_links=False,  # discovery: no stays or booking context yet
         ),
         recommendation_constraints={
             "month": intent["month"],
@@ -1887,17 +1948,12 @@ def _stream_carried_reply(
         ai_provider=ai_provider,
         remember=remember,
         conversation_key=conversation_key,
-        strip_links=operation,
     )
     if operation:
         _offer_party(trip_turn)
     if trip_turn is None or not trip_turn.search_changed:
         return StreamingOrchestrationResult([], reply)
     return _stays_card_result(reply, selected, destination, trip_turn.trip)
-
-
-def _place_record(destination: Destination) -> dict:
-    return {"slug": destination.slug, "name": destination.name, "country": destination.country}
 
 
 def _stays_card_result(
@@ -1941,9 +1997,9 @@ def _chosen_place_named(
     name: str | None, chosen: dict | None
 ) -> tuple[dict, Destination | None] | None:
     """The place the traveler already chose, when `name` is that place's own
-    name. A stays request about it is about it: the name is not looked up again,
-    where the closest-match fallback could turn a place outside the catalog into
-    some other one (Wuhan into Beijing)."""
+    name. A stays request about it is about it: the name is not looked up again
+    (a second lookup is another model call for a place outside the catalog, and
+    could answer differently from the one that made the choice)."""
     if not name or not chosen or not chosen.get("name"):
         return None
     if " ".join(_plain_words(name)) != " ".join(_plain_words(chosen["name"])):
@@ -1966,11 +2022,14 @@ def _stays_target(
     if chosen is not None:
         return chosen
     if name:
-        named = _resolve_destination(
-            name, ai_provider=ai_provider, conversation_key=conversation_key
+        named = _named_place(
+            name,
+            country_hint=intent["country"],
+            ai_provider=ai_provider,
+            conversation_key=conversation_key,
         )
         if named is not None:
-            return _place_record(named), named
+            return named
     if stored_selection is not None:
         slug = stored_selection.get("slug")
         destination = Destination.objects.filter(slug=slug).first() if slug else None
@@ -2155,7 +2214,10 @@ def _build_stays_action_messages(
             "1. The Booking search can't be offered yet. If their message also asks a "
             "question or makes a request about anything else (where to stay, the place, things "
             "to do, an itinerary, costs), answer that first, briefly and helpfully - with no "
-            "hotel names, prices or availability. Then, and in every other case, ask ONE "
+            "hotel names, prices or availability; if what they asked for IS a price, "
+            "availability or a specific hotel, say plainly in one sentence that Wanderes "
+            "doesn't have that (never 'yet'), instead of passing over it. Then, and in every "
+            "other case, ask ONE "
             "concise question, only for the first thing the trip details above list under "
             "'Needs clarification' (one short sentence acknowledging what they just told you "
             "may come before it) - nothing else: no confirmation of other details, no offer "
@@ -2413,6 +2475,284 @@ def _without_links(chunks: Iterator[str]) -> Iterator[str]:
         yield tail
 
 
+# Words that, with a verb of opening or showing, make a message a request to see the
+# stays search again - the search itself being the application's to show.
+_OPEN_VERBS = frozenset(
+    """
+    abre abra abrir abram abrindo abri abres abrelo abrela open opens opening reopen ouvre
+    ouvrir ouvrez apri aprire offne offnen
+    """.split()
+)
+_SHOW_VERBS = frozenset(
+    """
+    mostra mostre mostrar mostrem muestra muestrame muestren show display give dame manda
+    mande envia envie envies send passa pasame
+    """.split()
+)
+_SEARCH_NOUNS = frozenset(
+    """
+    busca buscas pesquisa pesquisas busqueda busquedas search searches link links enlace
+    enlaces hospedagem hospedagens hospedaje hospedajes alojamiento alojamientos acomodacao
+    acomodacoes estadia estadias hotel hoteis hoteles hotels stay stays accommodation
+    accommodations lodging booking resultados results
+    """.split()
+)
+_OPEN_IT_MAX_WORDS = 4
+
+
+def _asks_to_open_search(message: str, history: list[dict] | None) -> bool:
+    """Whether the message asks for the stays search to be opened or shown again.
+    Deterministic, because the intent label for these ("ok open it") is a coin
+    toss: a verb of opening with the search named, a verb of showing with the
+    search named, or a bare "open it" right after a reply about stays."""
+    words = _plain_words(message)
+    tokens = set(words)
+    names_search = bool(tokens & _SEARCH_NOUNS)
+    if tokens & _OPEN_VERBS or tokens & _SHOW_VERBS:
+        if names_search:
+            return True
+        if tokens & _OPEN_VERBS and len(words) <= _OPEN_IT_MAX_WORDS:
+            last = next((t for t in reversed(history or []) if t.get("role") == "assistant"), None)
+            return last is not None and bool(set(_plain_words(last["content"])) & _SEARCH_NOUNS)
+    return False
+
+
+# A figure with a currency next to it: "100 euros", "€25", "R$ 2.500", "$100 a night".
+_MONEY_FIGURE = re.compile(
+    r"(?:(?:r\$|us\$|[$€£])\s?(\d[\d.,]*))"
+    r"|(?:(\d[\d.,]*)\s?(?:eur(?:os?)?|dollars?|d[oó]lares?|usd|gbp|brl|reais|pesos?|pounds?"
+    r"|libras?|r\$|us\$|[$€£])(?![a-z]))",
+    re.IGNORECASE,
+)
+# What Wanderes says itself after a made-up price was taken out of a reply, and after a
+# budget figure that does not call itself an estimate was let through. Fixed sentences,
+# not phrased by the model: asked to word the note, the model answered the price question
+# in it. No figure in any of them. A language not listed here gets the English one.
+_PRICE_NOTES = {
+    "en": {
+        "dropped": (
+            "Wanderes has no verified prices for hotels, restaurants, tickets or services, so it "
+            "cannot say what any of them costs - check the current price on the booking site or "
+            "the venue's own page. A general trip budget is only a rough estimate, not a live "
+            "quote."
+        ),
+        "rough": (
+            "The budget figures above are rough estimates, not live quotes or verified prices."
+        ),
+    },
+    "pt": {
+        "dropped": (
+            "A Wanderes não tem preços verificados de hotéis, restaurantes, bilhetes ou serviços, "
+            "por isso não pode dizer quanto custa cada um - confirme o preço atual no site de "
+            "reservas ou na página do próprio local. Um orçamento geral de viagem é só uma "
+            "estimativa aproximada, não uma cotação atual."
+        ),
+        "rough": (
+            "Os valores de orçamento acima são estimativas aproximadas, não cotações atuais nem "
+            "preços verificados."
+        ),
+    },
+    "es": {
+        "dropped": (
+            "Wanderes no tiene precios verificados de hoteles, restaurantes, entradas ni "
+            "servicios, así que no puede decir cuánto cuesta ninguno: consulta el precio actual "
+            "en el sitio de reservas o en la página del propio lugar. Un presupuesto general de "
+            "viaje es solo una estimación aproximada, no una cotización en vivo."
+        ),
+        "rough": (
+            "Las cifras de presupuesto de arriba son estimaciones aproximadas, no cotizaciones en "
+            "vivo ni precios verificados."
+        ),
+    },
+}
+# Function words that tell the three languages apart: (words only that language has, words
+# it shares with a language outside these three, such as French or Italian). "¿" and "¡"
+# only open Spanish.
+_LANGUAGE_MARKERS = {
+    "en": (
+        frozenset(
+            """
+            the and you your what how are can could would should about with from this that
+            there my our does thanks thank please hello january february march may june july
+            august september october november december
+            """.split()
+        ),
+        frozenset("is for we it of yes hi".split()),
+    ),
+    "pt": (
+        frozenset(
+            """
+            não nao você voce vocês voces pra tá ta uma um num numa são sao então entao muito
+            também tambem obrigado obrigada quero quanto custa tem minha meu nosso nossa vou ao
+            aos pelo pela lá olá valeu onde quais posso preciso gostaria gosto ficar noite
+            noites pessoas mais pena alugar crianças criancas deles delas filho filha filhos
+            filhas dois duas janeiro fevereiro março marco maio junho julho setembro outubro
+            novembro dezembro
+            """.split()
+        ),
+        frozenset("os com em é sim".split()),
+    ),
+    "es": (
+        frozenset(
+            """
+            los las cuánto cuanto cuál cual quiero tengo tiene voy gracias estoy nuestro
+            nuestra cuesta hay hola sí pero más qué dónde donde puedo necesito noche
+            noches mucho cómo ellos ellas niños ninos dos hijo hija hijos hijas alquilar coche
+            enero febrero marzo mayo junio julio septiembre setiembre octubre noviembre diciembre
+            """.split()
+        ),
+        frozenset("el una del con mi mis y un".split()),
+    ),
+}
+# A language needs at least this many points (a word of its own is 2, a shared one 1) to be
+# the traveler's; below it the message says nothing and the one before it is read.
+_LANGUAGE_MIN_SCORE = 2
+
+
+def _chat_language(message: str, earlier: list[str]) -> str:
+    """The language the traveler is writing in - "en", "pt" or "es" - read from their
+    latest message, then the conversation before it (their earlier messages and the
+    replies, which are in their language) when that says nothing (a bare "ok"); English
+    when nothing does, which is also what a language without a note gets. A count of a few
+    function words, so the same words always give the same answer: the note below is not
+    worth a model call, and the model's answer to a price question is exactly what it must
+    not be."""
+    for text in [message, *reversed(earlier[-4:])]:
+        words = re.findall(r"\w+", text.lower())
+        spanish_marks = 3 if re.search("[¿¡]", text) else 0
+        scores = {
+            lang: sum(2 for w in words if w in own)
+            + sum(1 for w in words if w in shared)
+            + (spanish_marks if lang == "es" else 0)
+            for lang, (own, shared) in _LANGUAGE_MARKERS.items()
+        }
+        best = max(scores.values())
+        leaders = [lang for lang, score in scores.items() if score == best]
+        if best >= _LANGUAGE_MIN_SCORE and len(leaders) == 1:
+            return leaders[0]
+    return "en"
+
+
+def _price_note(kind: str, message: str, earlier: list[str]) -> str:
+    """The fixed sentence for this kind of note - "dropped" or "rough" - in the traveler's
+    language."""
+    return _PRICE_NOTES[_chat_language(message, earlier)][kind]
+
+
+# A sentence with a money figure is a trip-planning budget (a figure for the trip, the
+# week) only when it says so, and the word has to be about the trip: "a good budget hotel
+# ... per night" is the price of a hotel. A hotel, a meal, a ticket, a ride, a night, or a
+# figure with no subject at all is a specific price.
+_SPECIFIC_ITEM_WORDS = frozenset(
+    """
+    hotel hotels hostel hostels room rooms accommodation accommodations lodging motel inn
+    apartment apartments airbnb restaurant restaurants meal meals dinner dinners lunch
+    lunches breakfast breakfasts menu menus coffee beer taxi taxis cab uber transfer
+    transfers ticket tickets fare fares flight flights airfare admission entrance museum
+    museums tour tours excursion excursions rental parking
+    hoteis hostel quarto quartos diaria diarias hospedagem hospedagens alojamento
+    alojamentos pousada pousadas restaurante restaurantes refeicao refeicoes jantar jantares
+    almoco almocos cardapio traslado translado bilhete bilhetes passagem passagens voo voos
+    ingresso ingressos entrada entradas museu museus passeio passeios excursao excursoes
+    aluguel aluguer
+    hoteles hostal hostales habitacion habitaciones comida comidas cena cenas almuerzo
+    almuerzos desayuno desayunos billete billetes boleto boletos pasaje pasajes vuelo vuelos
+    museo museos excursiones traslados alquiler
+    """.split()
+)
+_BUDGET_NOUNS = frozenset("budget orcamento presupuesto".split())
+_TRIP_WORDS = frozenset(
+    """
+    total overall trip viagem viaje vacation holiday ferias vacaciones week weeks semana
+    semanas month meses
+    """.split()
+)
+# "budget hotel", "budget airline": the word describes the thing, it is not a budget.
+_BUDGET_ADJECTIVE = re.compile(
+    r"\bbudget\s+(?:hotels?|hostels?|rooms?|accommodations?|lodging|restaurants?|airlines?"
+    r"|flights?|tickets?|options?|stays?|places?)\b"
+)
+# The price of one night, however it is worded: that is a hotel's rate.
+_PER_NIGHT = re.compile(
+    r"(?:\bper|\ba|\beach|\bevery|\bpor|\bcada|/)\s*(?:night|noche|noite)\b|\bnightly\b"
+)
+_ESTIMATE_STEMS = (
+    "approx", "around", "roughly", "rough ", "estimat", "about ", "typical", "cerca de",
+    "aproxim", "em media", "normalmente", "geralmente", "alrededor", "suele", "unos ",
+    "mas o menos", "ronda", "ordem de",
+)
+_SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+|\n")
+
+
+def _digits_of(amount: str) -> str:
+    return re.sub(r"\D", "", amount)
+
+
+def _given_figures(texts: list[str]) -> set[str]:
+    """The numbers in what the traveler wrote: the ones a reply may repeat as money."""
+    return {_digits_of(n) for text in texts for n in re.findall(r"\d[\d.,]*", text)}
+
+
+def _price_verdict(sentence: str, given: set[str]) -> str | None:
+    """How a sentence stands on money. None: no figure nobody gave. "specific": an
+    unverified price of something (dropped). "labeled": a trip-planning budget that
+    says it is an estimate (kept). "unlabeled": a budget that does not (kept, and the
+    reply ends by saying budget figures are rough)."""
+    unexplained = [
+        found
+        for found in _MONEY_FIGURE.finditer(sentence)
+        if _digits_of(found.group(1) or found.group(2)) not in given
+    ]
+    if not unexplained:
+        return None
+    folded = unicodedata.normalize("NFKD", sentence).encode("ascii", "ignore").decode().lower()
+    if _PER_NIGHT.search(folded):
+        return "specific"
+    words = set(re.findall(r"[a-z]+", folded))
+    own_words = set(re.findall(r"[a-z]+", _BUDGET_ADJECTIVE.sub(" ", folded)))
+    budget = bool(own_words & _BUDGET_NOUNS)
+    if words & _SPECIFIC_ITEM_WORDS and not budget:
+        return "specific"
+    if not (budget or own_words & _TRIP_WORDS):
+        return "specific"
+    return "labeled" if any(stem in folded for stem in _ESTIMATE_STEMS) else "unlabeled"
+
+
+def _without_unverified_prices(
+    chunks: Iterator[str], given: set[str], outcome: dict
+) -> Iterator[str]:
+    """The reply with every sentence that states an unverified price taken out before it
+    reaches the traveler. A sentence is held until it ends, so how the stream happens
+    to be cut into chunks can't change what is kept."""
+
+    def judge(sentence: str, separator: str) -> str:
+        verdict = _price_verdict(sentence, given)
+        if verdict == "specific":
+            outcome["dropped"] = True
+            return ""
+        if verdict == "unlabeled":
+            outcome["unlabeled"] = True
+        return sentence + separator
+
+    pending = ""
+    try:
+        for chunk in chunks:
+            pending += chunk
+            cut = 0
+            for boundary in _SENTENCE_BREAK.finditer(pending):
+                kept = judge(pending[cut : boundary.start()], boundary.group(0))
+                cut = boundary.end()
+                if kept:
+                    yield kept
+            pending = pending[cut:]
+    except Exception:
+        if pending and (kept := judge(pending, "")):
+            yield kept
+        raise
+    if pending and (kept := judge(pending, "")):
+        yield kept
+
+
 def _stream_ai_reply(
     messages: list[AIMessage],
     message: str,
@@ -2421,7 +2761,7 @@ def _stream_ai_reply(
     remember,
     temperature: float | None = None,
     conversation_key: str | None = None,
-    strip_links: bool = False,
+    strip_links: bool = True,
 ) -> Iterator[str]:
     """Stream one AI reply, saving the full text to memory once it's done
     (or fails partway) - shared by every branch above, they all need the
@@ -2432,9 +2772,16 @@ def _stream_ai_reply(
     the job is faithfully relaying already-verified facts, not writing
     creatively (see the visa-question caller).
 
-    strip_links is for a reply that sits beside a card carrying the real
-    link: the model can't know that URL and writes an invented one when
-    allowed to, so nothing of the kind reaches the traveler or the history.
+    strip_links is on for every reply but the video one: the only link the
+    application ever shows is the card's, which the model can't know - it
+    writes an invented one when allowed to, so nothing of the kind reaches the
+    traveler or the history.
+
+    A sentence that states a price nobody gave the model (a hotel, a meal, a
+    ticket, a flight) is taken out before it reaches the traveler, and the reply
+    ends with a fixed sentence - the application's, in the traveler's language,
+    never worded by the model - saying Wanderes has no verified prices; a
+    trip-planning budget stays when it says it is an estimate.
 
     This is the only place in the codebase that calls
     AIProvider.stream_reply, so wrapping it here with track_llm_call
@@ -2447,9 +2794,19 @@ def _stream_ai_reply(
     try:
         with track_llm_call(operation="stream_reply", conversation_key=conversation_key):
             stream = ai_provider.stream_reply(messages, temperature=temperature)
-            for chunk in _without_links(stream) if strip_links else stream:
+            earlier = [m.content for m in messages[1:-1] if m.role == "user"]
+            outcome = {"dropped": False, "unlabeled": False}
+            source = _without_links(stream) if strip_links else stream
+            # What counts as given: the traveler's own words, today's and earlier.
+            given = _given_figures([message, *earlier])
+            for chunk in _without_unverified_prices(source, given, outcome):
                 collected.append(chunk)
                 yield chunk
+        kind = "dropped" if outcome["dropped"] else "rough" if outcome["unlabeled"] else None
+        if kind:
+            note = "\n\n" + _price_note(kind, message, [m.content for m in messages[1:-1]])
+            collected.append(note)
+            yield note
     except AIProviderError:
         # A partial reply may already be out there before a mid-stream
         # failure - falling back to the generic message beats losing the
@@ -2590,9 +2947,15 @@ def _handle_feedback(
             NEEDS_LOGIN_REPLY, message=message, history=history, ai_provider=ai_provider
         )
 
-    destination = _resolve_destination(
-        destination_name, ai_provider=ai_provider, conversation_key=conversation_key
+    # The place they named, by its own name: a visit and a rating registered
+    # against a nearby catalog entry would be wrong data on their account.
+    named = _named_place(
+        destination_name,
+        country_hint=intent["country"],
+        ai_provider=ai_provider,
+        conversation_key=conversation_key,
     )
+    destination = named[1] if named is not None else None
     if destination is None:
         # Same reasoning as future_intent above - no Destination row means
         # no real TravelHistoryEntry to register against.
@@ -2670,9 +3033,15 @@ def _handle_future_intent(
             NEEDS_LOGIN_REPLY, message=message, history=history, ai_provider=ai_provider
         )
 
-    destination = _resolve_destination(
-        destination_name, ai_provider=ai_provider, conversation_key=conversation_key
+    # The place they named, by its own name: a trip saved for a nearby catalog
+    # entry would be a plan for somewhere else.
+    named = _named_place(
+        destination_name,
+        country_hint=intent["country"],
+        ai_provider=ai_provider,
+        conversation_key=conversation_key,
     )
+    destination = named[1] if named is not None else None
     if destination is None:
         # No Destination row means no Trip can be persisted either - the
         # caller handles this with a real AI reply from general knowledge
@@ -2783,9 +3152,12 @@ def _resolve_destination(
     pick a real slug from the actual list, never invent one, and the result
     is re-verified against the database below regardless). Callers that
     can't supply an ai_provider (none currently) simply get the DB-only
-    behavior. This is for flows where a nearby match is an acceptable answer
-    (offering a stays link); a place the traveler has CHOSEN is looked up
-    with _catalog_destination_named instead, which never substitutes."""
+    behavior. This is the approximate lookup, for a flow where a nearby match
+    is an acceptable answer. No chat flow uses it now: a place the traveler
+    names - to choose it, to search stays or book there, to save it as a
+    trip for someday, or to report a visit - goes through _named_place, which
+    never substitutes a related destination ("Faro" is not the Faroe Islands,
+    "Coimbra" is not Porto)."""
     # The raw-name match is added next to find_destination_slugs_by_name()
     # because that one rewrites its terms through the country-alias table
     # first, and "Granada" (the Spanish city) is also the Portuguese name for
@@ -2841,13 +3213,13 @@ def _resolve_freeform_place(
 ) -> tuple[str, str] | None:
     """Confirm a place is real enough to hand to Booking.com's own
     free-text search - not a catalog lookup, since a live accommodation
-    search doesn't need any of the curated data _resolve_destination
-    checks for (BookingComSearchLinkProvider.build_search_url only ever
+    search doesn't need any of the curated data the catalog holds
+    (BookingComSearchLinkProvider.build_search_url only ever
     needs a name and, optionally, a country string). Only called once
-    _resolve_destination has already found nothing in the catalog, so
-    this never shadows a real catalog match - and the two are asked
-    genuinely different questions (a closed-list lookup vs. "does this
-    exist at all"), not the same prompt reused.
+    _catalog_destination_named has already found nothing under the
+    place's own name, so this never shadows a real catalog match - and
+    the two are asked genuinely different questions (a closed-list
+    lookup vs. "does this exist at all"), not the same prompt reused.
 
     Same "never trust structured output blindly" discipline as
     _resolve_destination: a failed call or an unconfident/malformed
@@ -2944,6 +3316,34 @@ def _resolve_selected_destination(
     ):
         return {"slug": standard.slug, "name": standard.name, "country": standard.country}
     return {"slug": None, "name": freeform_name, "country": freeform_country or ""}
+
+
+def _named_place(
+    name: str | None,
+    *,
+    country_hint: str | None,
+    ai_provider: AIProvider,
+    conversation_key: str | None = None,
+) -> tuple[dict, Destination | None] | None:
+    """The place a stays, booking, future-trip or feedback message names, as
+    (the record that describes it, its catalog row when it has one) - or None
+    when the name is not a real place. It is resolved exactly like a place the
+    traveler chooses (_resolve_selected_destination), so a search, a saved trip
+    or a registered visit is for the place they said and never for a nearby or
+    similarly named one."""
+    record = _resolve_selected_destination(
+        name,
+        country_hint=country_hint,
+        ai_provider=ai_provider,
+        conversation_key=conversation_key,
+    )
+    if record is None:
+        return None
+    slug = record["slug"]
+    destination = Destination.objects.filter(slug=slug).first() if slug else None
+    if slug and destination is None:
+        return None
+    return record, destination
 
 
 def _history_messages(history: list[dict] | None) -> list[AIMessage]:
@@ -3088,6 +3488,18 @@ def _traveler_context_note(profile: TravelerProfile | None, *, always_mention: b
     )
 
 
+def _asserted_visa_phrase(requirement, nationality: str) -> str | None:
+    """What an entry says about a traveler of this nationality - or None when the entry
+    may not be used to state a rule at all (not verified against an official source,
+    or its list and notes disagree: see travel.services.VERIFIED_ENTRY_COUNTRIES)."""
+    if not entry_requirement_can_be_asserted(requirement, nationality):
+        return None
+    name = nationality.strip().lower()
+    if any(name == listed.strip().lower() for listed in requirement.visa_required_nationalities):
+        return "a visa IS required"
+    return "a visa is generally NOT required (see notes for exceptions/programs)"
+
+
 def _entry_requirements_note(
     profile: TravelerProfile | None, destinations: list[Destination]
 ) -> str:
@@ -3110,15 +3522,9 @@ def _entry_requirements_note(
         requirement = get_entry_requirements(country)
         if requirement is None:
             continue
-        needs_visa = any(
-            profile.home_country.strip().lower() == nationality.strip().lower()
-            for nationality in requirement.visa_required_nationalities
-        )
-        visa_bit = (
-            "a visa IS required"
-            if needs_visa
-            else "a visa is generally NOT required (see notes for exceptions/programs)"
-        )
+        visa_bit = _asserted_visa_phrase(requirement, profile.home_country)
+        if visa_bit is None:
+            continue
         lines.append(
             f"- {destination.name} ({country}): for a traveler from {profile.home_country}, "
             f"{visa_bit}. Notes: {requirement.visa_notes or 'none on file'}."
@@ -3202,25 +3608,61 @@ def _offer_party(trip_turn: trip_details.TripTurn | None) -> None:
         trip_turn.offer_party(trip_turn.party_offer)
 
 
-def _should_read_trip_details(message: str, intent: dict, stored: dict | None) -> bool:
+def _should_read_trip_details(
+    message: str, intent: dict, stored: dict | None, history: list[dict] | None = None
+) -> bool:
     """Whether this turn is worth the trip-details call. Decided without a
     model: the message has date, length or party cues, or a stays request is
     waiting on exactly this (nobody has said how many adults yet). A chosen
     destination alone is not a reason, so "o que fazer lá?" and "obrigado"
     cost nothing extra. Past-trip feedback, wishes with no plan and the
     video/activity questions aren't about this trip's details. A question
-    about the profile's party size that is waiting for its answer always is."""
+    about the profile's party size that is waiting for its answer always is,
+    and so is a statement about the person who joined and is waiting for an
+    age, and a short reply while the trip has dates but nobody has said who
+    is going."""
     if stored and stored.get("adults_offer"):
         return True
-    if (
-        intent["message_type"] in ("feedback", "future_intent")
-        or intent["is_video_request"]
-        or intent["is_activity_question"]
-    ):
+    if stored and trip_details.pending_person_statement(message, stored):
+        # "ele é adulto", "he can't come": about the person who joined and is waiting for an
+        # age. Nothing in these has a cue word, and they are never feedback or a wish.
+        return True
+    if intent["message_type"] in ("feedback", "future_intent"):
+        return False
+    # The activity/video label is the model's call and is wrong now and then on
+    # a statement ("somos 2" after a talk about things to do); a real question
+    # about activities or videos carries a question mark.
+    is_question = "?" in message or "¿" in message
+    if (intent["is_video_request"] or intent["is_activity_question"]) and is_question:
         return False
     if trip_details.has_trip_detail_cues(message):
         return True
-    return intent["is_accommodation_request"] and trip_details.needs_occupancy(stored)
+    if stored and trip_details.suggests_reset(message):
+        return True  # "esquece tudo, vamos recomeçar" has no date or count in it
+    if intent["is_accommodation_request"] and trip_details.needs_occupancy(stored):
+        return True
+    # A trip that has its dates but not who is going, right after a question:
+    # a short reply ("sou só eu") is most likely its answer, with no cue word in it.
+    return (
+        trip_details.awaiting_occupancy(stored)
+        and len(_plain_words(message)) <= _SHORT_REPLY_MAX_WORDS
+        and _last_reply_asked(history)
+    )
+
+
+def _turn_index(history: list[dict] | None, message: str = "") -> int:
+    """A number that tells this turn from every other. The same message processed twice
+    before its reply is saved (a retry) gets the same number, so a change counted once is not
+    counted again; a later turn gets another one, even when the history is trimmed to a window
+    and the traveler's messages in it stop growing."""
+    window = "\n".join(f"{t.get('role')}: {t.get('content')}" for t in history or [])
+    return zlib.crc32(f"{window}\n{message}".encode()) % 10**9
+
+
+def _last_reply_asked(history: list[dict] | None) -> bool:
+    """Whether the assistant's latest message ended on a question."""
+    last = next((t for t in reversed(history or []) if t.get("role") == "assistant"), None)
+    return last is not None and "?" in str(last.get("content", ""))[-300:]
 
 
 def _extract_trip_details_signal(
@@ -3229,14 +3671,19 @@ def _extract_trip_details_signal(
     ai_provider: AIProvider,
     history: list[dict] | None,
     conversation_key: str | None = None,
+    party_offer_pending: bool = False,
+    record: dict | None = None,
 ) -> dict:
     """The components of trip detail the traveler gave in this message - never
     a computed date. It sees the message and, for a short reply that needs it
     ("5 anos" answering a question), the assistant's last message with every
-    digit masked; it never sees the rest of the history, so a number the
-    assistant said earlier can't come back as something the traveler said. A
-    failed call reads as "nothing stated"."""
-    question = trip_details.previous_question_for_extraction(history, message)
+    number masked (or, while the question about the profile's party is pending,
+    only a note of what was asked); it never sees the rest of the history, so a
+    number the assistant said earlier can't come back as something the traveler
+    said. A failed call reads as "nothing stated"."""
+    question = trip_details.previous_question_for_extraction(
+        history, message, party_offer_pending=party_offer_pending
+    )
     content = (
         message
         if question is None
@@ -3255,7 +3702,7 @@ def _extract_trip_details_signal(
     except AIProviderError:
         logger.warning("Could not extract trip details - AI provider failure. message=%r", message)
         data = {}
-    return trip_details.guard_components(trip_details.validate_components(data), message)
+    return trip_details.guard_components(trip_details.validate_components(data), message, record)
 
 
 def _read_trip_details(
@@ -3279,14 +3726,24 @@ def _read_trip_details(
     read_key = state_write_key()
     stored = memory.get_climate_budget(read_key)["trip_details"] if read_key else None
     record, issues, ask, ask_rooms, details_changed = stored, (), False, False, False
+    pending_relative, pending_resolved = False, None
     before = trip_details.resolve(stored, today)
-    if _should_read_trip_details(message, intent, stored):
+    if _should_read_trip_details(message, intent, stored, history):
         components = _extract_trip_details_signal(
-            message, ai_provider=ai_provider, history=history, conversation_key=conversation_key
+            message,
+            ai_provider=ai_provider,
+            history=history,
+            conversation_key=conversation_key,
+            party_offer_pending=bool(stored and stored.get("adults_offer")),
+            record=stored,
         )
-        applied = trip_details.apply_components(stored, components, today)
+        applied = trip_details.apply_components(
+            stored, components, today, turn=_turn_index(history, message)
+        )
         record, issues, ask = applied.record, applied.issues, applied.ask_child_ages
         details_changed = applied.details_changed
+        pending_relative = applied.pending_relative
+        pending_resolved = applied.pending_resolved
         resolved = trip_details.resolve(record, today)
         # A request that names a detail the search can't carry yet is answered
         # with the question about exactly that detail: a child with no age
@@ -3298,6 +3755,13 @@ def _read_trip_details(
             applied.rooms_changed or trip_details.names_detail(message, "rooms")
         )
         write_key = state_write_key()
+        if applied.reset and write_key is not None:
+            # "Esquece tudo, vamos recomeçar": the place and the preferences go
+            # too, not only the trip details - what was forgotten must not come
+            # back in the next search.
+            memory.update_climate_budget(
+                write_key, owner=thread_id, **dict.fromkeys(_RESET_FLAGS, True)
+            )
         if applied.changed and write_key is not None:
             if record is None:
                 memory.update_climate_budget(write_key, trip_details_cleared=True, owner=thread_id)
@@ -3311,6 +3775,8 @@ def _read_trip_details(
         ask_rooms=ask_rooms,
         today=today,
         details_changed=details_changed,
+        pending_relative=pending_relative,
+        pending_resolved=pending_resolved,
         search_changed=trip.search_kwargs() != before.search_kwargs(),
         profile_party=_usable_party_size(profile),
         offer_party=_party_offer_writer(state_write_key, thread_id),
@@ -3431,6 +3897,33 @@ _CHOICE_WORDS = frozenset(
     "going go take choose pick veux vais".split()
 )
 _BARE_REPLY_MAX_WORDS = 2
+_SHORT_REPLY_MAX_WORDS = 6
+# Words that point at an option or accept one without naming it ("a primeira",
+# "esse mesmo", "sim").
+_PICK_WORDS = frozenset(
+    """
+    primeira primeiro segunda segundo terceira terceiro ultima ultimo essa esse aquela
+    aquele sim isso combinado fechado fechou perfeito pode beleza gostei adorei topo topei
+    primera primero tercera tercero esa ese perfecto genial listo dale
+    first second third last yes ok okay sure deal good great nice cool love
+    premier premiere dernier oui primo prima
+    """.split()
+)
+# "Mejor Sevilla" is "Sevilla instead", not a bare name.
+_REPLACEMENT_WORDS = frozenset("mejor melhor better instead mieux meglio".split())
+
+# What dropping the whole conversation's state clears besides the trip details.
+_RESET_FLAGS = (
+    "min_temp_c_cleared",
+    "max_temp_c_cleared",
+    "max_cost_of_living_cleared",
+    "trip_type_cleared",
+    "continent_cleared",
+    "country_cleared",
+    "excluded_place_names_cleared",
+    "selected_destination_cleared",
+    "trip_details_cleared",
+)
 
 
 def _plain_words(text: str) -> list[str]:
@@ -3466,7 +3959,9 @@ def _drop_unoffered_bare_selection(message: str, intent: dict, history: list[dic
     if not name:
         return
     words = [w for w in _plain_words(message) if w not in _FILLER_WORDS]
-    if not 1 <= len(words) <= _BARE_REPLY_MAX_WORDS or any(w in _CHOICE_WORDS for w in words):
+    if not 1 <= len(words) <= _BARE_REPLY_MAX_WORDS or any(
+        w in _CHOICE_WORDS or w in _REPLACEMENT_WORDS for w in words
+    ):
         return
     if _options_just_presented(history, " ".join(words), name):
         return
@@ -3477,6 +3972,59 @@ def _drop_unoffered_bare_selection(message: str, intent: dict, history: list[dic
         name,
     )
     intent["selected_destination_name"] = None
+
+
+def _drop_ungrounded_selection(message: str, intent: dict) -> None:
+    """A message that neither names the place nor picks one is not a choice of
+    it. The model files "alguma dessas serve pra criança?" or "no beaches please"
+    under the first option it listed, and the whole conversation then continues
+    about that one place; the traveler picked nothing. What does pick: naming
+    the place (by its first four letters, so "Lisboa" still names Lisbon), a
+    choice word ("vou", "quero"), or a pointer to an option ("a primeira",
+    "esse", "yes", a number)."""
+    name = intent.get("selected_destination_name")
+    if not name:
+        return
+    words = _plain_words(message)
+    if any(w in _CHOICE_WORDS or w in _PICK_WORDS or w.isdigit() for w in words):
+        return
+    name_stems = {w[:4] for w in _plain_words(name) if len(w) >= 3}
+    if name_stems & {w[:4] for w in words}:
+        return
+    logger.info("Dropped a selection the message never made. message=%r selected=%r", message, name)
+    intent["selected_destination_name"] = None
+
+
+def _record_stays_choice(
+    intent: dict,
+    place: dict,
+    stored: dict | None,
+    *,
+    write_key,
+    thread_id,
+    ai_provider: AIProvider,
+    conversation_key: str | None,
+) -> None:
+    """Keeps the place the traveler chose in a message that is also a stays
+    request ("Quero ir pra Paris dia 10, somos 2"), so the next message is
+    about that place and not a fresh choice of it. Only the place they named
+    counts: the name is resolved the way every other choice is, and when that
+    lands on a different place than the stays lookup did (a closest match for a
+    place outside the catalog), nothing is recorded."""
+    chosen = intent.get("selected_destination_name")
+    if not chosen or write_key is None or _same_place(place, stored):
+        return
+    if " ".join(_plain_words(chosen)) != " ".join(_plain_words(place["name"])):
+        # "Sevilla" for Seville: ask the resolver choices go through.
+        resolved = _resolve_selected_destination(
+            chosen,
+            country_hint=intent.get("country"),
+            ai_provider=ai_provider,
+            conversation_key=conversation_key,
+        )
+        if resolved is None or not _same_place(resolved, place):
+            return
+    memory.update_climate_budget(write_key, selected_destination=place, owner=thread_id)
 
 
 def _validate_intent(data: dict) -> dict:
@@ -3773,7 +4321,8 @@ def _build_explanation_messages(
                 "after giving a first real answer. If a real video is "
                 "noted as being on file above for one of the destinations "
                 "you're presenting, prefer offering to show it instead "
-                "(e.g. 'gostaria de ver um vídeo de Bali?') - it's a good, "
+                "(e.g. 'would you like to see a video of Bali?', worded in the "
+                "traveler's language) - it's a good, "
                 "concrete thing you can actually deliver on. Don't stack "
                 "both in the same reply; pick whichever single one fits, "
                 "and only offer a video when one was actually noted as "
@@ -3821,7 +4370,9 @@ def _build_recall_messages(message: str, history: list[dict] | None = None) -> l
     return messages
 
 
-def _visa_verified_data_note(intent: dict, profile: TravelerProfile | None) -> str:
+def _visa_verified_data_note(
+    intent: dict, profile: TravelerProfile | None, selected_country: str | None = None
+) -> str:
     """Real, verified visa/vaccine/insurance data for a visa/entry
     question - deterministic database lookups, not AI general knowledge,
     per 05_AI_DESIGN.md §7 (2026-09-03 QA finding: a bare informational
@@ -3839,20 +4390,15 @@ def _visa_verified_data_note(intent: dict, profile: TravelerProfile | None) -> s
     if not nationality:
         return ""
 
-    country = intent.get("visa_question_country")
+    # "Do I need a visa?" with a place already chosen is about that place's country.
+    country = intent.get("visa_question_country") or selected_country
     if country:
         requirement = get_entry_requirements(country)
         if requirement is None:
             return ""
-        needs_visa = any(
-            nationality.strip().lower() == n.strip().lower()
-            for n in requirement.visa_required_nationalities
-        )
-        visa_bit = (
-            "a visa IS required"
-            if needs_visa
-            else "a visa is generally NOT required (see notes for exceptions/programs)"
-        )
+        visa_bit = _asserted_visa_phrase(requirement, nationality)
+        if visa_bit is None:
+            return ""  # nothing we hold may be stated as the rule: the reply says so
         return (
             f"\n\nVerified data on file for {country} (from our own dataset, not "
             f"general knowledge) - use this instead of guessing: for a traveler "
@@ -3874,11 +4420,10 @@ def _visa_verified_data_note(intent: dict, profile: TravelerProfile | None) -> s
     # answer given one message later).
     lines = []
     for req in CountryEntryRequirement.objects.all():
-        needs_visa = any(
-            nationality.strip().lower() == n.strip().lower()
-            for n in req.visa_required_nationalities
-        )
-        status = "visa required" if needs_visa else "visa generally not required"
+        phrase = _asserted_visa_phrase(req, nationality)
+        if phrase is None:
+            continue
+        status = "visa required" if "IS required" in phrase else "visa generally not required"
         lines.append(f"- {req.country}: {status}")
     if not lines:
         return ""
@@ -3894,20 +4439,50 @@ def _visa_verified_data_note(intent: dict, profile: TravelerProfile | None) -> s
     )
 
 
+_PLURAL_COUNTRY_WORDS = frozenset("paises countries pays paesi lander destinos".split())
+
+
 def _build_visa_question_messages(
     message: str,
     intent: dict,
     profile: TravelerProfile | None,
     history: list[dict] | None = None,
+    selected_country: str | None = None,
 ) -> list[AIMessage]:
-    """Built when intent extraction detects is_visa_or_entry_question -
-    hands the model real, verified travel.CountryEntryRequirement data
-    when the traveler's nationality is known (from the message itself or
-    their saved profile), rather than leaving a legally-consequential
-    question entirely to unverified general knowledge (2026-09-03 QA
-    finding, see _visa_verified_data_note's docstring for the specific
-    self-contradiction that motivated this)."""
-    verified_note = _visa_verified_data_note(intent, profile)
+    """Built when intent extraction detects is_visa_or_entry_question - hands
+    the model the entry-requirement data we hold when the traveler's nationality
+    and the country are known (from the message, the saved profile, or the place
+    already chosen), rather than leaving a legally-consequential question to the
+    model's memory (see _visa_verified_data_note). Without that data the reply
+    states the limitation and points to the official source: it never says
+    whether a visa, vaccine or any other entry rule applies. The data is general
+    guidance compiled by hand, not an official source, and is said to be."""
+    general = bool(set(_plain_words(message)) & _PLURAL_COUNTRY_WORDS)
+    verified_note = _visa_verified_data_note(intent, profile, None if general else selected_country)
+    if verified_note:
+        guidance = (
+            "Answer helpfully and directly, using ONLY the data given to you above. Do not "
+            "add a requirement, exemption, duration, fee or document that is not in it, and "
+            "do not fill a gap from memory: if the question needs something that isn't "
+            "listed, say you don't have it. It is general guidance, not an official source - "
+            "say so, and tell the traveler to confirm with the destination country's official "
+            "government or embassy website before booking or traveling. "
+        )
+    else:
+        guidance = (
+            "We hold no VERIFIED entry-requirement data that answers this (the country or the "
+            "traveler's nationality is missing, or what we have has not been checked against an "
+            "official source, or contradicts itself). Do NOT "
+            "say, from memory or otherwise, whether a visa, vaccine, insurance, passport "
+            "validity or any other entry rule applies, and do not describe exemptions, "
+            "durations, fees or documents - not even as a rough guess. Say plainly that you "
+            "can't confirm the current rules, that they depend on the traveler's nationality, "
+            "passport, purpose and length of stay and change often, and send them to the "
+            "official sources: the destination country's embassy or consulate or its "
+            "immigration/government website, and their own government's travel advice. If you "
+            "don't know their nationality or the destination you may ask for it, but still "
+            "give no rule either way. "
+        )
     messages = [AIMessage(role="system", content=SYSTEM_PROMPT)]
     messages.extend(_history_messages(history))
     messages.append(
@@ -3917,13 +4492,8 @@ def _build_visa_question_messages(
                 f'The traveler asked: "{message}" - a question about visa, '
                 "vaccine, insurance, or other entry requirements."
                 f"{verified_note}\n\n"
-                "Answer helpfully and directly. If no verified data was given "
-                "to you above, answer from your own general knowledge but be "
-                "honest that it isn't independently verified and could be "
-                "outdated - recommend the traveler confirm with an official "
-                "government or embassy source before booking or traveling, "
-                "rather than stating anything as certain. Reply in the same "
-                "language the traveler has been using in this conversation."
+                f"{guidance}Reply in the same language the traveler has been using in this "
+                "conversation."
             ),
         )
     )

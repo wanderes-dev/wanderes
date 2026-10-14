@@ -9,9 +9,11 @@ from django.test import SimpleTestCase
 from ai.trip_details import (
     EMPTY_RECORD,
     MAX_STAY_LENGTH,
+    PARTY_OFFER_QUESTION,
     ResolvedTrip,
     TripTurn,
     apply_components,
+    awaiting_occupancy,
     fact_block,
     guard_components,
     has_trip_detail_cues,
@@ -44,6 +46,10 @@ def comps(
     rooms=None,
     confirms=False,
     cleared=(),
+    change=None,
+    correction=None,
+    among=False,
+    added=(),
 ):
     return validate_components(
         {
@@ -51,9 +57,13 @@ def comps(
             "end": {"day": end_day, "month": end_month},
             "stay_length": length,
             "stay_unit": unit,
+            "stay_change": change or {},
             "adults": adults,
             "children": children,
+            "children_among_counted": among,
             "child_ages": list(ages),
+            "age_correction": correction or {},
+            "people_added": [{"kind": kind, "age": age} for kind, age in added],
             "rooms": rooms,
             "confirms_party_offer": confirms,
             "cleared_fields": list(cleared),
@@ -156,10 +166,12 @@ class StartDateTests(SimpleTestCase):
         self.assertIsNone(applied.record)
         self.assertEqual(applied.issues[0].code, "invalid_date")
 
-    def test_a_month_with_no_day_places_nothing_on_the_calendar(self):
+    def test_a_month_with_no_day_places_no_date_on_the_calendar_but_is_kept_as_the_month(self):
         applied = apply(month=11)
 
-        self.assertIsNone(applied.record)
+        self.assertIsNone(applied.record["start_date"])  # still nothing on the calendar
+        self.assertEqual(applied.record["start_month"], 11)
+        self.assertNotIn("start_year", applied.record)  # no year is made up
         self.assertEqual(applied.issues, ())
 
 
@@ -873,6 +885,86 @@ class PreviousQuestionTests(SimpleTestCase):
         self.assertLessEqual(len(question), 400)
         self.assertTrue(question.endswith("Quantos anos tem a criança?"))
 
+    def test_numbers_spelled_out_are_masked_like_digits(self):
+        # "viajar com mais duas pessoas" is a head count the traveler never gave.
+        history = [
+            {
+                "role": "assistant",
+                "content": "Você vai viajar com mais duas pessoas, essas são todas adultas? "
+                "Two, three or Cuatro?",
+            }
+        ]
+
+        question = previous_question_for_extraction(history, "sim")
+
+        self.assertNotIn("duas", question)
+        for spelled in ("Two", "three", "Cuatro"):
+            self.assertNotIn(spelled, question)
+        self.assertIn("mais # pessoas", question)
+
+    def test_a_last_message_that_asked_nothing_is_no_context(self):
+        # A confirmation full of dates and counts has nothing for a reply to answer.
+        history = [
+            {
+                "role": "assistant",
+                "content": "A busca está pronta: 10 de dezembro, 5 noites, 2 adultos.",
+            }
+        ]
+
+        self.assertIsNone(previous_question_for_extraction(history, "o de 8 na verdade tem 9"))
+
+    def test_a_pending_question_about_the_profile_is_shown_as_what_was_asked_not_the_reply(self):
+        history = [
+            {
+                "role": "assistant",
+                "content": "Você vai viajar com mais duas pessoas, todas adultas?",
+            }
+        ]
+
+        question = previous_question_for_extraction(history, "sim", party_offer_pending=True)
+
+        self.assertEqual(question, PARTY_OFFER_QUESTION)
+        self.assertNotIn("duas", question)
+
+
+class AwaitingOccupancyTests(SimpleTestCase):
+    def test_a_trip_with_its_dates_and_nobody_going_is_waiting_for_who_is_going(self):
+        self.assertTrue(
+            awaiting_occupancy(record(start_date="2026-12-05", stay_length=3, stay_unit="days"))
+        )
+        self.assertTrue(awaiting_occupancy(record(stay_length=3, stay_unit="days")))
+
+    def test_nothing_is_awaited_once_adults_are_known_or_there_is_no_trip(self):
+        self.assertFalse(awaiting_occupancy(record(adults=2, stay_length=3, stay_unit="days")))
+        self.assertFalse(awaiting_occupancy(None))
+        self.assertFalse(awaiting_occupancy(record(adults=2)))
+
+
+class ReturnDateTests(SimpleTestCase):
+    """A day that only says when they come back is the end of the stay, not a
+    new start."""
+
+    STORED = record(start_date="2026-12-14", stay_length=5, stay_unit="nights", adults=2)
+
+    def test_a_lone_end_day_moves_the_length_and_leaves_the_start_alone(self):
+        applied = apply(self.STORED, end_day=20)
+
+        self.assertEqual(applied.record["start_date"], "2026-12-14")
+        self.assertEqual(applied.record["stay_length"], 6)
+        self.assertEqual(applied.record["stay_unit"], "nights")
+
+    def test_a_lone_end_day_with_no_start_on_record_changes_nothing(self):
+        applied = apply(record(adults=2), end_day=20)
+
+        self.assertFalse(applied.details_changed)
+        self.assertIsNone(applied.record["start_date"])
+
+    def test_the_prompt_tells_the_model_a_return_day_is_never_the_start(self):
+        from ai.trip_details import TRIP_DETAILS_SYSTEM_PROMPT
+
+        self.assertIn("volto dia 20", TRIP_DETAILS_SYSTEM_PROMPT)
+        self.assertIn("a return day is never the start", TRIP_DETAILS_SYSTEM_PROMPT)
+
 
 def _trip(**fields):
     return resolve(record(**fields), TODAY)
@@ -1274,3 +1366,349 @@ class AskTheNextThingTests(SimpleTestCase):
         turn = self.turn(past.record, issues=past.issues, profile_party=2)
 
         self.assertIsNone(turn.party_offer)
+
+
+class RelativeMonthNeedsTheWordTests(SimpleTestCase):
+    """A model that adds "next month" to "Dec 20" must not move the trip to the
+    month after today: a relative month is only believed when the message says
+    "month"."""
+
+    def read(self, message, **parts):
+        return apply_components(None, guard_components(comps(**parts), message), TODAY)
+
+    def test_next_month_the_message_never_said_is_dropped(self):
+        applied = self.read("Sydney from Dec 20 for two weeks", day=20, month=12, relative="next")
+
+        self.assertEqual(applied.record["start_date"], "2026-12-20")
+
+    def test_a_relative_month_the_message_does_say_still_counts(self):
+        for message in (
+            "dia 3 do mês que vem",
+            "on the 3rd of next month",
+            "el 3 del mes que viene",
+        ):
+            with self.subTest(message=message):
+                applied = self.read(message, day=3, relative="next")
+
+                self.assertEqual(applied.record["start_date"], "2026-11-03")
+
+
+class StartOverTests(SimpleTestCase):
+    STORED = record(
+        start_date="2026-12-14",
+        stay_length=5,
+        stay_unit="nights",
+        adults=2,
+        children=1,
+        child_ages=[6],
+        rooms=1,
+    )
+
+    def test_a_clear_of_everything_empties_the_trip_and_says_it_was_a_reset(self):
+        applied = apply(self.STORED, cleared=["everything"])
+
+        self.assertIsNone(applied.record)
+        self.assertTrue(applied.reset)
+        self.assertTrue(applied.details_changed)
+
+    def test_what_they_say_in_the_same_message_is_kept_after_the_reset(self):
+        applied = apply(self.STORED, cleared=["everything"], day=5, month=11)
+
+        self.assertEqual(applied.record["start_date"], "2026-11-05")
+        self.assertIsNone(applied.record["adults"])
+
+    def test_a_message_that_does_not_start_over_cannot_clear_everything(self):
+        cleared = comps(cleared=["everything"])
+
+        for message in ("a data está errada", "esquece o hotel", "never mind the price"):
+            with self.subTest(message=message):
+                self.assertEqual(restrict_clears(cleared, message)["cleared_fields"], [])
+
+    def test_a_message_that_does_start_over_keeps_it(self):
+        cleared = comps(cleared=["everything"])
+
+        for message in (
+            "olvida todo, empecemos de nuevo",
+            "esquece tudo",
+            "start over from scratch",
+            "vamos recomeçar do zero",
+        ):
+            with self.subTest(message=message):
+                kept = restrict_clears(cleared, message)["cleared_fields"]
+
+                self.assertEqual(kept, ["everything"])
+
+
+class ChildrenOnlyMessageTests(SimpleTestCase):
+    """A message about a child says nothing about the adults."""
+
+    def test_adults_the_model_read_into_a_message_about_a_child_are_dropped(self):
+        for message in (
+            "yes, and a child of 6",
+            "e meu filho de 15 anos",
+            "dos de ellos son niños",
+        ):
+            with self.subTest(message=message):
+                guarded = guard_components(comps(adults=1, children=1, ages=[6]), message)
+
+                self.assertIsNone(guarded["adults"])
+                self.assertEqual(guarded["children"], 1)
+
+    def test_adults_stay_when_the_message_talks_about_them_too(self):
+        for message in (
+            "eu e meu filho de 5 anos",
+            "2 adultos e 1 criança de 6 anos",
+            "somos 4, dois filhos",
+            "me and my son, he's 6",
+            "my wife and 2 kids",
+        ):
+            with self.subTest(message=message):
+                guarded = guard_components(comps(adults=2, children=1, ages=[6]), message)
+
+                self.assertEqual(guarded["adults"], 2)
+
+
+class LoneLastDayNeedsAReturnWordTests(SimpleTestCase):
+    """A number the model read as a last day is believed alone only when the
+    message is about coming back."""
+
+    def test_a_stray_number_is_not_a_last_day(self):
+        for message in ("o de 8 na verdade tem 9", "the 8 year old is actually 9"):
+            with self.subTest(message=message):
+                guarded = guard_components(comps(end_day=9), message)
+
+                self.assertIsNone(guarded["end"]["day"])
+
+    def test_a_return_date_stays(self):
+        for message in ("volto dia 20", "regreso el 20", "we fly home on the 20th", "até dia 20"):
+            with self.subTest(message=message):
+                guarded = guard_components(comps(end_day=20), message)
+
+                self.assertEqual(guarded["end"]["day"], 20)
+
+    def test_a_range_with_its_first_day_stays(self):
+        guarded = guard_components(comps(day=5, end_day=8), "de 5 a 8 de novembro")
+
+        self.assertEqual(guarded["end"]["day"], 8)
+
+    def test_the_stray_number_no_longer_stretches_the_stay_to_next_month(self):
+        stored = record(start_date="2026-12-10", stay_length=5, stay_unit="nights", adults=2)
+
+        applied = apply_components(
+            stored, guard_components(comps(end_day=9), "o de 8 na verdade tem 9"), TODAY
+        )
+
+        self.assertEqual(applied.record["stay_length"], 5)
+
+
+class RoomsAreNotAdultsTests(SimpleTestCase):
+    """Adults and rooms are separate numbers. "dois adultos" is two adults: the extraction read it
+    as two rooms now and then (the Booking link then carried `no_rooms=2` the traveler never asked
+    for), so a number of rooms is only ever what the words state - never one per adult, never
+    taken from a request for somewhere to stay - and the one on record stays as it is."""
+
+    # Who is going, in Brazilian and European Portuguese, Spanish and English, with no room named.
+    NO_ROOM_NAMED = (
+        ("pt-br", "Paris de 5 a 8 de dezembro, dois adultos", 2),
+        ("pt-br", "Lisboa de 5 a 8 de janeiro, três adultos", 3),
+        ("pt-br", "Paris dia 5, 4 noites, somos dois adultos", 2),
+        ("pt-pt", "Queria ir a Lisboa de 10 a 13 de dezembro, dois adultos e uma criança", 2),
+        ("pt-br", "quero hospedagem para duas pessoas em Paris", 2),
+        ("es", "París del 5 al 8 de diciembre, dos adultos", 2),
+        ("es", "Madrid del 5 al 9 de diciembre, tres adultos", 3),
+        ("es", "busco alojamiento para dos personas", 2),
+        ("en", "Paris from December 5 to 8, two adults", 2),
+        ("en", "Rome Dec 5-9, three adults", 3),
+        ("en", "we are four adults, looking for a place to stay in Paris", 4),
+    )
+
+    def test_a_head_count_the_model_reads_as_rooms_is_not_rooms(self):
+        for language, message, adults in self.NO_ROOM_NAMED:
+            for rooms in range(1, 5):
+                with self.subTest(language=language, message=message, rooms=rooms):
+                    guarded = guard_components(comps(adults=adults, rooms=rooms), message)
+
+                    self.assertIsNone(guarded["rooms"])
+                    self.assertEqual(guarded["adults"], adults)  # the head count is untouched
+
+    def test_no_room_is_ever_counted_per_adult(self):
+        for adults in range(1, 7):
+            for message in (
+                f"somos {adults} adultos",
+                f"we are {adults} adults",
+                f"somos {adults} adultos, quero hospedagem",
+            ):
+                with self.subTest(message=message):
+                    applied = apply_components(
+                        None, guard_components(comps(adults=adults, rooms=adults), message), TODAY
+                    )
+
+                    self.assertEqual(applied.record["adults"], adults)
+                    self.assertIsNone(applied.record["rooms"])
+                    self.assertNotIn("rooms", resolve(applied.record, TODAY).booking_kwargs())
+
+    def test_the_link_and_the_caption_of_such_a_message_say_nothing_about_rooms(self):
+        applied = apply_components(
+            None,
+            guard_components(
+                comps(day=5, month=12, length=3, unit="nights", adults=2, rooms=2),
+                "Paris de 5 a 8 de dezembro, dois adultos",
+            ),
+            TODAY,
+        )
+        trip = resolve(applied.record, TODAY)
+
+        self.assertEqual(trip.booking_kwargs()["adults"], 2)
+        self.assertNotIn("rooms", trip.booking_kwargs())
+        self.assertNotIn("room", trip.caption("Paris"))
+        self.assertNotIn("Rooms", fact_block(TripTurn(trip=trip, today=TODAY)))
+
+    # What a traveler who does name a number of rooms says - the model's answer is believed.
+    STATED = (
+        ("pt-br", "quero dois quartos por favor", 2),
+        ("pt-br", "quero um quarto", 1),
+        ("pt-br", "na verdade 1 quarto", 1),
+        ("pt-br", "2 adultos e 2 quartos", 2),
+        ("pt-br", "dois adultos e um quarto", 1),
+        ("pt-pt", "queria 3 quartos duplos", 3),
+        ("pt-br", "uma suíte e um quarto", 2),
+        ("es", "dos habitaciones por favor", 2),
+        ("es", "2 adultos y 1 habitación", 1),
+        ("es", "necesito tres cuartos", 3),
+        ("en", "two rooms please", 2),
+        ("en", "2 adults, 1 room", 1),
+        ("en", "I need two double rooms", 2),
+        ("en", "we want 3 bedrooms", 3),
+        ("en", "a room for two adults", 1),
+        ("en", "rooms: 2", 2),
+        ("es", "2x habitaciones", 2),
+        ("pt-br", "2 x quartos", 2),
+        ("fr", "deux chambres s'il vous plaît", 2),
+        ("it", "due camere per favore", 2),
+        ("de", "zwei Zimmer bitte", 2),
+    )
+
+    def test_a_number_of_rooms_that_the_words_state_is_kept(self):
+        for language, message, rooms in self.STATED:
+            with self.subTest(language=language, message=message):
+                guarded = guard_components(comps(rooms=rooms), message)
+
+                self.assertEqual(guarded["rooms"], rooms)
+
+    def test_several_numbers_of_rooms_add_up(self):
+        message = "1 quarto de casal e 1 quarto de solteiro"
+
+        self.assertEqual(guard_components(comps(rooms=2), message)["rooms"], 2)
+        self.assertEqual(guard_components(comps(rooms=1), message)["rooms"], 1)
+        self.assertIsNone(guard_components(comps(rooms=3), message)["rooms"])
+
+    def test_a_number_the_words_do_not_state_is_dropped_and_never_replaced(self):
+        for message, wrong in (
+            ("quero dois quartos por favor", 3),
+            ("2 adults, 1 room", 2),  # the head count taken for the rooms
+            ("dois adultos e um quarto", 2),
+            ("um quarto para dois adultos", 2),
+            ("necesito tres cuartos", 1),
+        ):
+            with self.subTest(message=message, rooms=wrong):
+                self.assertIsNone(guard_components(comps(rooms=wrong), message)["rooms"])
+
+    def test_a_room_word_without_a_number_states_no_number(self):
+        for language, message in (
+            ("pt-br", "quartos separados para os dois adultos"),
+            ("pt-br", "cada um quer o seu quarto"),
+            ("pt-br", "2 adultos, quartos separados"),
+            # The 2 counts the adults, not the rooms.
+            ("pt-br", "somos 2 adultos quartos separados"),
+            ("en", "2 adults separate rooms"),
+            ("pt-br", "queremos o quarto duplo"),
+            ("es", "habitaciones separadas para los dos adultos"),
+            ("en", "separate rooms for the two adults"),
+            ("en", "each of us wants their own room"),
+        ):
+            for rooms in (1, 2):
+                with self.subTest(language=language, message=message, rooms=rooms):
+                    self.assertIsNone(guard_components(comps(rooms=rooms), message)["rooms"])
+
+    def test_the_confirmed_rooms_stay_when_the_adults_change(self):
+        current = apply(day=5, length=3, unit="days", adults=2, rooms=2).record
+        for language, message, shape in (
+            ("pt-br", "agora somos 3 adultos", dict(adults=3)),
+            ("pt-br", "agora somos 3 adultos", dict(adults=3, rooms=3)),
+            ("pt-br", "somos 4 adultos", dict(adults=4, rooms=4)),
+            ("es", "ahora somos 3 adultos", dict(adults=3, rooms=1)),
+            ("en", "now we are three adults", dict(adults=3, rooms=3)),
+        ):
+            with self.subTest(language=language, message=message, shape=shape):
+                applied = apply_components(
+                    current, guard_components(comps(**shape), message, current), TODAY
+                )
+
+                self.assertEqual(applied.record["rooms"], 2)
+                self.assertGreater(applied.record["adults"], 2)
+                self.assertFalse(applied.rooms_changed)
+
+    def test_fewer_adults_than_rooms_keep_the_rooms_on_record_and_out_of_the_search(self):
+        current = apply(day=5, length=3, unit="days", adults=2, rooms=2).record
+
+        fewer = apply_components(
+            current, guard_components(comps(adults=1, rooms=1), "agora só 1 adulto", current), TODAY
+        )
+        again = apply_components(
+            fewer.record,
+            guard_components(comps(adults=2), "somos 2 adultos de novo", fewer.record),
+            TODAY,
+        )
+
+        self.assertEqual(fewer.record["rooms"], 2)  # the traveler asked for them; never erased
+        self.assertTrue(resolve(fewer.record, TODAY).rooms_conflict)
+        self.assertNotIn("rooms", resolve(fewer.record, TODAY).booking_kwargs())
+        self.assertEqual(again.record["rooms"], 2)
+        self.assertEqual(resolve(again.record, TODAY).booking_kwargs()["rooms"], 2)
+
+    def test_a_change_the_traveler_states_still_changes_the_rooms(self):
+        current = apply(day=5, length=3, unit="days", adults=3, rooms=2).record
+        for language, message, rooms in (
+            ("pt-br", "na verdade 1 quarto", 1),
+            ("pt-br", "melhor 3 quartos", 3),
+            ("es", "mejor una habitación", 1),
+            ("en", "make it one room", 1),
+        ):
+            with self.subTest(language=language, message=message):
+                applied = apply_components(
+                    current, guard_components(comps(rooms=rooms), message, current), TODAY
+                )
+
+                self.assertEqual(applied.record["rooms"], rooms)
+                self.assertEqual(applied.record["adults"], 3)  # only the rooms moved
+
+    def test_a_clear_the_traveler_states_still_clears_only_the_rooms(self):
+        current = apply(day=5, length=3, unit="days", adults=3, rooms=2).record
+        for language, message in (
+            ("pt-br", "esquece os quartos"),
+            ("es", "olvida las habitaciones"),
+            ("en", "forget the rooms"),
+        ):
+            with self.subTest(language=language, message=message):
+                applied = apply_components(
+                    current, guard_components(comps(cleared=["rooms"]), message, current), TODAY
+                )
+
+                self.assertIsNone(applied.record["rooms"])
+                self.assertEqual(applied.record["adults"], 3)
+
+    def test_the_link_and_the_caption_carry_the_confirmed_rooms(self):
+        current = apply(day=5, length=3, unit="days", adults=3, rooms=2).record
+        grown = apply_components(
+            current,
+            guard_components(comps(adults=4, rooms=4), "agora somos 4 adultos", current),
+            TODAY,
+        )
+        trip = resolve(grown.record, TODAY)
+
+        self.assertEqual((trip.booking_kwargs()["adults"], trip.booking_kwargs()["rooms"]), (4, 2))
+        self.assertEqual(trip.link_summary()["rooms"], 2)
+        self.assertIn("4 adults · 2 rooms", trip.caption("Paris"))
+        self.assertIn(
+            "Rooms: 2 - included in the search.", fact_block(TripTurn(trip=trip, today=TODAY))
+        )

@@ -922,13 +922,25 @@ class InventedLinkTests(_ActionCase):
 
         self.assertEqual(memory.get_history(self.key)[-1]["content"], spoken)
 
-    def test_other_replies_are_left_alone(self):
+    def test_a_carried_reply_never_carries_a_link_the_model_wrote_either(self):
+        # The application's card is the only link it ever shows. A reply to "obrigado" or
+        # "ok open it" that writes one invents it - and says the search was opened.
         provider = self.conversation(plain())
         provider.reply_text = "Veja https://example.com/guia"
 
         _, spoken = self.spoken(provider, "obrigado")
 
-        self.assertEqual(spoken, "Veja https://example.com/guia")
+        self.assertEqual(spoken, "Veja")
+        self.assertNotIn("example.com", memory.get_history(self.key)[-1]["content"])
+
+    def test_a_placeholder_link_is_taken_out_too(self):
+        provider = self.conversation(plain())
+        provider.reply_text = "Aqui tens a pesquisa:\n\n[Buscar alojamento](insert-link-here)"
+
+        _, spoken = self.spoken(provider, "obrigado")
+
+        self.assertNotIn("insert-link-here", spoken)
+        self.assertNotIn("](", spoken)
 
 
 class RoomsStateTests(_OrchestrationCase):
@@ -1703,3 +1715,140 @@ class ChosenPlaceTests(_TripCase):
 
         self.assert_detail_of(result, "madrid-es")
         self.assertTrue(result.is_accommodation_reply)
+
+
+class RoomsAreNotAdultsWholeTurnTests(_TripCase):
+    """The reported defect through whole turns: "dois adultos" came back from the extraction as
+    two adults AND two rooms, and the Booking link carried `no_rooms=2` the traveler never asked
+    for."""
+
+    MESSAGES = (
+        ("pt-br", "hospedagem em Barcelona de 5 a 8, dois adultos"),
+        ("pt-pt", "queria alojamento para dois adultos, dia 5, 3 dias"),
+        ("es", "alojamiento para dos adultos, del 5 al 8"),
+        ("en", "stays from the 5th for 3 days, two adults"),
+    )
+
+    def conversation(self, *later):
+        provider = ScriptedProvider([turn(spain(selected_destination_name="Barcelona")), *later])
+        self.say(provider, "quero ir pra Barcelona")
+        return provider
+
+    def test_two_adults_are_not_two_rooms_in_the_link_the_caption_or_the_facts(self):
+        for language, message in self.MESSAGES:
+            with self.subTest(language=language, message=message):
+                memory.clear_history(self.key)  # a fresh conversation for each language
+                # The extraction in the shape that was reported: the head count, and the same
+                # number again as the rooms.
+                provider = self.conversation(stays(adults=2, rooms=2, **WHEN))
+
+                result, _, state = self.say(provider, message)
+
+                link = dict(query_of(self.url_of(result)))
+                self.assertEqual(link["group_adults"], "2")
+                self.assertNotIn("no_rooms", link)
+                self.assertNotIn("room", result.trip.caption("Barcelona"))
+                self.assertIsNone(state["trip_details"]["rooms"])
+                self.assertNotIn("Rooms:", self.prompt_of_last_reply(provider))
+
+    def test_a_request_for_somewhere_to_stay_does_not_invent_a_room_count(self):
+        provider = self.conversation(stays(adults=2, rooms=1, **WHEN))
+
+        result, _, state = self.say(provider, "quero hospedagem para 2 adultos, dia 5, 3 dias")
+
+        self.assertNotIn("no_rooms", dict(query_of(self.url_of(result))))
+        self.assertIsNone(state["trip_details"]["rooms"])
+
+    def test_separate_rooms_without_a_number_are_not_one_room_per_adult(self):
+        provider = self.conversation(stays(adults=2, rooms=2, **WHEN))
+
+        result, _, state = self.say(
+            provider, "quartos separados para os dois adultos, dia 5, 3 dias"
+        )
+
+        self.assertNotIn("no_rooms", dict(query_of(self.url_of(result))))
+        self.assertIsNone(state["trip_details"]["rooms"])
+
+    def test_the_rooms_the_traveler_states_in_the_same_message_reach_the_link(self):
+        for language, message in (
+            ("pt-br", "hospedagem de 5 a 8, dois adultos e dois quartos"),
+            ("es", "alojamiento del 5 al 8, dos adultos y dos habitaciones"),
+            ("en", "stays from the 5th for 3 days, two adults and two rooms"),
+        ):
+            with self.subTest(language=language, message=message):
+                memory.clear_history(self.key)
+                provider = self.conversation(stays(adults=2, rooms=2, **WHEN))
+
+                result, _, state = self.say(provider, message)
+
+                link = dict(query_of(self.url_of(result)))
+                self.assertEqual((link["group_adults"], link["no_rooms"]), ("2", "2"))
+                self.assertIn("2 adults · 2 rooms", result.trip.caption("Barcelona"))
+                self.assertEqual(state["trip_details"]["rooms"], 2)
+
+
+class ConfirmedRoomsSurviveAdultChangesTests(_ActionCase):
+    """A conversation at Barcelona, 5-8 Nov, 3 adults, 1 child aged 5 - and two rooms asked for."""
+
+    def with_two_rooms(self, *later):
+        provider = self.conversation(stays(rooms=2), *later)
+        self.say(provider, "quero dois quartos por favor")
+        return provider
+
+    def test_the_rooms_stay_in_the_link_and_the_caption_when_the_adults_change(self):
+        # The extraction answers the new head count and, beside it, the same number as rooms.
+        provider = self.with_two_rooms(plain(adults=4, rooms=4))
+
+        result, _, state = self.say(provider, "agora somos 4 adultos")
+
+        self.assertEqual(
+            query_of(self.url_of(result)),
+            [
+                ("ss", "Barcelona, Spain"),
+                ("checkin", "2026-11-05"),
+                ("checkout", "2026-11-08"),
+                ("group_adults", "4"),
+                ("no_rooms", "2"),
+                ("group_children", "1"),
+                ("age", "5"),
+            ],
+        )
+        self.assertEqual(state["trip_details"]["rooms"], 2)
+        self.assertIn("4 adults · 1 child (age 5) · 2 rooms", result.trip.caption("Barcelona"))
+        self.assertTrue(result.retire_stays)  # the search changed: the old button is out of date
+
+    def test_fewer_adults_than_rooms_take_the_search_away_but_never_forget_the_rooms(self):
+        provider = self.with_two_rooms(plain(adults=1, rooms=1), plain(adults=3))
+
+        fewer, _, state = self.say(provider, "agora só 1 adulto")
+
+        self.assertEqual(fewer.recommendations, [])  # two rooms cannot go in a search for one adult
+        self.assertTrue(fewer.retire_stays)
+        self.assertEqual(state["trip_details"]["rooms"], 2)
+
+        again, _, state = self.say(provider, "somos 3 adultos de novo")
+
+        self.assertEqual(dict(query_of(self.url_of(again)))["no_rooms"], "2")
+        self.assertEqual(state["trip_details"]["rooms"], 2)
+
+    def test_a_change_or_a_clear_the_traveler_states_still_applies_in_every_language(self):
+        for language, change, rooms in (
+            ("pt-br", "na verdade 1 quarto", 1),
+            ("es", "mejor una habitación", 1),
+            ("en", "make it one room", 1),
+        ):
+            with self.subTest(language=language, message=change):
+                memory.clear_history(self.key)
+                provider = self.with_two_rooms(plain(rooms=rooms), plain(cleared_fields=["rooms"]))
+
+                changed, _, state = self.say(provider, change)
+
+                link = dict(query_of(self.url_of(changed)))
+                self.assertEqual(link["no_rooms"], "1")
+                self.assertEqual((link["group_adults"], link["group_children"]), ("3", "1"))
+                self.assertEqual(state["trip_details"]["rooms"], 1)
+
+                cleared, _, state = self.say(provider, "esquece os quartos")
+
+                self.assertNotIn("no_rooms", dict(query_of(self.url_of(cleared))))
+                self.assertIsNone(state["trip_details"]["rooms"])
