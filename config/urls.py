@@ -34,4 +34,7 @@ urlpatterns = [
     # URL-prefix i18n_patterns() involved - language is entirely
     # cookie/header/account-based.
     path("i18n/setlang/", set_language, name="set_language"),
+    # Standalone redirect for an external partner, unrelated to the travel
+    # product - see dietmed/views.py for what it does and how to remove it.
+    path("dietmed/", include("dietmed.urls")),
 ]

@@ -68,6 +68,10 @@ INSTALLED_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
+    # Unrelated to the travel product - a standalone redirect for an external
+    # partner. No models, no other app depends on it; see dietmed/views.py for
+    # what it does and how to remove it.
+    "dietmed",
 ]
 
 # Custom user model, email login, no username - see users/models.py.
